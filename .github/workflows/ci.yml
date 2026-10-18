@@ -33,6 +33,10 @@ jobs:
             if(M.meta.demo!==false){ console.error("expected real meta"); process.exit(1); }
             const mp=M.ranked.find(x=>x.name==="Max Park");
             const mbf=(mp.records.find(r=>r.ev==="333mbf")||{}).value;
-            if(mbf!=="40/40 59999"){ console.error("mbf decode wrong: "+mbf); process.exit(1); }
-            console.log("ETL smoke OK:",M.ranked.length,"players, mbf:",mbf);
+            if(mbf!=="40/40 58:33"){ console.error("mbf decode wrong: "+mbf); process.exit(1); }
+            const th=M.ranked.find(x=>x.name==="Tim Habermaas");
+            const mbo=(th.records.find(r=>r.ev==="333mbo")||{}).value;
+            if(mbo!=="6/6 47:58"){ console.error("mbo (old multi-blind) decode wrong: "+mbo); process.exit(1); }
+            if(!M.eventBoards||!M.eventBoards["333"]||!M.eventBoards["333"].length) { console.error("event boards missing"); process.exit(1); }
+            console.log("ETL smoke OK:",M.ranked.length,"players, mbf:",mbf,", mbo:",mbo,", boards:",Object.keys(M.eventBoards).length);
           '

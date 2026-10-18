@@ -13,9 +13,10 @@
   /* 旗帜：优先使用国内可达的 jsDelivr 镜像（flag-icons），失败时回退为文字代码 */
   function flag(iso, cls) {
     if (!iso) return '';
-    iso = String(iso).toLowerCase();
-    const url = 'https://cdn.jsdelivr.net/gh/lipis/flag-icons@7.5.0/flags/4x3/' + iso + '.svg';
-    return '<img class="flag ' + (cls || '') + '" src="' + url + '" alt="' + esc(iso) + '" title="' + esc(M.countries[iso] || iso) + '" loading="lazy" onerror="this.onerror=null;this.outerHTML=\'<span class=&quot;flag-fb&quot;>' + esc(iso.toUpperCase()) + '</span>\'">';
+    const low = String(iso).toLowerCase();
+    const url = 'https://cdn.jsdelivr.net/gh/lipis/flag-icons@7.5.0/flags/4x3/' + low + '.svg';
+    const cname = M.countries[String(iso).toUpperCase()] || M.countries[iso] || low;
+    return '<img class="flag ' + (cls || '') + '" src="' + url + '" alt="' + esc(low) + '" title="' + esc(cname) + '" loading="lazy" onerror="this.onerror=null;this.outerHTML=\'<span class=&quot;flag-fb&quot;>' + esc(low.toUpperCase()) + '</span>\'">';
   }
   /* 头像：优先拉取 WCA 官方头像，失败则回退为首字母底色（由 app.js 注入的 goatAvatarFallback 处理） */
   function avatar(p, cls) {

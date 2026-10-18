@@ -128,6 +128,12 @@ function streamTsv(base, onRow) {
 
 /* ---------------- 工具 ---------------- */
 function toInt(v) { const n = parseInt(v, 10); return isNaN(n) ? 0 : n; }
+/* 秒 → mm:ss / h:mm:ss */
+function fmtDur(t) {
+  const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60;
+  const mm = String(m).padStart(2, '0'), ss = String(s).padStart(2, '0');
+  return (h > 0 ? h + ':' : '') + mm + ':' + ss;
+}
 function fmtResult(eventId, value, type) {
   const ev = Calc.EV[eventId] || { format: 'time' };
   const fmt = ev.format || 'time';
@@ -148,24 +154,23 @@ function fmtResult(eventId, value, type) {
   }
   if (fmt === 'multi') {
     const s = String(v).padStart(10, '0');
+    let solved, attempted, t;
     if (s[0] === '1') {
-      // 旧编码 1SSAATTTTT
-      const ss = toInt(s.slice(1, 3));
-      const aa = toInt(s.slice(3, 5));
-      const tt = toInt(s.slice(5, 10));
-      const solved = 99 - ss;
-      const attempted = aa;
-      return solved + '/' + attempted + (tt === 99999 ? '' : ' ' + tt);
+      // 旧编码 1SSAATTTTT（旧多盲 333mbo，2006–2011）
+      solved = 99 - toInt(s.slice(1, 3));
+      attempted = toInt(s.slice(3, 5));
+      t = toInt(s.slice(5, 10));
+    } else {
+      // 新编码 0DDTTTTTMM
+      const dd = toInt(s.slice(1, 3));
+      t = toInt(s.slice(3, 8));
+      const mm = toInt(s.slice(8, 10));
+      const diff = 99 - dd;
+      solved = diff + mm;
+      attempted = solved + mm;
     }
-    // 新编码 0DDTTTTTMM
-    const dd = toInt(s.slice(1, 3));
-    const t = toInt(s.slice(3, 8));
-    const mm = toInt(s.slice(8, 10));
-    const diff = 99 - dd;
-    const missed = mm;
-    const solved = diff + missed;
-    const attempted = solved + missed;
-    return solved + '/' + attempted + (t === 99999 ? '' : ' ' + t);
+    const ts = (t > 0 && t !== 99999) ? ' ' + fmtDur(t) : '';
+    return solved + '/' + attempted + ts;
   }
   return String(v);
 }

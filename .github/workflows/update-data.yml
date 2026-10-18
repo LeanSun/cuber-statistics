@@ -10,6 +10,14 @@ on:
         description: 'Top-N players to emit (0 = all)'
         required: false
         default: '1500'
+  # 数据管道代码变更时自动重建（不含 js/data.js 本身，避免机器人提交触发循环）
+  push:
+    branches: [main]
+    paths:
+      - 'etl/**'
+      - 'js/calc.js'
+      - 'js/params.js'
+      - '.github/workflows/update-data.yml'
 
 permissions:
   contents: write

@@ -5,3 +5,4 @@ id	name	rank	format
 333bf	3x3x3 Blindfolded	4	time
 333fm	3x3x3 Fewest Moves	5	number
 333mbf	3x3x3 Multi-Blind	6	multi
+333mbo	3x3x3 Multi-Blind Old Style	7	multi
