@@ -22,7 +22,7 @@ jobs:
         run: python3 etl/make_sample.py
       - name: Run ETL against sample & verify output shape
         run: |
-          node etl/build.js --dir etl/sample --out ./_sample_data.js --date 2026-10-18 --ver v2.0.2 --detail-max 5 --slim-max 20
+          node etl/build.js --dir etl/sample --out ./_sample_data.js --date 2026-10-18 --ver v2.0.2 --detail-max 20 --slim-max 20
           node -e '
             const fs=require("fs"); const Calc=require("./js/calc.js");
             global.window={Calc:Calc,U:Calc.U}; global.Calc=Calc; global.U=Calc.U;
@@ -33,6 +33,7 @@ jobs:
             const mbf=(mp.records.find(r=>r.ev==="333mbf")||{}).value;
             if(mbf!=="40/40 58:33"){ console.error("mbf decode wrong: "+mbf); process.exit(1); }
             const th=M.ranked.find(x=>x.name==="Tim Habermaas");
+            if(!th||!th.records||!th.records.length) bad("Tim Habermaas missing or slim profile: "+JSON.stringify(th&&{slim:th.slim}));
             const mbo=(th.records.find(r=>r.ev==="333mbo")||{}).value;
             if(mbo!=="6/6 47:58"){ console.error("mbo (old multi-blind) decode wrong: "+mbo); process.exit(1); }
             if(!M.eventBoards||!M.eventBoards["333"]||!M.eventBoards["333"].length) { console.error("event boards missing"); process.exit(1); }
