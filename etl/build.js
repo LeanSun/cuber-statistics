@@ -44,30 +44,52 @@ if (HELP || (!ZIP && !DIR)) {
 const log = (...a) => console.log('[etl]', ...a);
 
 /* ---------------- 读取 TSV（zip 或目录） ---------------- */
+// WCA v1/v2 文件名有差异，这里同时兼容多种写法：
+//   WCA_persons.tsv / WCA_export_Persons.tsv / WCA_export_persons.tsv 等
+function candidates(base) {
+  const caps = base.split('_').map((s) => s[0].toUpperCase() + s.slice(1)).join('');
+  return [
+    'WCA_' + base + '.tsv',
+    'WCA_export_' + caps + '.tsv',
+    'WCA_export_' + base + '.tsv',
+    base + '.tsv'
+  ];
+}
+
 function findEntry(base) {
   const out = execFileSync('unzip', ['-l', ZIP]).toString();
-  const re = new RegExp('\\s+' + base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*$', 'm');
-  const m = out.split('\n').find((l) => re.test(l));
-  if (!m) throw new Error('entry not found in zip: ' + base);
-  return m.trim().split(/\s+/).pop();
+  const lines = out.split('\n');
+  const names = lines.map((l) => l.trim().split(/\s+/).pop()).filter(Boolean);
+  for (const cand of candidates(base)) {
+    const idx = names.findIndex((n) => n.toLowerCase().endsWith(cand.toLowerCase()) || n === cand);
+    if (idx >= 0) {
+      const entry = names[idx];
+      log('zip entry matched', base, '=>', entry);
+      return entry;
+    }
+  }
+  throw new Error('entry not found in zip: ' + base + '\nAvailable names (sample): ' + names.slice(0, 20).join(', '));
 }
 
 function openEntry(base) {
   if (DIR) {
+    const files = [];
     const walk = (d) => {
       for (const f of fs.readdirSync(d)) {
         const p = path.join(d, f);
         const st = fs.statSync(p);
-        if (st.isDirectory()) { const r = walk(p); if (r) return r; }
-        else if (f === 'WCA_' + base + '.tsv') return p;
+        if (st.isDirectory()) walk(p);
+        else files.push(p);
       }
-      return null;
     };
-    const fp = walk(DIR);
-    if (!fp) throw new Error('file not found: WCA_' + base + '.tsv in ' + DIR);
-    return fs.createReadStream(fp, { encoding: 'utf8' });
+    walk(DIR);
+    for (const cand of candidates(base)) {
+      const fp = files.find((p) => path.basename(p).toLowerCase() === cand.toLowerCase());
+      if (fp) { log('dir entry matched', base, '=>', fp); return fs.createReadStream(fp, { encoding: 'utf8' }); }
+    }
+    throw new Error('file not found for base: ' + base + ' in ' + DIR);
   }
-  const entry = findEntry('WCA_' + base + '.tsv');
+  const entry = findEntry(base);
   const child = spawn('unzip', ['-p', ZIP, entry], { stdio: ['ignore', 'pipe', 'ignore'] });
   return child.stdout;
 }
