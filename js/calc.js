@@ -436,7 +436,8 @@
       if (!iso) return;
       countries[iso] = countryEn(iso);
       countriesZh[iso] = countryZh(iso);
-      const c = contOfIso(iso) || continentRaw[id] || continentRaw[iso] || '';
+      /* 洲际优先取导出自带的 continent_id（权威），回落国家表的洲际码 */
+      const c = continentRaw[id] || continentRaw[iso] || contOfIso(iso) || '';
       if (c) continentMap[iso] = c;
     });
     Object.keys(continentRaw).forEach(function (id) {
@@ -448,7 +449,7 @@
       const iso = isoNorm(p.country);
       if (!iso) return;
       if (!countries[iso]) { countries[iso] = countryEn(iso); countriesZh[iso] = countryZh(iso); }
-      const c = contOfIso(iso);
+      const c = contOfIso(iso) || continentRaw[p.country] || continentRaw[iso] || '';
       if (c && !continentMap[iso]) continentMap[iso] = c;
     });
     const countryList = Object.keys(countries);

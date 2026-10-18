@@ -50,6 +50,9 @@ jobs:
             if(!/^[A-Z]{2}$/.test(iso)) bad("country not normalized to ISO2: "+iso);
             if(!M.countriesZh||!M.countriesZh[iso]) bad("missing zh country name for "+iso);
             if(!M.continentOf||!M.continentOf[iso]) bad("missing continent mapping for "+iso);
+            /* 洲际必须覆盖所有选手：此前 US/NL/GB/KR 等洲际码为空，大洲筛选会漏人 */
+            const noCont=M.ranked.filter(p=>!M.continentOf[p.country]);
+            if(noCont.length) bad("players without continent ("+noCont.length+"): "+noCont.slice(0,5).map(p=>p.name+"/"+p.country).join(", "));
             /* 真实统计：参赛行数 / 尝试 / 成功 / 城市 / 单场最多项目数 */
             const st=M.stats(M.ranked[0]);
             if(!(st.resultRows>0)) bad("resultRows not real: "+st.resultRows);

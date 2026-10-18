@@ -62,7 +62,7 @@ ZH = {
     'cr': '哥斯达黎加', 'cu': '古巴', 'cv': '佛得角', 'cy': '塞浦路斯', 'cz': '捷克',
     'de': '德国', 'dj': '吉布提', 'dk': '丹麦', 'dm': '多米尼克', 'do': '多米尼加',
     'dz': '阿尔及利亚', 'ec': '厄瓜多尔', 'ee': '爱沙尼亚', 'eg': '埃及', 'er': '厄立特里亚',
-    'es': '西班牙', 'et': '埃塞俄比亚', 'fi': '芬兰', 'fj': '斐济', 'fo': '法罗群岛',
+    'es': '西班牙', 'et': '埃塞俄比亚', 'fi': '芬兰', 'fj': '斐济', 'fm': '密克罗尼西亚', 'fo': '法罗群岛',
     'fr': '法国', 'ga': '加蓬', 'gb': '英国', 'gd': '格林纳达', 'ge': '格鲁吉亚',
     'gh': '加纳', 'gi': '直布罗陀', 'gm': '冈比亚', 'gn': '几内亚', 'gq': '赤道几内亚',
     'gr': '希腊', 'gt': '危地马拉', 'gu': '关岛', 'gw': '几内亚比绍', 'gy': '圭亚那',
@@ -105,9 +105,18 @@ ZH = {
     'nf': '诺福克岛', 'pn': '皮特凯恩', 'ac': '阿森松岛', 'ta': '特里斯坦达库尼亚',
 }
 
+# flag-icons 的 continent 字段（含常见别名）→ 本站洲际码
 CONT_OF = {
     'Asia': 'As', 'Europe': 'Eu', 'North America': 'NAm', 'South America': 'SAm',
-    'Oceania': 'Oc', 'Africa': 'Af', 'Antarctica': 'Oc'
+    'Oceania': 'Oc', 'Africa': 'Af', 'Antarctica': 'Oc',
+    'america': 'NAm', 'americas': 'NAm', 'australia': 'Oc', 'eu': 'Eu', 'as': 'As',
+}
+# 上面按国家逐条兜不住时（flag-icons 缺 continent 的国家）的最后防线
+CONT_FALLBACK = {
+    'us': 'NAm', 'ca': 'NAm', 'mx': 'NAm', 'gl': 'NAm', 'pm': 'NAm',
+    'nl': 'Eu', 'gb': 'Eu', 'kr': 'As', 'jp': 'As', 'ru': 'Eu', 'tr': 'As',
+    'gg': 'Eu', 'je': 'Eu', 'im': 'Eu', 'fo': 'Eu', 'gi': 'Eu', 'mc': 'Eu',
+    'sm': 'Eu', 'va': 'Eu', 'ad': 'Eu', 'li': 'Eu', 'mt': 'Eu', 'xk': 'Eu',
 }
 
 
@@ -124,8 +133,10 @@ def main():
     out = sys.argv[3]
 
     by_name = {}
+    by_code = {}
     for c in fi:
         by_name[norm(c['name'])] = c
+        by_code[str(c['code']).lower()] = c
 
     rows = []
     unmatched = []
@@ -134,7 +145,12 @@ def main():
         iso = NAME_TO_ISO.get(n)
         cont = ''
         en = name
-        if not iso and n in by_name:
+        if iso:
+            # 别名命中：洲际要按 ISO2 回到 flag-icons 查，否则会漏（US/NL/GB/KR 曾全为空）
+            c = by_code.get(iso)
+            if c:
+                cont = CONT_OF.get(c.get('continent', ''), '')
+        elif n in by_name:
             iso = by_name[n]['code']
             cont = CONT_OF.get(by_name[n].get('continent', ''), '')
         if not iso:
@@ -145,9 +161,15 @@ def main():
                 cont = CONT_OF.get(by_name[n2].get('continent', ''), '')
             else:
                 iso = NAME_TO_ISO.get(n2)
+                if iso:
+                    c = by_code.get(iso)
+                    if c:
+                        cont = CONT_OF.get(c.get('continent', ''), '')
         if not iso:
             unmatched.append(name)
             continue
+        if not cont:
+            cont = CONT_FALLBACK.get(iso, '')
         zh = ZH.get(iso) or name
         rows.append((iso.upper(), en, zh, cont))
 

@@ -75,6 +75,24 @@ function findEntry(base) {
   throw new Error('entry not found in zip: ' + base + '\nAvailable names (sample): ' + names.slice(0, 20).join(', '));
 }
 
+/* 只判断表是否存在（不打开流），避免在 zip 模式下白跑一次 unzip 子进程 */
+function hasEntry(base) {
+  try {
+    if (DIR) {
+      const files = [];
+      const walk = (d) => {
+        for (const f of fs.readdirSync(d)) {
+          const p = path.join(d, f);
+          if (fs.statSync(p).isDirectory()) walk(p); else files.push(p);
+        }
+      };
+      walk(DIR);
+      return candidates(base).some((cand) => files.some((p) => path.basename(p).toLowerCase() === cand.toLowerCase()));
+    }
+    return !!findEntry(base);
+  } catch (e) { return false; }
+}
+
 function openEntry(base) {
   if (DIR) {
     const files = [];
@@ -246,11 +264,23 @@ async function loadDimensions() {
   log('championships WC/CC:', champWC.size, champCC.size);
 
   log('加载 countries / continents …');
-  await streamTsv('continents', (r) => { if (r.id) continents[r.id] = Calc.CONTINENT_CODE[r.id] || null; });
+  /* continents.id 在不同导出版本里可能是 "_Europe" / "Europe"，这里三条路径都试 */
+  await streamTsv('continents', (r) => {
+    if (!r.id) return;
+    const raw = String(r.id).replace(/^_+/, '').trim();
+    const nm = String(r.name || '').trim();
+    continents[r.id] = Calc.CONTINENT_CODE[r.id] || Calc.CONTINENT_CODE[raw] || Calc.CONTINENT_CODE[nm] || null;
+  });
+  log('continents:', Object.keys(continents).length, '->', JSON.stringify(continents).slice(0, 200));
+  /* countries.id 是国家全名（如 "Australia"），另有 iso2 列；
+     两份键（全名 + ISO2）都写入，前端旗帜 / 中文名 / 洲际筛选一律按 ISO2 取。 */
   await streamTsv('countries', (r) => {
     if (!r.id) return;
     countryName[r.id] = r.name;
-    continentShort[r.id] = continents[r.continent_id] || null;
+    const cont = continents[r.continent_id] || null;
+    continentShort[r.id] = cont;
+    const iso = String(r.iso2 || '').trim().toUpperCase();
+    if (iso) { countryName[iso] = r.name; continentShort[iso] = cont; }
   });
   log('countries:', Object.keys(countryName).length);
 
@@ -303,6 +333,42 @@ async function loadDimensions() {
 
 /* ---------------- results（大表） ---------------- */
 const players = new Map();
+
+/* result_id → 选手下标 +1。导出 v2 起单次成绩独立在 result_attempts 表，
+   只能靠 result_id 关联回选手；结果行上千万条，用 Uint32Array 存下标最省内存
+   （Map 存字符串在这个量级会爆堆外内存）。 */
+let rid2ix = new Uint32Array(1 << 24);
+function ridSet(rid, v) {
+  if (rid >= rid2ix.length) {
+    let cap = rid2ix.length;
+    while (cap <= rid) cap *= 2;
+    const bigger = new Uint32Array(cap);
+    bigger.set(rid2ix);
+    rid2ix = bigger;
+  }
+  rid2ix[rid] = v;
+}
+/* 扫描 result_attempts 得到真实的「尝试数 / 有效复原数 / DNF 数」。
+   约定：-1 = DNF、-2 = DNS、0 = 无成绩（cutoff 未过等，不算尝试）。 */
+async function processAttempts() {
+  if (!hasEntry('result_attempts')) { log('result_attempts 表不存在，跳过单次成绩统计'); return 0; }
+  const arr = Array.from(players.values());
+  arr.forEach(function (p) { p.attempts = 0; p.solves = 0; p.dnf = 0; });
+  let rows = 0;
+  await streamTsv('result_attempts', (r) => {
+    rows++;
+    const rid = toInt(pick(r, ['result_id', 'resultId']));
+    if (!rid || rid >= rid2ix.length) return;
+    const ix = rid2ix[rid]; if (!ix) return;
+    const p = arr[ix - 1]; if (!p) return;
+    const v = toInt(pick(r, ['value']));
+    if (v === 0 || v === -2) return;
+    p.attempts++;
+    if (v === -1) p.dnf++; else p.solves++;
+  });
+  log('result_attempts rows:', rows);
+  return rows;
+}
 const finalCounts = new Map();      // "comp|event" -> Set(person_id)
 const wrSingleG = {};               // event -> [{date,name,country}]
 const wrAvgG = {};                  // event -> [{date,name,country}]
@@ -312,7 +378,8 @@ function getPlayer(id) {
   let p = players.get(id);
   if (!p) {
     p = {
-      wcaId: id, name: (persons.get(id) || { name: id }).name,
+      wcaId: id, ix: players.size,
+      name: (persons.get(id) || { name: id }).name,
       country: (persons.get(id) || { country_id: '??' }).country_id,
       gender: (persons.get(id) || { gender: 'M' }).gender,
       eventsSet: new Set(), compsSet: new Set(),
@@ -424,7 +491,12 @@ async function processResults() {
     if (year < p.start) p.start = year;
     if (year > p.end) p.end = year;
     p.resultRows++;
-    /* 单次尝试（value1..value5）：不同导出版本列名可能是 value1 或 value_1 */
+    /* 结果行 id → 选手下标：result_attempts 表靠 result_id 关联，
+       导出 v2 起单次成绩不在 results 里，必须另扫该表才能拿到真实尝试数。 */
+    const rid = toInt(r.id);
+    if (rid > 0) ridSet(rid, p.ix + 1);
+    /* 老版本导出（v1）把单次值放在 value1..value5，这里兜底读一次。
+       若后续 result_attempts 扫到了真实值，会覆盖这些计数。 */
     for (let vi = 1; vi <= 5; vi++) {
       const vv = toInt(pick(r, ['value' + vi, 'value_' + vi]));
       if (vv === 0 || vv === -2) continue;   // 空 / DNS 不计入尝试
@@ -705,6 +777,8 @@ function buildEventMilestones() {
   const t0 = Date.now();
   await loadDimensions();
   await processResults();
+  /* 单次成绩在独立表 result_attempts（v2 导出），单独扫一遍拿真实尝试 / 复原 / DNF */
+  await processAttempts();
   const list = computeModules();
   list.sort((a, b) => b.overall - a.overall);
 

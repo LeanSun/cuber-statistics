@@ -110,12 +110,18 @@ write('ranks_average', 'person_id\tevent_id\tbest\tworld_rank\tcontinent_rank\tc
 # columns: competition_id event_id person_id round_type_id pos best average
 #          regional_single_record regional_average_record
 R = []
+ATT = []          # v2 导出：单次成绩独立表 (value, attempt_number, result_id)
+_rid = 0
 def res(c, e, p, rt, pos, best, avg, rsr, rar, vals=''):
+    global _rid
     # vals: 5 次尝试的编码值，逗号分隔（0=空, -1=DNF, -2=DNS），缺省用 best 补一次
     if not vals:
         vals = str(best) if best else ''
     v = (vals.split(',') + ['0', '0', '0', '0', '0'])[:5]
-    R.append([c, e, p, rt, pos, best, avg, rsr, rar] + v)
+    _rid += 1
+    for i, x in enumerate(v):
+        ATT.append([x, i + 1, _rid])
+    R.append([_rid, c, e, p, rt, pos, best, avg, rsr, rar] + v)
 
 # WC2023 (world champ) — finals (round_type_id 'f')
 res('WC2023', '333', '2008FELI01', 'f', 1, 350, 400, 'WR', 'WR', '350,400,420,-1,380')
@@ -158,6 +164,9 @@ res('GO2008', '333mbo', '2008DENI01', 'f', 3, 1940803789, 0, 'NR', '')   # 5/8 1
 # a non-final round row (should be excluded from podiums)
 res('WC2023', '333', '2008FELI01', 's', 1, 360, 0, '', '')
 
-write('results', 'competition_id\tevent_id\tperson_id\tround_type_id\tpos\tbest\taverage\tregional_single_record\tregional_average_record\tvalue1\tvalue2\tvalue3\tvalue4\tvalue5', R)
+write('results', 'id\tcompetition_id\tevent_id\tperson_id\tround_type_id\tpos\tbest\taverage\tregional_single_record\tregional_average_record\tvalue1\tvalue2\tvalue3\tvalue4\tvalue5', R)
+
+# ---- result_attempts（v2 起单次成绩独立成表，靠 result_id 关联 results.id） ----
+write('result_attempts', 'value\tattempt_number\tresult_id', ATT)
 
 print('done')
