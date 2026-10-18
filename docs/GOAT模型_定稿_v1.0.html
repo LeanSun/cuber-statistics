@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WCA 历史最伟大选手（GOAT）评分模型 · 公式手册 v1.0</title>
+<script>
+window.MathJax = {
+  tex: {
+    inlineMath: [['$','$'], ['\\(','\\)']],
+    displayMath: [['$$','$$'], ['\\[','\\]']],
+    processEscapes: true
+  },
+  options: { skipHtmlTags: ['script','noscript','style','textarea','pre','code'] }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+<style>
+:root{
+  --bg:#16171a; --bg2:#1d1f24; --bg3:#24272d;
+  --tx:#e6e6e6; --tx2:#a8adb8; --tx3:#7d8390;
+  --bd:#35383f; --ac:#7fb3e8; --ac2:#5dcaa5; --warn:#e8b96a;
+}
+@media (prefers-color-scheme: light){
+  :root{ --bg:#fbfbf9; --bg2:#f2f2ee; --bg3:#e9e9e3;
+    --tx:#22252b; --tx2:#5a606c; --tx3:#868c98;
+    --bd:#dcdcd4; --ac:#1f5fa8; --ac2:#0f7a5c; --warn:#96650a; }
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--tx);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  line-height:1.75;font-size:15px;margin:0;padding:0 20px 80px;}
+.wrap{max-width:860px;margin:0 auto;}
+h1{font-size:26px;font-weight:600;margin:48px 0 8px;letter-spacing:-0.01em}
+.sub{color:var(--tx2);font-size:14px;margin-bottom:36px}
+h2{font-size:20px;font-weight:600;margin:44px 0 14px;padding-bottom:8px;border-bottom:1px solid var(--bd)}
+h3{font-size:16px;font-weight:600;margin:28px 0 10px;color:var(--ac)}
+p,li{color:var(--tx)}
+.note{background:var(--bg2);border-left:3px solid var(--ac);padding:12px 16px;margin:14px 0;border-radius:0 6px 6px 0;font-size:14px}
+.warn{background:var(--bg2);border-left:3px solid var(--warn);padding:12px 16px;margin:14px 0;border-radius:0 6px 6px 0;font-size:14px}
+.fml{background:var(--bg3);padding:14px 18px;margin:14px 0;border-radius:8px;overflow-x:auto;overflow-y:hidden}
+table{border-collapse:collapse;width:100%;margin:16px 0;font-size:14px}
+th,td{border:1px solid var(--bd);padding:8px 12px;text-align:left;vertical-align:top}
+th{background:var(--bg2);font-weight:600}
+code{background:var(--bg3);padding:1px 5px;border-radius:3px;font-size:13px;font-family:ui-monospace,Menlo,Consolas,monospace}
+.tag{display:inline-block;font-size:12px;padding:2px 8px;border-radius:10px;background:var(--bg3);color:var(--tx2);margin-left:6px}
+.tbd{color:var(--warn);font-style:normal}
+ul{padding-left:22px}
+ol{padding-left:22px}
+hr{border:0;border-top:1px solid var(--bd);margin:40px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>WCA 历史最伟大选手评分模型 · 公式手册</h1>
+<p class="sub">v1.0 ｜ 七模块架构 ｜ 所有分值均有可追溯的数学依据 ｜ 参数全部可配置</p>
+
+<div class="note">
+<b>阅读约定</b>：每个公式后面标注「依据」，说明这个式子为什么长这样、从哪条定理或哪个经验规律来。没有依据的数字一律标为「待标定」，不会伪装成推导结果。
+</div>
+
+<h2>§ 0 记号与基础函数</h2>
+
+<table>
+<tr><th style="width:90px">符号</th><th>含义</th></tr>
+<tr><td>$e$</td><td>项目（event），如 333、444、3bld、fmc</td></tr>
+<tr><td>$p$</td><td>选手</td></tr>
+<tr><td>$t$</td><td>成就发生的日期</td></tr>
+<tr><td>$\tau$</td><td>成绩类型：$\tau\in\{\text{sgl（单次）},\ \text{avg（平均）}\}$</td></tr>
+<tr><td>$g$</td><td>纪录层级：$g\in\{\text{WR},\ \text{CR},\ \text{NR}\}$</td></tr>
+<tr><td>$c$</td><td>赛事级别：$c\in\{\text{WC（世锦）},\ \text{CC（洲锦）},\ \text{NC（国锦）},\ \text{OP（公开赛）}\}$</td></tr>
+<tr><td>$x$</td><td>成绩数值（时间为秒，FMC 为步数，MBLD 为分数）</td></tr>
+<tr><td>$t_{\text{ref}}$</td><td>评价基准年（默认 2025，即"当代"）</td></tr>
+</table>
+
+<h3>0.1 名次价值函数 $V(r)$</h3>
+
+<div class="fml">$$V(r)=r^{-\lambda},\qquad \lambda_{\text{默认}}=1.1$$</div>
+
+<p><b>依据</b>：齐夫定律 / 等级规模法则（Zipf–Mandelbrot）。社会关注度、荣誉感知随排名呈幂律衰减，$\lambda\approx 1$ 是大量实证反复验证的普适指数。</p>
+
+<p><b>为什么不用 10 / 5 / 2</b>：如果它来自幂律，则冠/亚 $=2\Rightarrow\lambda=1$；亚/季 $=2.5\Rightarrow\lambda=\ln2.5/\ln1.5=2.26$。同一组数字解不出一致的 $\lambda$，所以它不是一个有参数的模型，无法外推到第四名、也无法与世界排名、NR 等级共用同一把尺子。改用单一 $\lambda$ 后，<b>冠亚季、世界排名、WR/CR/NR 三档全部共用这一条曲线</b>，模型内部自洽，且只剩一个旋钮。</p>
+
+<p>$\lambda=1.1$ 对应的冠:亚:季 $=1:0.466:0.298$，即 $10:4.7:3.0$。</p>
+
+<h3>0.2 极值尺度函数 $\Lambda(N)$</h3>
+
+<div class="fml">$$\Lambda(N)=\sqrt{2\ln N_{+}},\qquad N_{+}=\max(N,3)$$</div>
+
+<p><b>依据</b>：Fisher–Tippett–Gnedenko 极值定理。$N$ 个独立同分布正态样本的最大值，其期望水平约为 $\sqrt{2\ln N}\cdot\sigma$。它刻画的是"<b>成为 $N$ 人中的第一有多难</b>"。关键在于这个量随 $N$ 是<b>对数级极慢增长</b>，而不是线性增长。</p>
+
+<div class="warn">
+<b>这是全模型最重要的一条修正。</b>若直接用人数比值 $N_e/N_{333}$ 当项目权重，五盲（约 2 千人）会得到 $\approx0.01$，等于归零；而 $\Lambda$ 阻尼后是 $0.79$。直觉检验：在 2 千个专攻五盲的人里当世界第一，绝不比在 20 万人里当三阶第一"容易 100 倍"。
+</div>
+
+<h3>0.3 项目—时代联合因子 $\Pi_e(t)$</h3>
+
+<div class="fml">$$\boxed{\ \Pi_e(t)=\frac{\Lambda\!\left(N_e^{\text{eff}}(t)\right)}{\Lambda\!\left(N_{333}^{\text{eff}}(t_{\text{ref}})\right)}\ }</div>
+
+<p>这一个式子<b>同时</b>解决了两件事：</p>
+<ul>
+<li><b>项目难度</b>：分子含 $N_e$，小众项目天然得分低；</li>
+<li><b>时代折减</b>：$N_e^{\text{eff}}(t)$ 取的是<b>成就发生当时</b>的人数，早年人数少则自动打折。</li>
+</ul>
+
+<p>它可分解为两个可读的部分（便于你单独调参）：</p>
+<div class="fml">$$\Pi_e(t)=\underbrace{\frac{\Lambda(N_e^{\text{eff}}(t_{\text{ref}}))}{\Lambda(N_{333}^{\text{eff}}(t_{\text{ref}}))}}_{w_e^{pool}\ \text{项目规模权重}}\times\underbrace{\frac{\Lambda(N_e^{\text{eff}}(t))}{\Lambda(N_e^{\text{eff}}(t_{\text{ref}}))}}_{S_e(t)\ \text{时代规模折减}}$$</div>
+
+<p><b>$N_e^{\text{eff}}(t)$ 的定义</b>（三种口径可选，默认第一种）：</p>
+<table>
+<tr><th style="width:130px">口径</th><th>定义</th><th>说明</th></tr>
+<tr><td>有效池 <span class="tag">默认</span></td><td>以 $t$ 为中心 ±12 个月内、在该项目累计至少 3 次官方成绩的独立人数</td><td>剔除"只玩过一次"的噪音，最能代表真实竞争池</td></tr>
+<tr><td>精英池</td><td>同期成绩进入当时 WR 的 110% 以内的人数</td><td>更激进，突出"真正有威胁的对手数"，对早年会额外折减</td></tr>
+<tr><td>总人数</td><td>同期有任意成绩的独立人数</td><td>最宽松，含大量一次性参与者</td></tr>
+</table>
+
+<div class="warn">
+<b>停办项目（脚拧、魔板）的关键陷阱</b>：$N_e^{\text{eff}}(t)$ <b>必须取成就发生当年</b>。停办项目的当前人数是 0，若误用当前值会导致 $\ln 0$ 除零、或整项权重归零。实现上需对每个项目维护一条 $N_e^{\text{eff}}(t)$ 时间序列，停办后序列冻结而非归零。
+</div>
+
+<h3>0.4 同时代领先度 $z$</h3>
+
+<div class="fml">$$z_{p,e}(x,t)=\operatorname{sgn}_e\cdot\frac{\ \ell(x)-\mu_e(t)\ }{\sigma_e(t)}$$</div>
+
+<ul>
+<li>$\operatorname{sgn}_e=+1$（MBLD，分数越高越好）；$-1$（时间类与 FMC，越小越好）</li>
+<li>时间类项目取 $\ell(x)=\ln x$（成绩是乘性改进的，对数尺度才是线性的）；MBLD / FMC 取线性</li>
+<li>$\mu_e(t),\sigma_e(t)$：以 $t$ 为中心 ±12 个月内，该项目<b>世界前 100 名成绩</b>在对应尺度上的均值与标准差</li>
+</ul>
+
+<p><b>依据</b>：标准分（z-score）。$\Pi_e(t)$ 只回答"你击败了多少人"，$z$ 回答"你比同时代强多少"。两者正交，缺一不可 —— 2005 年人少（$\Pi$ 折减）且那批人绝对水平低（这才是更主要的差距，只能靠 $z$ 捕捉）。</p>
+
+<h3>0.5 项目深度因子 $D_e$</h3>
+
+<div class="fml">$$D_e=\left(\frac{1-\bar\rho_e}{1-\bar\rho_{333}}\right)^{\eta},\qquad \bar\rho_e=\frac{1}{|E|-1}\sum_{f\ne e}\rho_{ef},\qquad \eta_{\text{默认}}=0.4$$</div>
+
+<p>$\rho_{ef}$ 为项目 $e$ 与 $f$ 的相关系数（取全库同时在两项目有成绩的选手，各自的<b>世界排名百分位</b>做 Spearman 相关）。</p>
+
+<p><b>依据与动机</b>：纯粹按人数加权会把"流行度"误当成"难度"。$\bar\rho_e$ 低 = 该项目的能力与其他项目几乎不迁移 = 需要独立长期投入 = 专项壁垒高（FMC、盲拧类）；$\bar\rho_e$ 高 = 练三阶顺带就会了（斜转、二阶）。同一份相关矩阵还会在 §8 驱动"跨项目多样性奖励"，<b>一个数据源解决两个问题</b>。</p>
+
+<h3>0.6 项目状态因子 $\Xi_e$</h3>
+
+<table>
+<tr><th>状态</th><th>$\Xi_e$</th><th>理由</th></tr>
+<tr><td>现行项目</td><td>1.00</td><td>基准</td></tr>
+<tr><td>即将停办（魔表）</td><td>0.85</td><td>赛道即将关闭，后续无法再累积；历史成就不追溯打折</td></tr>
+<tr><td>已停办（脚拧、八板、十二板、旧规则多盲）</td><td>0.70</td><td>赛道已永久关闭，成就成为"历史标本"，无法被后来者挑战，故既不抹杀也不等同</td></tr>
+<tr><td>新项目（FTO）</td><td>1.00</td><td><b>不额外惩罚</b>：早期人数少已被 $\Pi_e(t)$ 自动折减，这本身就是公平的</td></tr>
+</table>
+
+<div class="note">
+<b>关于"先驱系数"</b>：是否给新项目的早期破纪录者额外补偿（如 $\times1.15$），属于价值判断而非数学问题。我建议默认关闭，因为 $\Pi_e(t)$ + $z$ 的组合已经能识别出"他确实远超同时代"，再叠加主观加成会破坏可比性。留作开关。
+</div>
+
+<h2>§ 1 项目总权重 $w_e$</h2>
+
+<div class="fml">$$\boxed{\ w_e=D_e\cdot\Xi_e\cdot\frac{\Lambda(N_e^{\text{eff}}(t_{\text{ref}}))}{\Lambda(N_{333}^{\text{eff}}(t_{\text{ref}}))}\ }$$</div>
+
+<div class="warn">
+<b>组合规则（重要，易错）</b>：$w_e$ 已含"项目规模"，因此各模块<b>只能再乘时代折减 $S_e(t)$</b>，不能再乘完整的 $\Pi_e(t)$：
+<div class="fml" style="margin:10px 0">$$w_e\cdot S_e(t)=D_e\,\Xi_e\cdot\frac{\Lambda(N_e^{\text{eff}}(t))}{\Lambda(N_{333}^{\text{eff}}(t_{\text{ref}}))}\quad\checkmark\qquad
+w_e\cdot\Pi_e(t)\ \ \text{会把项目规模平方}\quad\times$$</div>
+本手册 v1.0 初稿曾在 M1 / M2 中误用 $w_e\cdot\Pi_e(t)$，已修正为 $w_e\cdot S_e(t)$。
+</div>
+
+<p>注意 $w_e$ <b>不含</b>时代折减（时代部分由 $\Pi_e(t)$ 在每条成就上单独施加），这样 $w_e$ 是一个跨年代稳定的"项目难度常数"，便于你在报告里直观展示各项目的权重排序。</p>
+
+<h2>§ 2 模块 M1 · 纪录（WR / CR / NR）</h2>
+
+<h3>2.0 层级嵌套与去重复（先决规则）</h3>
+
+<div class="warn">
+<b>先澄清一个误会：我原方案里从来不存在"扣分"。</b><br><br>
+你举的例子："A 破 WR 加 10 分，WR 被破后变成 5 分" —— <b>这不会发生</b>。我原方案是"按持有天数累积"，被破后只是<b>之后的累积速率降低</b>，已经得到的分数<b>一分不少</b>（就像银行存款：利率降了，本金不减）。<br><br>
+但你说得对的是：<b>"破纪录"是一次事件，成就在发生那一刻就已经完成了</b>，不该被后续发生的事稀释。所以采纳你的方案 —— <b>改为纯事件制，一次性记分，永不回退</b>。
+</div>
+
+<p><b>规则一：同一时刻只记最高层级，绝不重复。</b>WR ⊃ CR ⊃ NR 严格嵌套。一个成绩若同时是 WR，它必然也是 CR 和 NR，但<b>只按 WR 记一次分</b>，其下的 CR / NR 不再另记。</p>
+
+<p><b>规则二：记分后永不回退。</b>后来被谁打破、破了几次，都不影响已记的分。</p>
+
+<p>在此基础上，把纪录模块拆成<b>两个彼此独立、可分别开关</b>的子项：</p>
+
+<table>
+<tr><th style="width:110px">子项</th><th>性质</th><th>默认</th></tr>
+<tr><td><b>M1a 破纪录事件分</b></td><td>一次性。<b>你破的那一次</b>，成就即刻完成，记分永不回退</td><td><b>开启</b>（主项）</td></tr>
+<tr><td><b>M1b 持有时长分</b></td><td>按持有天数累积；被破后<b>速率降低但已累积不减</b>。衡量"统治了多久"</td><td>开启，权重小（可关）</td></tr>
+</table>
+
+<div class="fml">$$M_1=M_{1a}+\omega_H\,M_{1b},\qquad \omega_H\ \text{默认}\ 0.35$$</div>
+
+<div class="note">
+<b>为什么保留 M1b</b>：它能区分"破了 30 次 WR 每次活 3 天"和"破了 3 次 WR 每次活 3 年"。前者事件分很高、后者很低，但后者才是真正的统治。$\omega_H=0.35$ 让它作为<b>次要修正</b>存在；若你认为统治时长不重要，把 $\omega_H$ 设为 0 即可完全关闭。
+</div>
+
+<h3>2.1 层级系数 $G_g$</h3>
+
+<div class="fml">$$G_g(e,\mathcal{R},t)=\left(\bar r_{\mathcal{R},e}(t)\right)^{-\lambda}=V\!\left(\bar r_{\mathcal{R},e}(t)\right)$$</div>
+
+<p>$\bar r_{\mathcal{R},e}(t)$ = 地区/洲 $\mathcal{R}$ 在项目 $e$ 上的"第一名"，<b>在 $t$ 时刻实际对应的世界排名</b>（取该成就前后 24 个月窗口内的中位数，从 WCA 数据实算，不需要任何假设）。WR 时 $\bar r=1,\ G=1$。</p>
+
+<p><b>依据</b>：<b>与 WR 共用同一条 $V(r)$ 曲线</b>。"NR = 你是该地区第一"，而该地区第一名在世界上的位置是可以直接观测的，于是"NR 值多少 WR"就变成了"世界第 $\bar r$ 名值多少世界第 1 名"——这正是 $V(r)$ 本来就在回答的问题。好处：</p>
+<ul>
+<li>无需拍脑袋定 NR/WR 的换算比例；</li>
+<li><b>自动分项目、分年代变化</b>（中国在三阶 vs 在 FMC 上的地区强度完全不同，2005 年 vs 2025 年也不同）；</li>
+<li>自动满足"中国 NR &gt; 美国 NR"这类直觉（因为中国三阶第一名的实际世界排名更靠前）。</li>
+</ul>
+
+<p>建议设下限 $G\ge G_{\min}=0.08$，避免极小地区的 NR 被压到接近 0 而失去区分度。</p>
+
+<h3>2.2 成绩类型系数 $T_\tau(e)$</h3>
+
+<p>这是你第 9、11 条提出的核心问题。先说结论：<b>你的"用成绩数量比"思路是对的，比固定系数好</b>，但要加阻尼并改变用法。下面是改良版。</p>
+
+<div class="fml">$$T_{\text{avg}}(e)=\sqrt{\frac{n_e}{5}},\qquad
+T_{\text{sgl}}(e)=\kappa_0\left(\frac{c_e}{\bar c}\right)^{\gamma}\,T_{\text{avg}}(e)$$</div>
+<div class="fml">$$\Rightarrow\quad \frac{T_{\text{sgl}}}{T_{\text{avg}}}=\kappa_0\left(\frac{c_e}{\bar c}\right)^{\gamma},\qquad
+\kappa_0=0.6,\ \gamma=0.5$$</div>
+
+<table>
+<tr><th>符号</th><th>含义</th></tr>
+<tr><td>$n_e$</td><td>该项目平均成绩所用的还原次数：Ao5 $\to5$，Mo3 $\to3$，Bo1 $\to1$</td></tr>
+<tr><td>$c_e$</td><td><b>完成率</b> $=N^{\text{avg}}_e\big/N^{\text{sgl}}_e$，即平均成绩条数 ÷ 单次成绩条数</td></tr>
+<tr><td>$\bar c$</td><td>全项目按 $w_e$ 加权后的平均完成率</td></tr>
+</table>
+
+<p><b>三条依据叠加</b>：</p>
+<ol>
+<li><b>统计可靠性（$\kappa_0$ 的来源）</b>：在独立噪声假设下，$n$ 次平均的标准差是单次的 $1/\sqrt n$。同一个"超常发挥"在单次里需要的运气，是平均里的 $\sqrt5\approx2.24$ 倍。纯统计结论应为 $1/\sqrt5=0.447$。</li>
+<li><b>峰值声望（把 0.447 抬到 0.6）</b>：单次纪录衡量的是能力上限与历史瞬间，公众与历史叙事对它赋予额外权重。0.6 是"纯统计"与"完全同权"之间的折中，可调区间 0.45–0.8。</li>
+<li><b>你的完成率因子（$c_e$）</b>：这正是你第 11 条的洞察 —— 及格线、还原时限、DNS/DNF 会让大量选手"有单次无平均"，$c_e$ 越低说明<b>凑出一个有效平均越难</b>，平均越稀缺、越值钱。</li>
+</ol>
+
+<div class="note">
+<b>我对你原方案的两处修正</b>：<br>
+① <b>加阻尼 $\gamma=0.5$</b>：直接用线性反比 $c^{-1}$ 会产生极端值。例如某项目因极高 DNF 率导致 $c_e$ 只有 0.2、$\bar c=0.75$，线性会给平均 3.75 倍权重，过于激进；开方后为 1.58 倍，稳健得多。<br>
+② <b>改用"完成率"而非"绝对条数"</b>：平均成绩条数少，一部分来自赛制（该项目决赛轮次本来就少），一部分来自失误率。用<b>比值</b> $c_e$ 抵消了赛制差异，只保留"稳定性稀缺"信号；再除以 $\bar c$ 做归一化，保证全项目平均下来单次/平均 ≈ $\kappa_0$。
+</div>
+
+<p><b>检验一下这个式子是否合理</b>（示意值，最终实算）：</p>
+<table>
+<tr><th>项目</th><th>$n_e$</th><th>$c_e$（示意）</th><th>$T_{\text{sgl}}/T_{\text{avg}}$</th><th>直觉检验</th></tr>
+<tr><td>三阶</td><td>5</td><td>0.90</td><td>0.60×1.10 = <b>0.66</b></td><td>单次略低于平均，合理</td></tr>
+<tr><td>三盲</td><td>3</td><td>0.60</td><td>0.60×0.89 = <b>0.54</b></td><td>盲拧单次可以赌一把，平均更见真章</td></tr>
+<tr><td>五盲 / 多盲</td><td>3 / 1</td><td>0.30</td><td>0.60×0.63 = <b>0.38</b></td><td>单次成功相对容易，多次全成才叫本事 —— 符合圈内共识</td></tr>
+</table>
+
+<p>$T_{\text{avg}}$ 中的 $\sqrt{n_e/5}$ 则负责<b>跨项目可比性</b>：多盲、FMC 的"平均"其实只有 1 次或 3 次，与三阶的 Ao5 不是同一种统计量，按信息量 $\propto\sqrt n$ 折算。</p>
+
+<h3>2.2.1 单线项目（多盲、FMC）的特殊处理</h3>
+
+<div class="warn">
+<b>你指出的多盲问题是对的。</b>另外关于 FMC：<b>我不确定，可能是我记错了，这条以数据为准</b> —— 建模第一步会直接从 WCA 导出统计每个项目的"有效纪录线"（single / average 各自是否存在非空值），<b>自动生成纪录线数表</b>，不依赖记忆。若 FMC 确有平均，则它按 2 线处理、$K_e=1$，规则本身不变。
+</div>
+
+<table>
+<tr><th>项目</th><th>纪录线数 $L_e$</th><th>平均值赛制 $n_e$</th></tr>
+<tr><td>三阶、二阶、高阶、OH、Clock、Mega、Pyra、Skewb、Sq1</td><td>2（单次 + 平均）</td><td>Ao5 → $n=5$</td></tr>
+<tr><td>三盲、四盲、五盲</td><td>2（单次 + 平均）</td><td><b>Mo3</b> → $n=3$</td></tr>
+<tr><td>多盲（现行规则）</td><td><b>1（仅单次）</b></td><td>—</td></tr>
+<tr><td>FMC</td><td colspan="2"><b>待数据统计确认</b>（不预设）</td></tr>
+</table>
+
+<p>处理规则有三条：</p>
+
+<ol>
+<li><b>单线项目不做 single/avg 折扣</b>：令 $T_{\text{sgl}}(e)=1$。理由是 $T_{\text{sgl}}/T_{\text{avg}}$ 本质上是<b>同一项目内部两条纪录线之间的相对权重</b>；多盲没有对照物，强行套 $\kappa_0=0.6$ 等于无理由地给整个项目打折 40%。</li>
+
+<li><b>赛制可靠性修正只用于项目内部差异，不用于跨项目</b>：多盲 / FMC 的决赛在所有比赛中都是 Bo1，所有参赛者条件一致，此时 $T^{\text{pod}}_e=1$（不乘 $\sqrt{n/5}$ 的修正）。只有同一项目在不同比赛出现不同赛制时才施加。</li>
+
+<li><b>纪录线数补偿 $K_e$</b>（可选，默认半强度）：单线项目的选手只有一条线能得分，三阶选手有两条。补偿因子
+<div class="fml" style="margin:10px 0">$$K_e=\left(\frac{2}{L_e}\right)^{\upsilon},\qquad \upsilon_{\text{默认}}=0.5$$</div>
+三阶 $L=2\Rightarrow K=1$；多盲 $L=1\Rightarrow K=\sqrt2\approx1.41$。取半强度是因为：两条纪录线高度相关（同一人往往同时持有），且模块内递减 $\rho_R$ 已压低了第二条线的边际贡献，<b>全额 2 倍补偿会过度</b>。$\upsilon$ 可调 0（不补偿）～ 1（全额补偿）。</li>
+</ol>
+
+<h3>2.2.2 已取消项目的完整清单</h3>
+
+<div class="warn">
+<b>你补充得对 —— 我漏了旧规则多盲，而且魔板其实有两个。</b>完整清单（均以 WCA 导出中的实际 eventId 为准，若还有其它历史变体会在数据探查阶段补入）：
+</div>
+
+<table>
+<tr><th style="width:180px">项目</th><th>eventId</th><th>$\Xi_e$</th><th>处理</th></tr>
+<tr><td>脚拧</td><td><code>333ft</code></td><td>0.70</td><td>独立计分，人数取当年值</td></tr>
+<tr><td><b>八板</b></td><td><code>magic</code></td><td>0.70</td><td>独立计分</td></tr>
+<tr><td><b>十二板</b></td><td><code>mmagic</code></td><td>0.70</td><td>独立计分</td></tr>
+<tr><td><b>旧规则多盲</b></td><td><code>333mbo</code>（若有独立 id）</td><td>0.70</td><td><b>绝不与现行 333mbf 混算</b></td></tr>
+<tr><td>魔表（2027 停办）</td><td><code>clock</code></td><td>0.85</td><td>历史成绩不追溯打折</td></tr>
+</table>
+
+<p><b>旧规则多盲的两种数据情形，处理方式不同</b>：</p>
+
+<ul>
+<li><b>情形 A</b>：WCA 为旧规则设了独立 eventId（如 <code>333mbo</code>）→ 直接当作独立已取消项目，与 333mbf 完全分开统计，$w_e$ 与 $N_e^{\text{eff}}(t)$ 各自独立计算。</li>
+<li><b>情形 B</b>：旧规则成绩混在 <code>333mbf</code> 里 → 按<b>规则切换日期</b>切分为两个 era。两个 era <b>各自独立归一化</b>：各自的 $\mu_e(t),\sigma_e(t)$、各自的 $N_e^{\text{eff}}(t)$、各自的 $z$。<b>跨 era 不直接比较绝对成绩</b>（因为计分口径不同，直接比没有意义），只比较各自 era 内部的相对位置。</li>
+</ul>
+
+<div class="note">
+两条规则下的成绩本质上是<b>不同的量</b>（计分方式变了），情形 B 下若强行合并计算 $z$ 与 $S_e(t)$，会得出无意义的数值。这也是为什么我在 §0.3 强调 $N_e^{\text{eff}}(t)$ 要用"成就发生当时"的滚动窗口 —— 在切换点附近，窗口本身就能自然地把两个 era 分开。
+</div>
+
+<h3>2.3 破纪录幅度 $A_i$</h3>
+
+<div class="fml">$$A_i=\frac{\ln\!\left(1+\dfrac{\delta_i}{\delta_0}\right)}{\ln 2},\qquad
+\delta_i=\frac{|x_{\text{prev}}-x_{\text{new}}|}{|x_{\text{prev}}|},\quad \delta_0=0.01,\quad A_i\in[0.2,\,3]$$</div>
+
+<p><b>依据</b>：对数效用。改进 1% 记 $A=1$，改进 2% 记 $A=1.58$，改进 0.1% 记 $A=0.14$（低于下限则取 0.2）。这直接堵住"把 WR 从 4.50 刷到 4.49 也算破一次纪录"的刷分漏洞 —— 在只数次数的模型里，这两者完全等价。</p>
+
+<h3>2.4 存续时长 $L_i$</h3>
+
+<div class="fml">$$L_i=\left(\frac{D_i}{\bar D_{e,\text{era}}}\right)^{\varphi},\qquad \varphi=0.5,\quad L_i\in[0.3,\,3]$$</div>
+
+<p>$D_i$ = 该纪录被保持的天数；$\bar D_{e,\text{era}}$ = 该项目在<b>同一年代</b>纪录保持天数的中位数。</p>
+
+<p><b>为什么要除以同时代中位数</b>：早期纪录天然保持得久（WR 进步慢），不归一化会让"早年间破一次纪录躺十年"拿满超额分。$\varphi=0.5$ 表示开方阻尼：保持 4 倍于中位数的时长得 2 倍分，而非 4 倍。</p>
+
+<h3>2.5 场合加成 $O_i$</h3>
+
+<table>
+<tr><th>场合</th><th>$O_i$</th></tr>
+<tr><td>世界锦标赛</td><td>1.20</td></tr>
+<tr><td>洲际锦标赛</td><td>1.15</td></tr>
+<tr><td>国家锦标赛</td><td>1.10</td></tr>
+<tr><td>其它</td><td>1.00</td></tr>
+</table>
+
+<p><b>依据</b>：不是"大赛更难破"（难度已由 $\Pi$ 与 $z$ 处理），而是"最高压力、最高关注度、最严格见证下的验证"，属于独立的声望项，故幅度克制。</p>
+
+<h3>2.6 破纪录事件分 $M_{1a}$</h3>
+
+<div class="fml">$$\boxed{\ R_k=B_R\cdot w_e\cdot S_e(t_k)\cdot T_{\tau}(e)\cdot K_e\cdot G_{g_k}\cdot A_k\cdot O_k\cdot\bigl(1+k_r\,z_k\bigr)\ }$$</div>
+
+<ul>
+<li>$t_k$ = 第 $k$ 次破纪录的<b>发生时刻</b>；所有因子都<b>在那一刻取值，此后冻结不变</b></li>
+<li>$g_k$ = 该次达到的<b>最高层级</b>（WR / CR / NR 三选一，取其高），CR / NR 不再另记</li>
+<li>得分记入后<b>永不回退</b>：后来被谁打破、破几次，都不影响 $R_k$</li>
+</ul>
+
+<div class="fml">$$M_{1a}=\sum_{k}\ R_{(k)}\ \rho_R^{\,k-1},\qquad \rho_R=0.9\ (\text{可调 }0.85\text{–}0.97),\quad k_r=0.15$$</div>
+
+<p><b>防刷检验（为什么不数次数就够了）</b>：$R_{(k)}$ 按得分降序排列后递减。比较两个极端选手：</p>
+
+<table>
+<tr><th>情形</th><th>计算</th><th>$M_{1a}$</th></tr>
+<tr><td>一次破 WR，幅度 5%</td><td>$A=\log_2(1+5)=\mathbf{2.58}$</td><td><b>2.58</b></td></tr>
+<tr><td>30 次破 WR，每次 0.05%</td><td>$A_i=0.2$（下限），$\rho=0.9$ 递减后 $\approx0.2\times\dfrac{1-0.9^{30}}{1-0.9}=0.2\times9.58$</td><td><b>1.92</b></td></tr>
+</table>
+
+<p>结论：$2.58>1.92$，<b>一次里程碑式突破胜过 30 次微幅刷新</b>。幅度因子 $A$ 与递减 $\rho_R$ 联合封死了刷分路径，无需再设上限。</p>
+
+<h3>2.7 持有时长分 $M_{1b}$（可选，权重小）</h3>
+
+<div class="fml">$$\boxed{\ M_{1b}=B_R\sum_k w_e\,T_\tau(e)\left(\frac{\displaystyle\sum_{t\in\text{持有期}_k} G^{\text{top}}_{p,e,\tau}(t)\;S_e(t)}{\bar D_{e,\text{era}}}\right)^{\varphi}\ },\qquad \varphi=0.5$$</div>
+
+<ul>
+<li>$G^{\text{top}}_{p,e,\tau}(t)$ = 第 $t$ 天该选手所持<b>最高</b>层级纪录的价值（持有 WR 时为 1；WR 被他人打破后自动降为 $G_{\text{NR}}$ 继续累积）</li>
+<li><b>已累积的部分永不减少</b> —— 被破只影响"之后的累积速率"，不影响历史存量</li>
+<li>除以该年代中位寿命 $\bar D_{e,\text{era}}$：防止早期"躺十年"过度得分</li>
+</ul>
+
+<div class="fml">$$M_1=M_{1a}+\omega_H\,M_{1b},\qquad \omega_H=0.35\ (\text{设为 }0\text{ 即完全关闭})$$</div>
+
+<h2>§ 3 模块 M2 · 锦标赛领奖台（世锦 / 洲锦 / 国锦）</h2>
+
+<h3>3.1 赛场强度指数 CSI</h3>
+
+<div class="fml">$$\mathrm{CSI}(c,e)=\sum_{j\in \mathcal{F}_{c,e}} q_j(t),\qquad q_j(t)=V\!\left(\operatorname{rank}_j^{\text{world}}(e,t)\right)$$</div>
+
+<div class="fml">$$F^{\text{CSI}}=\left(\frac{\mathrm{CSI}}{\overline{\mathrm{CSI}}_{e,\text{year}}}\right)^{\kappa},\qquad \kappa=0.5,\quad F^{\text{CSI}}\in[0.5,\,3]$$</div>
+
+<p><b>依据</b>：国际象棋"锦标赛等级"（Tournament Category）的魔方版本 —— 用参赛者强度之和定义赛事级别，是成熟且可复现的行业方法。分母取<b>同年同项目所有赛事 CSI 的中位数</b>，因此 $F^{\text{CSI}}$ 是<b>相对同时代</b>的，不会系统性偏袒任何年代。</p>
+
+<div class="note">
+<b>可选升级</b>：把 $q_j$ 从"世界排名的 $V(r)$"换成 Elo 强度 $q_j=10^{\mathrm{Elo}_j/400}$（§10 会产出 Elo）。Elo 考虑了选手之间的相对强弱，理论上比名次更精确。默认先用 $V(r)$（实现简单、可解释），Elo 版本作为对照跑一遍。
+</div>
+
+<h3>3.2 赛级系数 $C_c$（稀缺性 + 资格壁垒 + 历史声望）</h3>
+
+<div class="fml">$$C_c=\underbrace{1+\psi\ln A_c}_{\text{稀缺性}}+\underbrace{\xi_c}_{\text{历史声望}},\qquad
+A_c=\frac{K^{\max}}{f_c}$$</div>
+
+<ul>
+<li>$f_c$ = 该赛事的举办频率（次/年）：世锦 0.5（两年一届）、洲锦 0.5、国锦 1、公开赛 $=K^{\max}$</li>
+<li>$K^{\max}=30$ = 选手<b>现实中的年参赛上限</b>（关键：不能用全球赛事总数 2000+，因为没人能打 2000 场）</li>
+<li>$\psi=0.13$，$\xi_{\text{WC}}=0.30,\ \xi_{\text{CC}}=0.15,\ \xi_{\text{NC}}=0.05,\ \xi_{\text{OP}}=0$</li>
+</ul>
+
+<table>
+<tr><th>赛级</th><th>$A_c$</th><th>$1+\psi\ln A_c$</th><th>$+\xi_c$</th><th>$C_c$</th></tr>
+<tr><td>世锦赛</td><td>60</td><td>1.53</td><td>+0.30</td><td><b>1.83</b></td></tr>
+<tr><td>洲锦赛</td><td>60</td><td>1.53</td><td>+0.15</td><td><b>1.68</b></td></tr>
+<tr><td>国家锦标赛</td><td>30</td><td>1.44</td><td>+0.05</td><td><b>1.49</b></td></tr>
+<tr><td>公开赛</td><td>1</td><td>1.00</td><td>0</td><td><b>1.00</b></td></tr>
+</table>
+
+<div class="warn">
+<b>避免重复计分</b>：世锦赛与国锦在<b>稀缺性</b>上其实只差 2 倍（两年一届 vs 一年一届），所以 $C_c$ 差距很小（1.83 vs 1.49）。它们之间的巨大差距，<b>应该由 $F^{\text{CSI}}$ 来体现</b>（世锦赛赛场确实强得多）。如果你再给世锦赛乘一个 3，就是和 CSI 双倍计分 —— 这是绝大多数业余 GOAT 模型都会踩的坑。<br>
+若你认为世锦赛还应额外加码，请只调 $\xi_c$（历史声望，纯主观项），不要动 $F^{\text{CSI}}$。
+</div>
+
+<h3>3.3 赛制可靠性因子</h3>
+
+<div class="fml">$$T^{\text{pod}}_e=\left(\sqrt{\frac{n_e^{\text{final}}}{5}}\right)^{\chi},\qquad \chi=0.5$$</div>
+
+<p>决赛为 Ao5 $\to1.0$；Mo3 $\to0.88$；Bo1（FMC、多盲）$\to0.67$。$\chi=0.5$ 是刻意减半的：领奖台是"在同场同条件下击败对手"，赛制对所有参赛者一致，因此只用<b>半强度</b>修正它的"证据强度"差异；而纪录是完全跨场比较的，用全强度（§2.2 的 $\sqrt{n/5}$）。</p>
+
+<h3>3.4 单条领奖台得分与模块聚合</h3>
+
+<div class="fml">$$\boxed{\ P_i=B_P\cdot w_e\cdot S_e(t_i)\cdot T^{\text{pod}}_e\cdot K_e\cdot V(r_i)\cdot C_{c_i}\cdot F^{\text{CSI}}_i\cdot\bigl(1+k_p\, z_i+\mu\, m_i\bigr)\ }$$</div>
+
+<ul>
+<li>$k_p=0.10$（比纪录的 $k_r=0.15$ 小，因为夺冠本身的 $V(1)$ 已经很高）</li>
+<li>$m_i=\dfrac{x_{2\text{nd}}-x_{1\text{st}}}{|x_{2\text{nd}}|}$ 为夺冠幅度，仅 $r=1$ 时启用；$\mu=1.5$，上限 $1+1.5\times0.10=1.15$</li>
+</ul>
+
+<div class="fml">$$M_2=\min\left(\ \sum_i P_{(i)}\,\rho_P^{\,i-1}\ ,\ M_2^{\max}\right),\qquad \rho_P=0.9$$</div>
+
+<h2>§ 4 模块 M3 · 公开赛领奖台（重点防刷分）</h2>
+
+<p>沿用 §3.4 的公式，但 $C_{\text{OP}}=1.0$，并叠加五道"降权"闸门。<b>注意：本模块不设任何计数上限</b>，允许无限参赛。</p>
+
+<div class="warn">
+<b>为什么取消"年度 Top-N"硬上限</b>：硬上限会把大量选手的该模块得分<b>截断到同一个数值</b>，反而拉不开差距 —— 打得多的和打得少的被人为抹平。改用<b>幂律递减</b>后，得分<b>永不饱和</b>：参赛更多永远得分更高，因此区分度完整保留；但增长被压到平方根级，参赛量翻 4 倍得分只翻 2 倍，自然无法成为决定性因素。
+</div>
+
+<table>
+<tr><th style="width:150px">闸门</th><th>规则</th><th>理由</th></tr>
+<tr><td>① 幂律递减</td><td>第 $i$ 个公开赛成就乘 $i^{-\alpha_O}$，$\alpha_O=0.5$</td><td>永不饱和、保留差距，增长仅 $\sim\sqrt n$</td></tr>
+<tr><td>② 人数门槛</td><td>参赛人数 $n&lt;15$ 时乘 $(n/15)^{0.5}$</td><td>5 人赛的冠军不配拿满分</td></tr>
+<tr><td>③ 强度门槛</td><td>$F^{\text{CSI}}$ 下限压到 0.35</td><td>弱赛即便夺冠，也只能拿基准的 35%</td></tr>
+<tr><td>④ 单场单计</td><td>同一赛事同一项目只取最终名次一次</td><td>防止同一场比赛重复计分</td></tr>
+<tr><td>⑤ 模块权重</td><td>$\beta_3$ 由序数定权给出（排序第 5 / 共 7，$\approx7.3\%$）</td><td>结构性保证公开赛不起决定作用</td></tr>
+</table>
+
+<div class="fml">$$\boxed{\ M_3=\sum_{i=1}^{n}\ P_{(i)}\cdot i^{-\alpha_O}\ },\qquad \alpha_O=0.5\ \ (\text{可调区间 }0.3\text{–}0.7)$$</div>
+
+<p><b>这个式子的收敛性质（关键）</b>：设各成就质量相当、均为 $\bar P$，则</p>
+
+<div class="fml">$$M_3\approx\bar P\sum_{i=1}^{n}i^{-\alpha_O}\ \approx\ \bar P\cdot\frac{n^{\,1-\alpha_O}}{1-\alpha_O}\ \xrightarrow[\alpha_O=0.5]{}\ 2\bar P\sqrt{n}$$</div>
+
+<p>即：<b>公开赛总得分与"参赛数的平方根"成正比</b>。25 场 → $10\bar P$；100 场 → $20\bar P$；400 场 → $40\bar P$。差距始终存在且可量化。</p>
+
+<div class="note">
+<b>为什么不用几何递减 $\rho^{\,i-1}$</b>（锦标赛模块仍在用）：几何级数<b>收敛</b>，$\sum_{i=1}^{\infty}\rho^{\,i-1}=1/(1-\rho)$。以 $\rho=0.85$ 计，第 30 个成就时已达极限值的 $99.2\%$，第 100 个与第 300 个几乎无差别 —— 这恰恰就是需要避免的"拉不开差距"。因此：<br>
+• <b>锦标赛 / 纪录</b>（数量少、单件价值高）→ 用几何递减，强化"质重于量"；<br>
+• <b>公开赛</b>（数量大、单件价值低）→ 用幂律递减，保留区分度、不设上限。
+</div>
+
+<p>软封顶 $M_3^{\max}$ 保留为可选开关，<b>默认关闭</b>。</p>
+
+<h2>§ 5 模块 M4 · 统治力（排名席位的时间积分）</h2>
+
+<div class="note">
+<b>你的两点（世界前十累计月数、世界前 100 占席）可以用同一条式子统一解决</b>，而且比分别统计更干净 —— <b>直接对"每天的排名"积分</b>，而不是去数"第几个月是第几名"。
+</div>
+
+<div class="fml">$$\boxed{\ M_4=B_D\sum_e\ \int_{0}^{T}\ S_e(t)\cdot r_{p,e}(t)^{-\lambda_D}\ \mathrm{d}t\ },\qquad \lambda_D=0.5$$</div>
+
+<p>$r_{p,e}(t)$ = 选手 $p$ 在项目 $e$ 上第 $t$ 天的世界排名（无成绩则不计入积分）。这一条积分<b>自动涵盖你关心的全部情形</b>：</p>
+
+<table>
+<tr><th style="width:200px">你关心的指标</th><th>在积分中的对应</th></tr>
+<tr><td>世界第一在位月数</td><td>$r=1$ 时 integrand $=1$，满额积分</td></tr>
+<tr><td>世界前十累计月数</td><td>$r=2..10$ 按 $r^{-0.5}$ 递减：$r=2\to0.71$，$r=5\to0.45$，$r=10\to0.32$</td></tr>
+<tr><td>世界前 100 占席</td><td>$r=50\to0.14$，$r=100\to0.10$ —— 单项目权重不大，但<b>多项目累加</b>后显著</td></tr>
+<tr><td>退役 / 断档</td><td>无成绩即 integrand $=0$，<b>不需要任何"是否退役"的判断</b></td></tr>
+</table>
+
+<h3>5.1 为什么用 $\lambda_D=0.5$ 而不是主函数的 $\lambda=1.1$</h3>
+
+<p>主函数 $V(r)=r^{-1.1}$ 是为"名次荣誉"设计的，衰减很陡（第 10 名只剩 7.9%）。但<b>排名的持续存在</b>是另一种性质 —— 长期稳居第 5 和第 1 的差距，不该被放大到 11 倍。故单独取 $\lambda_D=0.5$（平方根衰减），可调区间 0.3–0.8。</p>
+
+<h3>5.2 关于"世界前 100 占席"是否该纳入 —— 我的判断</h3>
+
+<p><b>该纳入，但要用"累计占席月数"而非某一时刻的快照</b>。理由与风险：</p>
+
+<ul>
+<li><b>支持的理由</b>：它是一个<b>独立于成就</b>的信号。一个人可以常年排在某项目世界前 100 却几乎没拿过领奖台（大比赛少、地区竞争弱），M1–M3 完全看不到他，但 M4 能看到。它衡量的是"持续的高水平存在"。</li>
+<li><b>风险：与 M5 广度重复计分</b>。M5 用成就广度，M4 用排名持续度，二者相关但不同源。我会在建模后计算两模块的相关系数，若 $|\rho|>0.7$ 说明重复严重，届时把两者合并或下调 M5 权重 —— <b>这个检验会写进结果报告</b>，不靠感觉判断。</li>
+<li><b>必须做时代归一化</b>：2005 年三阶世界前 100 的门槛和今天完全不同。式子中的 $S_e(t)$ 承担了这一层（早期 $N$ 小 → $S$ 小 → 积分值低），方向正确。</li>
+<li><b>建议补充一个派生指标</b>（低权重或仅展示）：$\text{PeakSpan}=\max_t\bigl|\{e: r_{p,e}(t)\le 100\}\bigr|$，即生涯峰值时同时占据多少个项目的前 100 席。这个数直观、易传播，适合放进最终报告。</li>
+</ul>
+
+<div class="warn">
+<b>已按你的第 8 条移除"当前世界排名 / 退役状态"</b>：本模块是时间积分，选手十年不参赛，积分只是停止增长（<b>不会倒扣、不会归零</b>），历史累计完整保留。整个模型不存在任何依赖"是否退役"的项。
+</div>
+
+<h2>§ 6 模块 M5 · 广度与全面性</h2>
+
+<h3>6.1 跨项目多样性（有效维度）</h3>
+
+<div class="fml">$$s_e=\text{选手在项目 }e\text{ 上 M1+M2+M3+M4 的原始得分之和}$$</div>
+
+<div class="fml">$$\boxed{\ \mathcal{B}=\frac{\left(\sum_e s_e\right)^2}{\displaystyle\sum_e\sum_f \sqrt{s_e\,s_f}\;\rho_{ef}}\ }$$</div>
+
+<p><b>依据</b>：参与比（inverse participation ratio）在相关矩阵上的推广，物理与金融中"有效自由度 / 有效资产数"的标准定义。$\rho_{ef}$ 来自 §0.5 实算的项目相关矩阵。</p>
+
+<ul>
+<li>三阶 + 二阶（$\rho$ 高）$\Rightarrow$ 分母几乎等于分子 $\Rightarrow \mathcal{B}\approx1$ $\Rightarrow$ <b>几乎不加分</b></li>
+<li>多盲 + 斜转（$\rho$ 低）$\Rightarrow$ 分母远小于分子 $\Rightarrow \mathcal{B}\approx2$ $\Rightarrow$ <b>显著加分</b></li>
+<li>三个互不相关的项目 $\Rightarrow \mathcal{B}\approx3$，且天然边际递减</li>
+</ul>
+
+<p>分子用 $(\sum s_e)^2$、分母含 $\sqrt{s_e s_f}$ 的关键作用：<b>必须两个项目都真的强才拿得到分</b>。刷一个 5 分钟的五盲成绩，$s$ 极小，对 $\mathcal{B}$ 的贡献趋近于 0 —— 正好堵住你担心的"用慢成绩骗加分"。</p>
+
+<div class="fml">$$M_5^{\text{div}}=\beta_B\left(\mathcal{B}^{\theta}-1\right),\qquad \theta=0.7$$</div>
+
+<h3>6.2 组内全覆盖（小奖励）</h3>
+
+<div class="fml">$$M_5^{\text{comp}}=\beta_C\sum_{G\ \text{达成}}\omega_G,\qquad
+\omega_G=\frac{\sum_{e\in G}w_e}{\sum_{e\in E}w_e}$$</div>
+
+<p>分组建议：盲拧组 $\{3,4,5\text{bld},\text{mbld}\}$、高阶组 $\{4,5,6,7\}$、异形组 $\{\text{skewb},\text{pyr},\text{mega},\text{sq1},\text{clock}\}$、手速组 $\{2,3,\text{oh}\}$、FMC 单列。</p>
+
+<p><b>质量门槛</b>（防慢成绩刷分）：组内<b>每个</b>项目都要有成绩，且 $z_{p,e}\ge z_{\min}=-1.0$（即不低于该项目同时代前 100 名均值 1 个标准差）。</p>
+
+<div class="fml">$$M_5=\min\left(M_5^{\text{div}}+M_5^{\text{comp}},\ M_5^{\max}\right),\qquad M_5^{\max}=0.05\times\text{总分}$$</div>
+
+<p>硬性封顶 5%，符合你说的"属于附加小奖励"。</p>
+
+<h2>§ 7 模块 M6 · 生涯厚度与大赛表现</h2>
+
+<div class="fml">$$M_6=B_Y\ln(1+Y_p)+B_N\ln(1+N_p)+B_S\ln(1+S_p)+B_{\text{Cl}}\,\mathrm{Cl}_p$$</div>
+
+<table>
+<tr><th style="width:70px">项</th><th>含义</th></tr>
+<tr><td>$Y_p$</td><td>活跃跨度 = 首次参赛至末次参赛的年数</td></tr>
+<tr><td>$N_p$</td><td>累计参赛场次</td></tr>
+<tr><td>$S_p$</td><td>破纪录跨度 = 首次破纪录至末次破纪录的年数</td></tr>
+<tr><td>$\mathrm{Cl}_p$</td><td>Clutch 大赛指数</td></tr>
+</table>
+
+<h3>7.1 机会校正（重要公平性修正）</h3>
+
+<div class="fml">$$\text{校正因子}=\frac{\ln(1+K_{\text{ref}})}{\ln(1+K_{p})},\qquad K_p=\text{选手所在地区在其活跃年代的年均赛事数}$$</div>
+
+<p>非洲、南美不少强手一年只有 2–3 场比赛可打，不做校正他们会系统性吃亏。所有对数型生涯项都要乘这个因子。</p>
+
+<h3>7.2 Clutch 大赛指数</h3>
+
+<div class="fml">$$\mathrm{Cl}_p=\overline{z}^{\,\text{champ}}_p-\overline{z}^{\,\text{open}}_p,\qquad \mathrm{Cl}_p\in[-1,\,1]$$</div>
+
+<p><b>关键设计</b>：这是<b>选手自己跟自己比</b>（锦标赛的 $z$ 均值减去公开赛的 $z$ 均值），因此不会变成"强者通吃"，而是真的在测"大场面加成"。可为负 —— 大赛掉链子的选手会被扣分。</p>
+
+<h2>§ 8 模块 M7 · 生涯对战强度（Bradley–Terry / Elo）</h2>
+
+<div class="fml">$$\Pr(i\succ j)=\frac{\gamma_i}{\gamma_i+\gamma_j},\qquad
+\mathcal{L}=\prod_{(i,j,t)}\left(\frac{\gamma_i}{\gamma_i+\gamma_j}\right)^{w_{ij}},\quad
+w_{ij}=e^{-\lambda_t (t_{\text{now}}-t)},\ \lambda_t=\frac{\ln 2}{18\ \text{月}}$$</div>
+
+<p>用同场、同项目、同轮次的<b>成对胜负</b>做极大似然估计（MM 算法或带动量梯度），时间衰减半衰期 18 个月。输出每位选手在每个项目上的 Elo 时间序列 $\mathrm{Elo}_{p,e}(t)$。</p>
+
+<div class="fml">$$M_7=B_E\sum_e w_e\,\frac{\mathrm{Elo}^{\text{peak}}_{p,e}-\mathrm{Elo}_0}{100}$$</div>
+
+<p><b>为什么必须单独加这一项</b>：它是全模型唯一一个<b>直接交锋</b>维度的证据，而且<b>天然内嵌了对手强度与时代强度</b>（赢强者涨分多、赢弱者涨分少），不需要任何额外归一化。其余六个模块都是"成就计数"逻辑，只看结果不看对手是谁 —— Elo 恰好补上这个盲区。</p>
+
+<h2>§ 9 汇总、双榜与不确定度</h2>
+
+<h3>9.1 综合指数</h3>
+
+<div class="fml">$$\mathrm{Total}_p=\sum_{m=1}^{7}\beta_m\,M_m^{(p)},\qquad \sum_m\beta_m=1$$</div>
+
+<h3>9.2 双榜</h3>
+
+<table>
+<tr><th style="width:130px">榜单</th><th>口径</th></tr>
+<tr><td><b>生涯累计榜</b></td><td>全部生涯成就，$M_1$–$M_7$ 全计入</td></tr>
+<tr><td><b>巅峰窗口榜</b></td><td>$\displaystyle \max_{W}\ \mathrm{Total}_p(W)$，$W$ 为生涯中任意<b>连续 36 个月</b>的滑动窗口；窗口内只计落在该窗口的成就，$Y^{(1)}$ 只计窗口内月数、Elo 只取窗口内峰值；<b>$M_6$（生涯厚度）不计入</b></td></tr>
+</table>
+
+<p>巅峰窗口回答"他最厉害的时候有多厉害"，生涯榜回答"他一辈子积累了多少"。两者分离，是因为 GOAT 争论中这两个问题长期被混为一谈。</p>
+
+<h3>9.2b 合并总榜（综合能力榜）</h3>
+
+<p>先把两榜各自归一化到百分制（除以该榜榜首）：</p>
+<div class="fml">$$C_p=100\times\frac{\mathrm{Total}_p^{\text{生涯}}}{\max_q \mathrm{Total}_q^{\text{生涯}}},\qquad
+P_p=100\times\frac{\mathrm{Total}_p^{\text{巅峰}}}{\max_q \mathrm{Total}_q^{\text{巅峰}}}$$</div>
+
+<div class="fml">$$\boxed{\ \mathrm{Overall}_p=C_p^{\ \theta}\,P_p^{\ 1-\theta}\ },\qquad \theta=0.6$$</div>
+
+<p><b>为什么用加权几何平均而不是算术平均</b>：几何平均<b>惩罚偏科</b>。算术平均下，"生涯 100 分 + 巅峰 20 分"与"生涯 60 + 巅峰 60"同为 60 分，但前者是"勤恳累积型"、后者是"又厚又尖型"，GOAT 评价中后者显然更受认可。几何平均给出 $100^{0.6}20^{0.4}=54.3$ 与 $60$，正确地把后者排在前面。</p>
+
+<p>$\theta=0.6$ 表示略微偏向生涯厚度（毕竟是"历史地位"评价）。同时会输出算术加权版作为对照，并给出两者的排名差异。</p>
+
+<div class="fml">$$\text{均衡度 } \mathrm{Bal}_p=\log\frac{C_p}{P_p}\quad(\text{正}=\text{厚积型},\ \text{负}=\text{巅峰型})$$</div>
+
+<p>均衡度作为展示列，不计入总分 —— 它用来解释"这位选手是靠什么进的榜"。</p>
+
+<h3>9.3 不确定度（必须做）</h3>
+
+<div class="note">
+<b>用大白话说</b>：这个模型里有几十个参数（$\lambda,\kappa,\gamma,\eta,\rho,\psi$ 以及 7 个模块权重 $\beta_m$），这些数字<b>不是从数据里算出来的</b>，是主观设定的。那么自然会问一句：<b>换一套同样讲得通的主观设定，榜单会不会大变？</b><br><br>
+不确定度分析就是回答这个问题：把这些参数在"同样合理"的区间内随机扰动，重跑几千次，看每个人的名次怎么波动。结果读法：<br>
+• "第 1 名在 2000 次模拟里有 1960 次不变" → 这个结论<b>硬</b>，可以拿来下判断；<br>
+• "第 7、8 名在 45% 的模拟里互换" → 这个名次差<b>不可信</b>，本质是权重选择的产物，不该拿来争论。<br><br>
+它相当于给榜单加了一根<b>误差棒</b>。没有误差棒的排名表，读者会误以为"第 7 名强于第 8 名"是一个事实，而实际上它可能只是我们拍的参数碰巧如此。
+</div>
+
+<div class="fml">$$\text{对 }(\lambda,\kappa,\gamma,\eta,\rho,\psi,\beta_1..\beta_7)\text{ 各取 plausible 区间，蒙特卡洛 }2000\text{ 次}$$</div>
+
+<p>输出每位选手的<b>排名分布</b>与「进前 10 的概率」。最终榜单不应是唯一数字，而应是「A 选手在 91% 的权重配置下进前 5，B 选手在 48% 的配置下进前 5」。这是对主观模型诚实唯一的呈现方式。</p>
+
+<h2>§ 10 权重 $\beta_m$ 怎么定（不需要两两比较）</h2>
+
+<p>你说只能给出排序，那就不用 AHP。序数定权有三套成熟方法：</p>
+
+<div class="note">
+<b>用大白话说：为什么"只给排序"不但够用，而且更合适</b><br>
+你说"我没经过数学验证，没法给出确定的比值"—— 这正是序数定权存在的理由。它的工作就是：<b>你给排序，它负责反推一组最合理的比值</b>。<br><br>
+把 7 个模块的权重想成一个满足 $\beta_1\ge\beta_2\ge\cdots\ge\beta_7$、且总和为 1 的数字组合。<b>满足这个排序的组合有无数种</b>（比如 $0.37/0.23/0.16/0.11/0.07/0.04/0.02$ 是一种，$0.30/0.25/0.20/0.12/0.07/0.04/0.02$ 也是一种）。ROC 做的事是：<b>把所有相容的组合全部取平均</b>，得到那个"几何中心"。<br><br>
+这不是拍出来的数字，而是"在你给定的信息量下，最不冒险的那个选择" —— 你愿意多给信息（给出极端比 $R$），它就往你指定的方向偏；你不给，它就停在正中间。<b>信息量和结论强度是匹配的</b>，这才严谨。
+</div>
+
+<h3>10.1 秩次质心法 ROC <span class="tag">推荐默认</span></h3>
+
+<div class="fml">$$\beta_j=\frac{1}{n}\sum_{k=j}^{n}\frac{1}{k}\qquad (j=1\ \text{为最重要})$$</div>
+
+<p><b>依据</b>：ROC 权重是可行域单纯形 $\{\beta_1\ge\beta_2\ge\cdots\ge\beta_n\ge0,\ \sum\beta=1\}$ 的<b>质心</b>，也就是在"只知道排序"这一信息状态下的<b>最大熵 / 极小极大后悔</b>选择。Barron–Barrett 的模拟研究显示，在仅有序数信息时 ROC 的期望效用损失最小，优于秩和法（RS）与秩倒数法（RR）。</p>
+
+<p><b>代入本模型的排序</b> $M_1 \succ M_2 \succ M_7 \succ M_4 \succ M_3 \succ M_5 \succ M_6$（纪录 &gt; 大赛领奖台 &gt; Elo 对战强度 &gt; 统治力 &gt; 公开赛 &gt; 广度 &gt; 生涯厚度），$n=7$ 时 $H_7=2.5929$，得：</p>
+
+<table>
+<tr><th>秩次</th><th>模块</th><th>ROC 权重 $\beta_m$</th><th>含义</th></tr>
+<tr><td>1</td><td>M1 纪录（WR/CR/NR）</td><td><b>0.370</b></td><td>主项，符合"纪录最大权重"</td></tr>
+<tr><td>2</td><td>M2 锦标赛领奖台</td><td><b>0.228</b></td><td>次主项，符合"世锦赛冠军次之"</td></tr>
+<tr><td>3</td><td>M7 Elo 对战强度</td><td><b>0.156</b></td><td>直接交锋证据</td></tr>
+<tr><td>4</td><td>M4 统治力</td><td><b>0.109</b></td><td>在位月数 + 巅峰排名</td></tr>
+<tr><td>5</td><td>M3 公开赛领奖台</td><td><b>0.073</b></td><td><b>结构性压低</b>，无法起决定作用</td></tr>
+<tr><td>6</td><td>M5 广度与全面性</td><td><b>0.044</b></td><td>附加小奖励（另有 5% 硬封顶）</td></tr>
+<tr><td>7</td><td>M6 生涯厚度与大赛表现</td><td><b>0.020</b></td><td>比重最低</td></tr>
+</table>
+
+<p>合计 1.000。可以看到：<b>公开赛仅占 7.3%</b>，即便不设任何计数上限，它在结构上也不可能主导榜单 —— 这正是你想要的"允许刷分但难以起决定性作用"。</p>
+
+<h3>10.2 秩指数法 RE（想控制"极端比"时用）</h3>
+
+<div class="fml">$$\beta_j\propto (n+1-j)^{\alpha},\qquad \alpha=\frac{\ln R}{\ln n},\quad R=\frac{\beta_1}{\beta_n}$$</div>
+
+<p>你只需要回答<b>一个数字</b>：$R$ = "最重要的模块应该是最不重要模块的几倍"。例如取 $R=20,\ n=7\Rightarrow\alpha=\ln20/\ln7=1.54$。</p>
+
+<h3>10.3 稀缺度定权（客观校准，强烈建议同时跑）</h3>
+
+<div class="fml">$$\beta_m\propto \ln\frac{1}{p_m},\qquad
+p_m=\frac{\text{该模块单位成就的年均产出量}}{\text{同期活跃选手数}}$$</div>
+
+<p><b>依据</b>：信息论中的<b>自信息（surprisal）</b> $I=-\ln p$。一个成就的价值正比于它的罕见程度 —— 这是 TF-IDF、熵编码背后同一个原理。</p>
+
+<p>示意量级（最终实算）：全球每年产生的 WR 数量级远小于世锦赛冠军数，世锦赛冠军（两年 17 项）又远小于公开赛冠军（每年数万个）。代入后<b>会自动得出"纪录 &gt; 世锦赛 &gt; 公开赛"</b>，与你的直觉排序一致 —— 这就把你的主观排序变成了<b>可验证的推论</b>而非假设。</p>
+
+<div class="note">
+<b>用法</b>：以 ROC（你的排序）为主，用稀缺度做交叉校验。若两者排序冲突，说明"你的直觉"与"数据里的稀缺结构"不一致，我会把冲突项单独列出来请你裁决，而不是悄悄取平均。
+</div>
+
+<h3>10.4 一致性检验</h3>
+
+<p>用 ROC 权重反推隐式的两两比较矩阵 $a_{ij}=\beta_i/\beta_j$，计算 Saaty 一致性比率：</p>
+<div class="fml">$$\mathrm{CR}=\frac{\lambda_{\max}-n}{(n-1)\cdot \mathrm{RI}},\qquad \mathrm{RI}(n=7)=1.32$$</div>
+<p>$\mathrm{CR}>0.1$ 说明该排序与"强度可等比传递"的假设冲突，此时改用 RE 并调 $\alpha$ 直到 $\mathrm{CR}\le0.1$。</p>
+
+<h2>§ 11 参数总表</h2>
+
+<table>
+<tr><th>参数</th><th>默认</th><th>含义</th><th>依据</th></tr>
+<tr><td>$\lambda$</td><td>1.1</td><td>名次价值幂律指数</td><td>齐夫定律</td></tr>
+<tr><td>$\eta$</td><td>0.4</td><td>项目深度因子强度</td><td>待标定</td></tr>
+<tr><td>$\Xi_e$</td><td>1.0 / 0.85 / 0.70</td><td>项目状态系数</td><td>价值判断（可调）</td></tr>
+<tr><td>$\kappa_0$</td><td>0.6</td><td>单次/平均统计基准比</td><td>$1/\sqrt5$ 与峰值声望的折中</td></tr>
+<tr><td>$\gamma$</td><td>0.5</td><td>完成率阻尼</td><td>防极端值</td></tr>
+<tr><td>$\chi$</td><td>0.5</td><td>领奖台赛制修正强度</td><td>半强度（同场同条件）</td></tr>
+<tr><td>$\delta_0$</td><td>0.01</td><td>破纪录幅度基准</td><td>1% 改进记 1.0</td></tr>
+<tr><td>$\varphi$</td><td>0.5</td><td>存续时长阻尼</td><td>防躺分</td></tr>
+<tr><td>$k_r$</td><td>0.15</td><td>纪录领先度加成</td><td>待标定</td></tr>
+<tr><td>$k_p$</td><td>0.10</td><td>领奖台领先度加成</td><td>待标定</td></tr>
+<tr><td>$\kappa$</td><td>0.5</td><td>CSI 指数</td><td>待标定</td></tr>
+<tr><td>$\psi$</td><td>0.13</td><td>稀缺性强度</td><td>使国锦 $\approx1.44$</td></tr>
+<tr><td>$\xi_c$</td><td>0.30/0.15/0.05</td><td>历史声望加成</td><td>纯主观（可调）</td></tr>
+<tr><td>$\rho_R$</td><td>0.95</td><td>纪录递减系数</td><td>很弱：时长已由积分承担</td></tr>
+<tr><td>$\rho_P$</td><td>0.9</td><td>锦标赛几何递减系数</td><td>收敛，强调质重于量</td></tr>
+<tr><td>$\alpha_O$</td><td>0.5</td><td>公开赛幂律递减指数</td><td>不收敛，增长 $\sim\sqrt n$，保留区分度</td></tr>
+<tr><td>$\lambda_D$</td><td>0.5</td><td>排名席位积分的衰减指数</td><td>比 $\lambda=1.1$ 平缓</td></tr>
+<tr><td>$\upsilon$</td><td>0.5</td><td>纪录线数补偿强度</td><td>单线项目 $K_e=\sqrt2$</td></tr>
+<tr><td>$\theta$</td><td>0.6</td><td>总榜中生涯:巅峰的权重</td><td>几何平均，惩罚偏科</td></tr>
+<tr><td>$K^{\max}$</td><td>30</td><td>现实年参赛上限</td><td>经验值</td></tr>
+<tr><td>$\theta$</td><td>0.7</td><td>广度奖励阻尼</td><td>待标定</td></tr>
+<tr><td>$z_{\min}$</td><td>$-1.0$</td><td>全覆盖质量门槛</td><td>防慢成绩</td></tr>
+<tr><td>$M_5^{\max}$</td><td>总分 5%</td><td>广度模块封顶</td><td>附加小奖励</td></tr>
+<tr><td>$B_*$</td><td><span class="tbd">待标定</span></td><td>各模块的量纲归一化常数</td><td>由基准选手锚定</td></tr>
+</table>
+
+<div class="note">
+<b>$B_*$ 的标定方法</b>：选一位公认的"基准选手"（或虚拟的典型全满贯选手），令其 $M_1=100$，其余模块按相对量纲反解 $B_*$，使最终 $\mathrm{Total}$ 落在可读区间。这一步必须在拿到真实数据后做，不预先编造。
+</div>
+
+<h2>§ 12 已确认的口径</h2>
+
+<ul>
+<li><b>停办项目</b>：纳入，$\Xi=0.70$</li>
+<li><b>时间范围</b>：纳入 pre-WCA 时代（1982 首届世锦赛起），只要 WCA 库里有记录的成绩都算。注意 1982 / 2003 的早期成绩可能无分轮次明细，届时只取可获得的字段，并在报告中标注数据完整度</li>
+<li><b>参赛人数</b>：一律取<b>成就发生时</b>的滚动窗口值，不用今天的人数</li>
+<li><b>退役状态</b>：模型中不存在任何依赖它的项</li>
+<li><b>年龄早熟度</b>：已移除（WCA 不记录出生日期，无法获取）</li>
+<li><b>里程碑"首次"奖励</b>（如首个 sub-5）：保留为可选开关，默认关闭（争议较大）</li>
+<li><b>公开赛防刷</b>：不设计数上限；幂律递减 $i^{-0.5}$ + 人数门槛 + CSI 门槛 + 单场单计 + 低模块权重（7.3%）</li>
+<li><b>纪录层级嵌套</b>：WR ⊃ CR ⊃ NR，按"持有状态的时间积分"计分，同一时刻只计最高层级，绝不重复</li>
+<li><b>单线项目</b>：多盲（现行规则）只有单次成绩，$T_{\text{sgl}}=1$ 不打折，另加纪录线数补偿 $K_e=(2/L_e)^{0.5}$；FMC 的纪录线数<b>待数据统计确认</b>，不预设</li>
+<li><b>取消项目完整清单</b>：脚拧 <code>333ft</code>、八板 <code>magic</code>、十二板 <code>mmagic</code>、<b>旧规则多盲</b>（若有独立 eventId 如 333mbo 则独立统计，否则按规则切换日切分 era 各自归一化）</li>
+<li><b>纪录记分制</b>：事件制 —— 破纪录那一刻一次性记分，<b>永不回退</b>；同一时刻只记最高层级（WR ⊃ CR ⊃ NR 不重复）</li>
+<li><b>排名席位</b>：M4 用"每天世界排名的 $r^{-0.5}$ 时间积分"，统一涵盖第一在位月数、前十累计月数、前 100 占席</li>
+</ul>
+
+<h2>§ 13 选手 PK 对比模块</h2>
+
+<p><b>完全可以做，而且我认为这是整个项目最有说服力的产出。</b>输入 2–5 位选手，输出四层内容：</p>
+
+<h3>13.1 七维雷达对比</h3>
+<p>七个模块得分各自除以该模块的全体最大值（百分制），画在同一张雷达图上。这样能一眼看出"A 的纪录分远高于 B，但 B 的广度与对战强度更高"这类结构性差异。</p>
+
+<h3>13.2 逐项差值表</h3>
+<div class="fml">$$\Delta_{m}(A,B)=100\times\frac{M_m^{(A)}-M_m^{(B)}}{\max(M_m^{(A)},M_m^{(B)})}$$</div>
+<table>
+<tr><th style="width:120px">输出</th><th>内容</th></tr>
+<tr><td>模块差值</td><td>七项各自的 $\Delta_m$，标出谁占优</td></tr>
+<tr><td>原始指标对照</td><td>WR 数 / 世锦赛冠军数 / 在位月数 / Elo 峰值 / 广度 $\mathcal{B}$ / 前 100 占席峰值 / 活跃年限等，<b>用未经加权的原始数字</b></td></tr>
+<tr><td>优势领域</td><td>自动列出 $A$ 占优的项与 $B$ 占优的项，并按差值排序</td></tr>
+</table>
+
+<h3>13.3 胜负稳健性（最有价值的一项）</h3>
+<div class="fml">$$\Pr(A\succ B)=\frac{1}{N}\sum_{s=1}^{N}\mathbf{1}\!\left[\mathrm{Total}_A^{(s)}>\mathrm{Total}_B^{(s)}\right],\qquad N=2000\text{ 次权重扰动}$$</div>
+<p>不是给一句"A 强于 B"，而是给出"<b>在 78% 的合理权重配置下 A 强于 B</b>"。若这个比例接近 50%，就诚实地说：<b>这两人无法用本模型区分</b>，谁在前取决于你看重什么。</p>
+
+<h3>13.4 翻转分析（找出决定性参数）</h3>
+<div class="fml">$$\text{对每个参数 }u:\quad u^{*}=\min\Bigl\{u\ \Big|\ \mathrm{Total}_B(u)\ge \mathrm{Total}_A(u)\Bigr\}$$</div>
+<p>回答"<b>要让 B 反超 A，需要把哪个参数调到多少</b>"。例如：只有当公开赛权重超过 25%、或 $\lambda_D$ 降到 0.2 时 B 才会反超 A —— 这类结论把主观争论转化成可检验的命题，比单纯排名有用得多。</p>
+
+<div class="note">
+<b>交付形式</b>：一个自包含的交互式 HTML —— 下拉框选选手（支持搜索）→ 出雷达图 + 差值表 + 稳健性数字 + 翻转分析。不需要联网，双击即可打开。
+</div>
+
+<h2>§ 14 交互功能（筛选 / 个人页 / 动态榜）</h2>
+
+<h3>14.1 多维条件筛选排行</h3>
+
+<table>
+<tr><th style="width:110px">筛选维度</th><th>处理方式</th><th>需要注意的坑</th></tr>
+<tr><td><b>项目组合</b></td><td>只统计所选项目的成就</td><td>$w_e$ <b>保持全局值不重算</b>（保证跨筛选可比）；但 M5 广度与"组内全覆盖"<b>按所选子集重算</b> —— 这正是你要的：只选盲拧时，B 选手的全覆盖加分才生效</td></tr>
+<tr><td><b>国家 / 洲</b></td><td>筛选该地区的选手</td><td>筛选到单一国家时，NR 就是天花板，<b>层级系数需重新锚定</b>：$G_{\text{NR}}\to1$，WR 仍为 1，CR 居中（否则该国所有人的 NR 都被压得很低，排序失真）</td></tr>
+<tr><td><b>性别</b></td><td>按 WCA 的 gender 字段</td><td>女子榜下，"世界第一在位月数"应改为<b>"女子世界第一在位月数"</b>；$\mu_e,\sigma_e$ 的参照组也建议按同性别重算（否则会系统性低估）</td></tr>
+<tr><td><b>时间区间</b></td><td>只统计 $[t_1,t_2]$ 内的成就</td><td>$S_e(t)$ 与 $z$ <b>仍按各自当时计算</b>（保持时代归一化）；M6 生涯厚度需按区间长度归一，否则长区间天然占优</td></tr>
+<tr><td><b>组合筛选</b></td><td>以上任意叠加</td><td>设<b>样本量警告</b>：有效选手数 &lt; 20 时提示"样本不足，结果仅供参考"，并显示实际样本量</td></tr>
+</table>
+
+<div class="note">
+<b>附带产出：时代榜</b>。"2005–2015 十年最强"本质就是时间区间筛选，不需要单独开发。同理可做"单项目 GOAT 榜"（只选一个项目）、"亚洲历史最强"（洲筛选）。
+</div>
+
+<h3>14.2 选手个人页（分值完全透明）</h3>
+
+<ol>
+<li><b>总分构成</b>：M1–M7 各占多少百分比，横向条形 + 占比数字</li>
+<li><b>逐条成就明细</b>：可展开到<b>每一条</b>纪录 / 每一个领奖台，显示它的<b>每一个乘子</b>与最终得分：
+<div class="fml" style="margin:10px 0">$$w_e\ \times\ S_e(t)\ \times\ T_\tau\ \times\ K_e\ \times\ G_g\ \times\ A\ \times\ O\ \times\ (1+k_r z)\ =\ R_k$$</div>
+做到"任何一个数字都能追溯到它是怎么乘出来的"</li>
+<li><b>项目维度拆解</b>：该选手在各项目上的得分分布</li>
+<li><b>位次</b>：在所选范围（全球 / 某国 / 某项目 / 某时段）中的排名与百分位</li>
+<li><b>生涯曲线</b>：累计分随时间的增长曲线，标注关键节点（首次破纪录、首个世锦赛冠军、Elo 峰值）</li>
+</ol>
+
+<div class="note">
+<b>这一页是整个项目的信任基础。</b>如果读者看不出"为什么这个人排第 3"，那整个榜单就只是黑箱。逐乘子展开是我坚持要做的功能。
+</div>
+
+<h3>14.3 动态时间轴可视化</h3>
+
+<p>从最早年份到现在，按年 / 月展示排行的演变。这里有一个<b>必须先定的口径选择</b>：</p>
+
+<table>
+<tr><th style="width:130px">模式</th><th>含义</th><th>适用</th></tr>
+<tr><td><b>累计模式</b></td><td>截至该时刻的<b>生涯累计分</b>（只增不减）</td><td>看"历史地位是何时确立的"。缺点：早期强者会一直占前排，动态感弱</td></tr>
+<tr><td><b>活跃模式</b></td><td><b>滚动 36 个月窗口</b>内的得分</td><td>看"当期谁最强"。缺点：退役选手会在窗口滑过后消失</td></tr>
+</table>
+
+<p><b>已确认：做成可切换的两种模式，默认活跃模式，一键切累计模式。</b></p>
+
+<p>已确认的其它设计：</p>
+<ul>
+<li>默认<b>年度</b>步进（月度的赛事季节性噪音很大），可切月度并加 3 个月滑动平滑</li>
+<li><b>条形竞赛图（bar chart race）与"排名带"（bump chart）两种视图</b>并存</li>
+<li>时间轴上<b>标注重大事件</b>：里程碑式 WR、世锦赛年份、项目停办 / 新增</li>
+<li>可叠加筛选（如"只看三阶的排行演变"）</li>
+</ul>
+
+<h3>14.3b WR 持有时间轴 <span class="tag">已确认纳入</span></h3>
+
+<p>横轴为时间，<b>每个项目一条泳道</b>，色块表示该时段 WR 由谁持有，色块长度即持有期。可选按 single / average 分两条子泳道。</p>
+
+<ul>
+<li><b>一眼看出"谁在什么时代统治了哪个项目"</b>，比排名动画更直观，实现成本也更低</li>
+<li>鼠标悬停显示：纪录值、保持天数、前任 / 继任者、破纪录幅度</li>
+<li>可叠加筛选：只看某几个项目、只看某几位选手、只看某国选手持有的区间（高亮）</li>
+<li>可切换显示 <b>NR / CR</b>（选某个国家 / 洲时），用于做"中国纪录演进史"这类专题</li>
+<li>配色按选手稳定分配（同一人在所有泳道同色），便于跨项目追踪</li>
+</ul>
+
+<h3>14.4 已确认决议</h3>
+
+<table>
+<tr><th style="width:220px">议题</th><th>决议</th></tr>
+<tr><td>$\omega_H$（持有时长分权重）</td><td><b>0.35</b>（暂定，出结果后可看敏感性再调）</td></tr>
+<tr><td>单国 / 单洲筛选时 NR 重新锚定</td><td><b>是</b>（详见下方解释）</td></tr>
+<tr><td>女子 / 男子榜的 $\mu_e,\sigma_e$ 参照组</td><td><b>按同性别重算</b>，样本不足时明确提示</td></tr>
+<tr><td>动态榜模式</td><td><b>可切换，默认活跃模式</b>（滚动 36 个月）</td></tr>
+<tr><td>取消项目清单</td><td>脚拧、<b>八板（magic）</b>、<b>十二板（mmagic）</b>、旧规则多盲 —— 以数据探查时枚举的 eventId 复核</td></tr>
+<tr><td>WR 持有时间轴</td><td><b>纳入</b>（§14.3b）</td></tr>
+</table>
+
+<h3>14.5 关于"NR 重新锚定" —— 简单解释</h3>
+
+<div class="note">
+<b>一句话</b>：全球榜里"中国 NR"值 WR 的 17%；但当你筛成"只看中国选手"时，中国 NR 就是这个榜单里的天花板，应该按 <b>100%</b> 算，否则"谁破过 NR"在这张榜上根本体现不出来。
+</div>
+
+<p><b>为什么必须改</b>：</p>
+
+<table>
+<tr><th>场景</th><th>NR 分值</th><th>后果</th></tr>
+<tr><td>全球榜（不筛选）</td><td>中国 NR ≈ WR 的 17%</td><td>合理 —— 世界第一才是天花板</td></tr>
+<tr><td>筛选"只看中国"，<b>不重锚</b></td><td>仍是 17%</td><td>所有人的 NR 分都被压得很低，<b>破没破过 NR 几乎不影响排名</b>，榜单失去区分度</td></tr>
+<tr><td>筛选"只看中国"，<b>重锚</b></td><td>中国 NR = 100%（该地区天花板）</td><td>"谁持有国家纪录"成为该榜单的核心区分项，符合直觉</td></tr>
+<tr><td>筛选某个小国，<b>不重锚</b></td><td>触发 8% 下限</td><td>更糟 —— 所有人的 NR 都撞在下限上，<b>完全无差别</b></td></tr>
+</table>
+
+<p><b>改的是什么、不改的是什么</b>：</p>
+<ul>
+<li>只改 <b>$G_g$ 的取值</b>：筛选到地区 $\mathcal{R}$ 时，令 $G_{\text{NR}}(\mathcal{R})=1$；CR 按该地区所属洲在原体系中的相对位置居中取值；<b>WR 仍为 1</b>（世界纪录在任何榜单里都是天花板）</li>
+<li>不改 $w_e$、不改 $S_e(t)$、不改其它任何模块</li>
+<li><b>不影响全球榜的任何结果</b> —— 只在施加了地区筛选时才切换口径</li>
+</ul>
+
+<p>类比：校内排名时，"校运会纪录"应按校级含金量算，而不是按它在全国的分量算。</p>
+
+<h2>§ 15 附加分析模块 <span class="tag">已确认纳入</span></h2>
+
+<h3>15.1 国家 / 地区实力榜 + 动态演变</h3>
+<p>按国家聚合（选手分加总，或取每位选手得分的加权和以避免人口红利），展示各国实力随年代的起落。配合 §14.3b 的时间轴，能直观呈现近十年各国在不同项目上的此消彼长。<b>聚合口径可选</b>：总分（比厚度）／人均分（比效率）／最强单人（比尖子）。</p>
+
+<h3>15.2 项目王者榜</h3>
+<p>每个项目独立出一份历史第一人榜（"三阶 GOAT""盲拧 GOAT"）。技术上就是单项目筛选，但值得单独成篇：可用该项目的专属口径（例如单项目榜下 M5 广度自动失效，权重按 ROC 重新分配到剩余模块）。</p>
+
+<h3>15.3 无冕之王清单</h3>
+<p>筛出<b>从未持有过 WR</b>、但 $M_4$（排名席位积分）+ $M_7$（Elo）+ $M_2$（大赛领奖台）排名靠前的选手。这类人在纯奖项榜里会被系统性埋没 —— 例如长期稳居世界第二但从未登顶的选手。清单按"WR 分 = 0 但总分进入前 N"的条件自动抽取。</p>
+
+<h3>15.4 反事实分析（What-if）</h3>
+<div class="fml">$$\mathrm{Total}_p^{(-\mathcal{A})}=\text{把成就集合 }\mathcal{A}\text{ 清零后重算}$$</div>
+<p>支持把指定成就（某次 WR、某届世锦赛、某个项目的全部成绩）清零后重算排名，回答"<b>如果 X 没有这块成就，他排第几</b>"。也可反向：把某位选手平移到另一个年代（用该年代的 $S_e(t)$ 与 $\mu,\sigma$ 重算）看排名变化。这是把主观争论转化为可计算命题的工具，成本不高、说服力很强。</p>
+
+<hr>
+<p style="color:var(--tx3);font-size:13px">
+本手册所有标注「待标定」的参数需在拿到 WCA 真实数据后由统计程序拟合或锚定，不得预先设定为臆测值。<br>
+【本内容仅为数据处理建议与结果说明，重要决策前请核验原始数据】
+</p>
+
+</div>
+</body>
+</html>

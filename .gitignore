@@ -1,0 +1,31 @@
+# 原始 WCA 导出（数百 MB）绝不入库
+data/raw/
+*.tsv
+*.tsv.zip
+WCA_export*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# Node
+node_modules/
+npm-debug.log*
+
+# 系统 / 编辑器
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# 本地临时
+tmp/
+temp/
+*.log
+
+# WorkBuddy 项目数据（内存 / 缓存，不入库）
+.workbuddy/

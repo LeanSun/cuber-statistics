@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cube GOAT · 谁是魔方历史上最伟大的选手？</title>
+<meta name="description" content="基于 WCA 官方成绩数据的魔方历史最伟大选手（GOAT）评分与排名系统：七模块加权模型、生涯长度榜与巅峰高度榜、选手 PK、纪录演变时间轴、另类统计。">
+<meta name="color-scheme" content="light dark">
+<link rel="preconnect" href="https://flagcdn.com">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<a class="skip-link" href="#view" data-i18n="a11y.skip">跳到主要内容</a>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="#/home" title="Cube GOAT · 首页">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-text">Cube&nbsp;GOAT</span>
+    </a>
+
+    <nav class="nav" id="nav" aria-label="主导航"></nav>
+
+    <div class="tools">
+      <button class="icon-btn" id="langBtn" type="button" title="切换语言 / Switch language" aria-label="切换语言">EN</button>
+      <button class="icon-btn" id="themeBtn" type="button" title="切换主题 / Toggle theme" aria-label="切换主题">
+        <span id="themeIcon">◐</span>
+      </button>
+      <button class="icon-btn nav-toggle" id="navToggle" type="button" aria-label="展开导航" aria-expanded="false">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="demo-banner" id="demoBanner">
+  <span data-i18n="demo.banner">演示数据 · 以下人名与成绩均为程序生成的虚构样本，不代表任何真实选手</span>
+</div>
+
+<div class="filterbar" id="filterbar" hidden></div>
+
+<main id="view" class="view" tabindex="-1"></main>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <p class="foot-note" data-i18n="foot.data">数据来源：World Cube Association 官方成绩导出（演示阶段为虚构样本）</p>
+    <p class="foot-note" id="wcaCredit">This information is based on competition results owned and maintained by the World Cube Association, published at https://worldcubeassociation.org/results.</p>
+    <p class="foot-note">
+      <span data-i18n="foot.model">模型版本 v1.0</span> ·
+      <a href="#/model" data-i18n="foot.how">评分原理说明</a> ·
+      <a id="ghLink" href="https://github.com/LeanSun/cuber-statistics" target="_blank" rel="noopener" data-i18n="foot.repo">GitHub 仓库</a>
+    </p>
+  </div>
+</footer>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<div class="pk-tray" id="pkTray" hidden aria-label="对比托盘">
+  <div class="pk-tray-head">
+    <span class="pk-tray-title">对比托盘 <b id="pkTrayCount">0</b>/4</span>
+    <button class="pk-tray-clear" data-pktrayclear="1" type="button">清空</button>
+  </div>
+  <div class="pk-tray-list" id="pkTrayList"></div>
+  <a class="btn btn-primary pk-tray-go" id="pkTrayGo" href="#/pk" hidden>去 PK <span class="ic" aria-hidden="true">→</span></a>
+</div>
+
+<script>
+  window.MathJax = {
+    tex: {
+      inlineMath: [['\\(', '\\)'], ['$', '$']],
+      displayMath: [['\\[', '\\]'], ['$$', '$$']],
+      processEscapes: true
+    },
+    options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'] },
+    startup: { typeset: false }
+  };
+</script>
+<script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+<script src="vendor/echarts.min.js"></script>
+<script src="js/i18n.js"></script>
+<script src="js/groups.js"></script>
+<script src="js/params.js"></script>
+<script src="js/mock.js"></script>
+<script src="js/icons.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/pages-core.js"></script>
+<script src="js/pages-player.js"></script>
+<script src="js/pages-extra.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
