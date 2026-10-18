@@ -7,6 +7,7 @@
   const MOD = P.util.MOD, MODC = P.util.MODC;
   const esc = U.esc;
   const { avatar, flag, playerLink, modName, contribs, ecBox, scoreOf, infoTip, evName, contName, regionName, countryName, strength } = P.util;
+  function tt(zh, en) { return t.isEn() ? en : zh; }
 
   /* ---------- LaTeX 公式工具 ---------- */
   function tex(s, display) {
@@ -69,11 +70,11 @@
       '<span class="muted tiny mono">' + esc(p.wcaId) + '</span>' +
       '<span class="muted tiny">' + (p.gender === 'F' ? t('f.gender.f') : t('f.gender.m')) + '</span></div>';
     h += '<div class="p-tags">';
-    h += '<span class="tag acc">' + esc(t('col.rank')) + ' #' + p.rank + '</span>';
-    h += '<span class="tag">' + esc(t('player.career')) + ' ' + p.start + '–' + p.end + '</span>';
-    h += '<span class="tag">' + esc(t('player.comps')) + ' ' + p.comps + '</span>';
-    h += '<span class="tag">' + esc(t('player.events')) + ' ' + p.events.length + '</span>';
-    h += '<span class="tag">' + esc(evName(M.EV[p.mainEvent])) + '</span>';
+    h += '<span class="tag acc" title="' + esc(tt('你在全球所有选手中的综合排名', 'Your overall global ranking among all players')) + '">' + esc(t('col.rank')) + ' ' + p.rank + '</span>';
+    h += '<span class="tag" title="' + esc(tt('首次参赛到最近参赛的年份区间', 'Years from your first to your latest competition')) + '">' + esc(t('player.career')) + ' ' + p.start + '–' + p.end + '</span>';
+    h += '<span class="tag" title="' + esc(tt('你参加过的 WCA 比赛总场数', 'Total WCA competitions you have entered')) + '">' + esc(t('player.comps')) + ' ' + p.comps + '</span>';
+    h += '<span class="tag" title="' + esc(tt('你参加过的 WCA 项目数量', 'Number of distinct WCA events you have entered')) + '">' + esc(t('player.events')) + ' ' + p.events.length + '</span>';
+    h += '<span class="tag" title="' + esc(tt('综合得分最高的项目', 'The event contributing most to your score')) + '">' + esc(t('player.mainEvent')) + ' ' + esc(evName(M.EV[p.mainEvent])) + '</span>';
     h += '</div></div></div>';
 
     h += '<div class="pcard-score">';
@@ -89,10 +90,14 @@
 
     /* 世界 / 洲 / 地区 / 国家排名 */
     h += '<div class="rank4">';
-    h += rankCard(t('player.rankWorld'), rk.world, M.ranked.length, 'globe');
-    h += rankCard(t('player.rankCont'), rk.continent, rk.continentOf, 'globe', contName(rk.contName));
-    h += rankCard(t('player.rankNat'), rk.nation, rk.nationOf, 'flag', countryName(p.country));
-    h += rankCard(regionName(rk.regName), rk.region, rk.regionOf, 'globe');
+    h += rankCard(t('player.rankWorld'), rk.world, M.ranked.length, 'globe', '',
+      tt('你在全球所有选手中的综合排名', 'Your overall rank among all players worldwide'));
+    h += rankCard(contName(rk.contName) + t('player.rankSuffix'), rk.continent, rk.continentOf, 'globe', '',
+      tt('你所在大洲（' + contName(rk.contName) + '）内的综合排名', 'Your rank within your continent (' + contName(rk.contName) + ')'));
+    h += rankCard(t('player.rankNation'), rk.nation, rk.nationOf, 'flag', countryName(p.country),
+      tt('你所在国家（' + countryName(p.country) + '）内的综合排名', 'Your rank within your country (' + countryName(p.country) + ')'));
+    h += rankCard(regionName(rk.regName) + t('player.rankSuffix'), rk.region, rk.regionOf, 'globe', '',
+      tt('你所在 WCA 地区（' + regionName(rk.regName) + '）内的综合排名', 'Your rank within your WCA region (' + regionName(rk.regName) + ')'));
     h += '</div>';
     h += '</div>';
 
@@ -143,9 +148,11 @@
       tex('\\text{Bonus}=\\min\\Bigl(\\underbrace{\\text{Breadth}^{\\,\\theta}-1}_{\\text{跨项目}}+\\underbrace{n_{g}\\,c_{g}+\\mathbb{1}_{\\text{全项目}}c_{a}}_{\\text{全覆盖}},\\;\\text{cap}\\Bigr),\\quad \\text{cap}=' + U.fmt(bn.cap, 0) + '\\%', true) + '</p>';
     h += '</div>';
 
-    /* 纪录事件明细 */
-    h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('player.records')) + '</h2>' +
-      '<span class="tiny muted">' + p.records.length + ' × M1</span></div>';
+    /* 纪录事件明细（默认收起，点击标题展开） */
+    h += '<details class="card reveal" id="recDetails">';
+    h += '<summary class="card-head"><h2>' + esc(t('player.records')) + '</h2>' +
+      '<span class="tiny muted">' + p.records.length + ' × M1</span><span class="sum-caret">›</span></summary>';
+    h += '<div class="card-body">';
     h += '<div class="ach-toolbar">';
     h += '<div class="seg" id="recLevelSeg">' + segBtn('all', 'all', 'recLevel') + segBtn('WR', 'rec.level.WR', 'recLevel') + segBtn('CR', 'rec.level.CR', 'recLevel') + segBtn('NR', 'rec.level.NR', 'recLevel') + '</div>';
     h += '<div class="seg" id="recTypeSeg">' + segBtn('all', 'all', 'recType') + segBtn('single', 'rec.single', 'recType') + segBtn('avg', 'rec.average', 'recType') + '</div>';
@@ -161,20 +168,22 @@
       '<span class="rc rc-held">' + esc(t('tl.days')) + '</span>' +
       '<span class="rc rc-score">' + esc(t('rec.score')) + '</span>' +
       '<span class="rc rc-caret"></span></div>';
-    p.records.forEach(function (r, i) {
+    p.records.slice().sort(function (a, b) { return (b.R || 0) - (a.R || 0); }).forEach(function (r, i) {
       h += recRow(p, r, i);
     });
-    h += '</div>';
+    h += '</div></details>';
 
-    /* 领奖台明细 */
-    h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('player.podiums')) + '</h2>' +
-      '<span class="tiny muted">' + p.podiums.length + ' × M2+M3</span></div>';
+    /* 领奖台明细（默认收起，点击标题展开） */
+    h += '<details class="card reveal" id="podDetails">';
+    h += '<summary class="card-head"><h2>' + esc(t('player.podiums')) + '</h2>' +
+      '<span class="tiny muted">' + p.podiums.length + ' × M2+M3</span><span class="sum-caret">›</span></summary>';
+    h += '<div class="card-body">';
     h += '<div class="ach-toolbar"><div class="seg" id="podTierSeg">' +
       segBtn('all', 'all', 'podTier') + segBtn('WC', 'pod.level.WC', 'podTier') + segBtn('CC', 'pod.level.CC', 'podTier') +
       segBtn('NC', 'pod.level.NC', 'podTier') + segBtn('OP', 'pod.level.OP', 'podTier') + '</div>';
     h += '<span class="spacer"></span><button class="btn" data-expandall="pod">' + esc(t('ui.expandAll')) + '</button></div>';
-    p.podiums.forEach(function (r, i) { h += podRow(p, r, i); });
-    h += '</div>';
+    p.podiums.slice().sort(function (a, b) { return (b.R || 0) - (a.R || 0); }).forEach(function (r, i) { h += podRow(p, r, i); });
+    h += '</div></details>';
 
     /* 排名演变 + 覆盖 */
     h += '<div class="grid grid-2">';
@@ -186,7 +195,7 @@
     h += '</div>';
 
     /* 原始统计 */
-    h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('pk.raw')) + '</h2></div><div class="grid grid-4">';
+    h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('player.coreStats')) + '</h2></div><div class="grid grid-4">';
     [['col.wr', p.wr], ['rec.level.CR', p.cr], ['rec.level.NR', p.nr], ['col.wc', p.wcGold],
     ['pod.level.CC', p.ccGold], ['pod.level.NC', p.ncGold], ['col.months', p.months1],
     ['col.elo', p.eloPeak], ['stat.podiumTotal', st.podiumTotal], ['player.comps', p.comps]].forEach(function (s) {
@@ -224,10 +233,10 @@
     return '<button data-' + attr + '="' + val + '" class="' + (val === 'all' ? 'on' : '') + '">' + esc(labelKey === 'all' ? t('f.all') : t(labelKey)) + '</button>';
   }
 
-  function rankCard(label, rank, of, icon, sub) {
-    return '<div class="rank-card"><div class="rk-ic">' + Ic.glyph(icon) + '</div>' +
+  function rankCard(label, rank, of, icon, sub, explain) {
+    return '<div class="rank-card"><div class="rk-ic">' + Ic.glyph(icon) + (explain ? ' ' + infoTip(explain) : '') + '</div>' +
       '<div class="rk-label">' + esc(label) + '</div>' +
-      '<div class="rk-val"><b>#' + rank + '</b><span class="tiny muted"> / ' + U.num(of) + '</span></div>' +
+      '<div class="rk-val"><b>' + rank + '</b><span class="tiny muted"> / ' + U.num(of) + '</span></div>' +
       (sub ? '<div class="tiny muted">' + esc(sub) + '</div>' : '') + '</div>';
   }
 

@@ -96,6 +96,7 @@
     'player.career': '生涯', 'player.comps': '参赛场次', 'player.events': '参赛项目', 'player.span': '活跃跨度',
     'player.wca': 'WCA 主页',
     'player.rankWorld': '世界排名', 'player.rankCont': '洲排名', 'player.rankNat': '地区排名',
+    'player.rankNation': '国家排名', 'player.rankSuffix': '排名', 'player.mainEvent': '主项', 'player.coreStats': '核心数据',
     'player.bonus': '附加分明细',
     'player.bonus.d': '广度奖励、组内全覆盖、纪录线数补偿等附加小奖励，合计硬性封顶 5%',
     'player.bonus.breadth': '跨项目广度', 'player.bonus.coverage': '组内全覆盖', 'player.bonus.lineCount': '纪录线数补偿',
@@ -147,6 +148,7 @@
     'tl.play': '播放', 'tl.pause': '暂停', 'tl.step': '步进', 'tl.step.year': '年度', 'tl.step.month': '月度', 'tl.step.week': '周度', 'tl.metric': '评分维度', 'tl.metric.overall': '综合', 'tl.lane': '单次/平均',
     'tl.smooth': '3 期滑动平滑',
     'tl.holder': '持有者', 'tl.days': '保持', 'tl.events': '重大事件（在图中以竖线标注）',
+    'tl.msEdit': '自定义重大事件', 'tl.msGuide': '可导入你自己的重大事件，在图中以竖线标注。格式为 JSON 数组，每项含 year（年份，数字）、zh（中文说明）、en（英文说明，可选）。点「填充示例」查看格式。', 'tl.msImport': '导入', 'tl.msReset': '恢复默认', 'tl.msSample': '填充示例', 'tl.msCustom': '自定义', 'tl.msOk': '已导入重大事件', 'tl.msErr': '格式错误：需为 JSON 数组，每项含 year（数字）与 zh（文字）',
     'tl.viewTip': '三种图怎么看',
 
     'top.title': '另类统计',
@@ -301,6 +303,7 @@
     'player.career': 'Career', 'player.comps': 'Competitions', 'player.events': 'Events', 'player.span': 'Span',
     'player.wca': 'WCA profile',
     'player.rankWorld': 'World', 'player.rankCont': 'Continental', 'player.rankNat': 'National',
+    'player.rankNation': 'National', 'player.rankSuffix': ' rank', 'player.mainEvent': 'Main event', 'player.coreStats': 'Key stats',
     'player.bonus': 'Bonus breakdown',
     'player.bonus.d': 'Small extras such as breadth, group coverage and line-count compensation, capped at 5% in total',
     'player.bonus.breadth': 'Cross-event breadth', 'player.bonus.coverage': 'Group coverage', 'player.bonus.lineCount': 'Line-count compensation',
@@ -352,6 +355,7 @@
     'tl.play': 'Play', 'tl.pause': 'Pause', 'tl.step': 'Step', 'tl.step.year': 'Year', 'tl.step.month': 'Month', 'tl.step.week': 'Week', 'tl.metric': 'Metric', 'tl.metric.overall': 'Overall', 'tl.lane': 'Single/Avg',
     'tl.smooth': '3-period smoothing',
     'tl.holder': 'Holder', 'tl.days': 'Held', 'tl.events': 'Milestones (marked inline in the chart)',
+    'tl.msEdit': 'Custom milestones', 'tl.msGuide': 'Import your own milestones, marked as vertical lines in the chart. Format: a JSON array; each item has year (number), zh (Chinese text), en (English text, optional). Click "Fill sample" to see the format.', 'tl.msImport': 'Import', 'tl.msReset': 'Reset', 'tl.msSample': 'Fill sample', 'tl.msCustom': 'Custom', 'tl.msOk': 'Milestones imported', 'tl.msErr': 'Format error: need a JSON array; each item needs year (number) and zh (text)',
     'tl.viewTip': 'How to read the three charts',
 
     'top.title': 'Fun stats',

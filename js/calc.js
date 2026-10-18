@@ -205,10 +205,11 @@
     var bestYear = 0;
     Object.keys(yearCount).forEach(function (y) { bestYear = Math.max(bestYear, yearCount[y]); });
 
-    var podiumByTier = { WC: 0, CC: 0, NC: 0, OP: 0 };
+    var podiumByTier = { WC: 0, CC: 0, NC: 0, OP: 0, Local: 0 };
     var g = 0, si = 0, br = 0;
     var podYears = {}, podEvSet = {}, goldEvSet = {}, goldYears = {};
     pods.forEach(function (r) {
+      if (podiumByTier[r.tier] == null) podiumByTier[r.tier] = 0;
       podiumByTier[r.tier]++;
       if (r.place === 1) { g++; goldEvSet[r.ev] = 1; goldYears[r.year] = (goldYears[r.year] || 0) + 1; }
       if (r.place === 2) si++;
@@ -226,6 +227,15 @@
     var bestYearGold = 0;
     Object.keys(goldYears).forEach(function (y) { bestYearGold = Math.max(bestYearGold, goldYears[y]); });
 
+    /* 真实年度名次：统计「进入年度前 10 / 前 100」的年数 */
+    var yr = p.yearRank || {}, yrTop = { t10: 0, t100: 0 };
+    Object.keys(yr).forEach(function (y) {
+      var r = (yr[y] || {})[p.id];
+      if (!r) return;
+      if (r <= 10) yrTop.t10++;
+      if (r <= 100) yrTop.t100++;
+    });
+
     var totalPod = pods.length;
     var st = {
       wrCount: p.wr, crCount: p.cr, nrCount: p.nr,
@@ -241,17 +251,17 @@
       cities: Math.round(p.comps * 0.6),
       podiumTotal: totalPod, gold: g, silver: si, bronze: br,
       podiumWC: podiumByTier.WC, podiumCC: podiumByTier.CC, podiumNC: podiumByTier.NC,
-      podiumLocal: Math.round(totalPod * 0.18), podiumOpen: podiumByTier.OP,
+      podiumLocal: podiumByTier.Local, podiumOpen: podiumByTier.OP,
       most4th: 0, top4NoPodium: 0, goldEvents: Object.keys(goldEvSet).length, podiumEvents: Object.keys(podEvSet).length,
       podiumStreak: podStreak, bestYearGold: bestYearGold,
       podiumRate: round(totalPod / Math.max(1, p.comps * (p.events ? p.events.length : 0) / 4), 4),
       goldRate: round(g / Math.max(1, totalPod), 4),
       champConvert: round((podiumByTier.WC + podiumByTier.CC + podiumByTier.NC) / Math.max(1, totalPod), 4),
-      yearsTop10: 0, yearsTop100: 0,
+      yearsTop10: yrTop.t10, yearsTop100: yrTop.t100,
       coverage: (p.events ? p.events.length : 0), dominance: round((p.eloPeak - 1400) / 900, 3),
       lowCompHighAch: round(p.overall / Math.max(1, p.comps), 4),
       compDensity: round(p.comps / Math.max(1, years.length), 2),
-      multiEventComp: round((p.events ? p.events.length : 0) * (p.m ? p.m.m5 : 0) / 100, 2),
+      multiEventComp: 0,
       dnf: 0
     };
     p.stats = st;
@@ -303,11 +313,14 @@
   }
 
   function board(kind, key, n, ev, ctx) {
-    var list = ctx.ranked.filter(function (p) { return !ev || (p.events || []).indexOf(ev) >= 0; })
+    var all = ctx.ranked.filter(function (p) { return !ev || (p.events || []).indexOf(ev) >= 0; })
       .map(function (p) { var st = stats(p); return { p: p, v: st[key] }; })
-      .filter(function (d) { return typeof d.v === 'number' && isFinite(d.v); })
-      .sort(function (a, b) { return b.v - a.v; }).slice(0, n || 15);
-    return list;
+      .filter(function (d) { return typeof d.v === 'number' && isFinite(d.v); });
+    /* 该项对所有人都为 0 → 说明数据里没有这个字段，不展示无意义的空排行 */
+    var mx = 0;
+    all.forEach(function (d) { if (d.v > mx) mx = d.v; });
+    if (mx <= 0) return [];
+    return all.sort(function (a, b) { return b.v - a.v; }).slice(0, n || 15);
   }
 
   function cumAt(p, y) {
@@ -404,6 +417,26 @@
 
     var ranked = players.slice().sort(function (a, b) { return b.overall - a.overall; });
     ranked.forEach(function (p, i) { p.rank = i + 1; });
+
+    /* 年度名次表 {year:{id:rank}}：让「每年进入前 N」这类统计有真实依据 */
+    var allYears = [];
+    players.forEach(function (p) {
+      Object.keys(p.yearly || {}).forEach(function (y) {
+        var n = +y;
+        if (!isNaN(n) && allYears.indexOf(n) < 0) allYears.push(n);
+      });
+    });
+    allYears.sort(function (a, b) { return a - b; });
+    var yearRank = {};
+    allYears.forEach(function (y) {
+      var arr = players.map(function (p) { return { id: p.id, v: (p.yearly || {})[y] || 0 }; })
+        .filter(function (d) { return d.v > 0; })
+        .sort(function (a, b) { return b.v - a.v; });
+      var m = {};
+      arr.forEach(function (d, i) { m[d.id] = i + 1; });
+      yearRank[y] = m;
+    });
+    players.forEach(function (p) { p.yearRank = yearRank; });
 
     /* 国家聚合 */
     var NATIONS = {};

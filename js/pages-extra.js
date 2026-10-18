@@ -29,6 +29,21 @@
   let TL_MS = M.milestones; /* 当前单项筛选下的里程碑集合（供图表标线使用） */
   P.tlIdxToInfo = tlIdxToInfo; P.tlSlider = tlSlider; /* 供 app.js 滑块 / 播放使用 */
 
+  /* 自定义重大事件：localStorage 持久化 + 与内置合并 */
+  const MS_KEY = 'goat-milestones-custom';
+  function loadCustomMs() {
+    try { var a = JSON.parse(localStorage.getItem(MS_KEY)); return Array.isArray(a) ? a : []; }
+    catch (e) { return []; }
+  }
+  function saveCustomMs(a) { try { localStorage.setItem(MS_KEY, JSON.stringify(a)); } catch (e) { } }
+  function msSample() {
+    return [
+      { year: 2015, zh: '三阶单次首次突破 5 秒', en: '3x3 single breaks 5 seconds' },
+      { year: 2019, zh: '你自定义的某个里程碑', en: 'Your custom milestone' }
+    ];
+  }
+  P.msSample = msSample;
+
   P.timeline = function (state) {
     const view = state.tlView || 'rank';
     const mode = state.tlMode || 'active';
@@ -102,14 +117,30 @@
 
     const evSel = state.evSel || [];
     const singleEv = evSel.length === 1 ? evSel[0] : (state.group && M.EV[state.group] ? state.group : '');
-    const ms = singleEv ? M.eventMilestones(singleEv) : M.milestones;
+    const msBase = singleEv ? M.eventMilestones(singleEv) : M.milestones;
+    const custom = loadCustomMs().map(function (m) { return Object.assign({ custom: true }, m); });
+    const ms = msBase.concat(custom).sort(function (a, b) { return (a.year || 0) - (b.year || 0); });
     TL_MS = ms;
     h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('tl.events')) +
-      (singleEv ? ' · ' + esc(evName(M.EV[singleEv])) : '') + '</h2></div>';
+      (singleEv ? ' · ' + esc(evName(M.EV[singleEv])) : '') + '</h2>' +
+      (custom.length ? '<span class="tiny muted">+' + custom.length + ' ' + esc(t('tl.msCustom')) + '</span>' : '') + '</div>';
     h += '<div class="milestone-list">';
     ms.forEach(function (m) {
-      h += '<span class="ms-item"><b>' + m.year + '</b> ' + esc(t.isEn() ? m.en : m.zh) + '</span>';
+      const isC = !!m.custom;
+      h += '<span class="ms-item' + (isC ? ' ms-custom' : '') + '"><b>' + m.year + '</b> ' + esc(t.isEn() ? (m.en || m.zh) : m.zh);
+      if (isC) h += ' <span class="ms-tag">' + esc(t('tl.msCustom')) + '</span>';
+      h += '</span>';
     });
+    h += '</div></div>';
+
+    /* 自定义重大事件编辑 / 导入 */
+    h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('tl.msEdit')) + '</h2></div>';
+    h += '<p class="tiny muted" style="margin-bottom:8px">' + esc(t('tl.msGuide')) + '</p>';
+    h += '<textarea id="msInput" class="ms-input" rows="6" spellcheck="false" placeholder="[{&quot;year&quot;:2015,&quot;zh&quot;:&quot;...&quot;,&quot;en&quot;:&quot;...&quot;}]">' + esc(JSON.stringify(custom.length ? custom : msSample())) + '</textarea>';
+    h += '<div class="row" style="margin-top:8px;gap:8px;flex-wrap:wrap">';
+    h += '<button class="btn btn-primary" data-msimport>' + esc(t('tl.msImport')) + '</button>';
+    h += '<button class="btn" data-msreset>' + esc(t('tl.msReset')) + '</button>';
+    h += '<button class="btn" data-mssample>' + esc(t('tl.msSample')) + '</button>';
     h += '</div></div>';
     return h;
   };
@@ -200,12 +231,17 @@
 
   function markLines() {
     const T = window.Charts.theme();
+    const list = (TL_MS || []).filter(function (m) { return m.year >= 2003 && m.year <= 2026; });
     return {
       silent: true, symbol: 'none',
-      label: { show: true, position: 'insideEndTop', color: T.text3, fontSize: 10, rotate: 0, formatter: function (p) { return p.name; } },
-      lineStyle: { color: T.border2, type: 'dashed', width: 1 },
-      data: TL_MS.filter(function (m) { return m.year >= 2003 && m.year <= 2026; }).map(function (m) {
-        return { xAxis: String(m.year), name: (t.isEn() ? m.en : m.zh).slice(0, 12) };
+      label: {
+        show: true, position: 'insideEndTop', color: T.text, fontSize: 10, rotate: 90,
+        formatter: function (p) { return p.name; },
+        backgroundColor: 'rgba(127,127,127,.12)', padding: [2, 3], borderRadius: 3
+      },
+      lineStyle: { color: T.accent || T.text3, type: 'dashed', width: 1.4, opacity: 0.85 },
+      data: list.map(function (m) {
+        return { xAxis: String(m.year), name: (t.isEn() ? (m.en || m.zh) : m.zh).slice(0, 14), lineStyle: m.custom ? { color: T.accent, width: 1.8 } : undefined };
       })
     };
   }

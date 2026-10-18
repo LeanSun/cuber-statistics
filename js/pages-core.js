@@ -10,17 +10,26 @@
 
   /* ---------- 共享小工具 ---------- */
   function modName(k) { return t('m' + k[1] + '.name'); }
+  /* 旗帜：优先使用国内可达的 jsDelivr 镜像（flag-icons），失败时回退为文字代码 */
   function flag(iso, cls) {
     if (!iso) return '';
-    return '<img class="flag ' + (cls || '') + '" src="https://flagcdn.com/w40/' + iso.toLowerCase() + '.png" alt="' + esc(iso) + '" title="' + esc(M.countries[iso] || iso) + '" loading="lazy" onerror="this.outerHTML=\'<span class=&quot;flag-fb&quot;>' + esc(iso) + '</span>\'">';
+    iso = String(iso).toLowerCase();
+    const url = 'https://cdn.jsdelivr.net/gh/lipis/flag-icons@7.5.0/flags/4x3/' + iso + '.svg';
+    return '<img class="flag ' + (cls || '') + '" src="' + url + '" alt="' + esc(iso) + '" title="' + esc(M.countries[iso] || iso) + '" loading="lazy" onerror="this.onerror=null;this.outerHTML=\'<span class=&quot;flag-fb&quot;>' + esc(iso.toUpperCase()) + '</span>\'">';
   }
+  /* 头像：优先拉取 WCA 官方头像，失败则回退为首字母底色（由 app.js 注入的 goatAvatarFallback 处理） */
   function avatar(p, cls) {
-    return '<span class="avatar ' + (cls || '') + '" style="background:hsl(' + p.hue + ',56%,48%)">' + esc(U.initials(p.name)) + '</span>';
+    const ini = U.initials(p.name), hue = p.hue;
+    const wca = p.wcaId ? 'https://www.worldcubeassociation.org/static/person-photo/' + encodeURIComponent(String(p.wcaId).toUpperCase()) + '.jpg' : '';
+    if (!wca) return '<span class="avatar ' + (cls || '') + '" style="background:hsl(' + hue + ',56%,48%)">' + esc(ini) + '</span>';
+    return '<img class="avatar ' + (cls || '') + '" src="' + wca + '" alt="' + esc(p.name) + '" loading="lazy" data-cls="' + (cls || '') + '" data-hue="' + hue + '" data-ini="' + esc(ini) + '" onerror="if(window.goatAvatarFallback)window.goatAvatarFallback(this)">';
   }
+  /* 性别归一化：兼容 'Male'/'Female'/'m'/'f' 等各种真实导出写法 */
+  function genderOf(g) { if (!g) return ''; g = String(g).charAt(0).toUpperCase(); return g === 'F' ? 'F' : 'M'; }
   function playerLink(p) { return '<a class="linkish" href="#/player/' + p.id + '">' + esc(p.name) + '</a>'; }
   function evName(e) { return t.isEn() ? e.en : e.zh; }
-  function contName(c) { const o = M.continents[c]; return o ? (t.isEn() ? o.en : o.zh) : c; }
-  function regionName(r) { const o = M.regions[r]; return o ? (t.isEn() ? o.en : o.zh) : r; }
+  function contName(c) { const o = M.continents[c]; return o ? (t.isEn() ? o.en : o.zh) : (c || '—'); }
+  function regionName(r) { const o = M.regions[r]; return o ? (t.isEn() ? o.en : o.zh) : (r || '—'); }
   function countryName(iso) { return M.countries[iso] || iso; }
   function strength(p) { return Math.max(0.02, Math.min(1, (p.eloPeak - 1400) / 900)); }
   function scoreOf(p) {
@@ -123,7 +132,7 @@
   ];
 
   function genderBadge(p) {
-    if (p.gender === 'F') return '<span class="gpill g-f">' + esc(t('f.gender.f')) + '</span>';
+    if (genderOf(p.gender) === 'F') return '<span class="gpill g-f">' + esc(t('f.gender.f')) + '</span>';
     return '<span class="gpill g-m">' + esc(t('f.gender.m')) + '</span>';
   }
 
@@ -173,7 +182,7 @@
       if (state.country && p.country !== state.country) return false;
       if (state.continent && M.continentOf[p.country] !== state.continent) return false;
       if (state.region && M.regionOf[M.continentOf[p.country]] !== state.region) return false;
-      if (state.gender && state.gender !== 'all' && p.gender !== state.gender) return false;
+      if (state.gender && state.gender !== 'all' && genderOf(p.gender) !== state.gender) return false;
       if (state.y0 && p.end < state.y0) return false;
       if (state.y1 && p.start > state.y1) return false;
       if ((state.evSel && state.evSel.length) || (state.group === 'custom' && state.customIds && state.customIds.length)) {
@@ -229,6 +238,7 @@
   P.rank = function (state) {
     const rowsAll = P.filtered(state);
     const per = 50;
+    const maxScore = Math.max(1, rowsAll.reduce(function (m, r) { return Math.max(m, r.score); }, 0));
     const pages = Math.max(1, Math.ceil(rowsAll.length / per));
     const pg = Math.min(pages, Math.max(1, state.page));
     const rows = rowsAll.slice((pg - 1) * per, pg * per);
@@ -263,13 +273,16 @@
     rows.forEach(function (row, i) {
       const p = row.p, no = startNo + i + 1;
       const modTab = state.tab === 'peak' ? p.pk : p.m;
+      const score = row.score;
+      const cap = (window.GOAT && typeof window.GOAT.barMax === 'number') ? window.GOAT.barMax : 100;
+      const bw = Math.max(6, Math.min(score / maxScore * 100, cap));
       const topCls = no === 1 ? 'top1' : (no === 2 ? 'top2' : (no === 3 ? 'top3' : ''));
       h += '<tr data-pid="' + p.id + '" data-prow="' + p.id + '" class="' + (topCls ? topCls + '-row' : '') + '" style="cursor:pointer">';
       h += '<td class="tl"><div class="rank-cell"><span class="rank-no ' + topCls + '">' + no + '</span></div></td>';
       h += '<td class="tl"><div class="pname">' + avatar(p) + playerLink(p) + '</div></td>';
       h += '<td class="tl gcol">' + genderBadge(p) + '</td>';
       h += '<td class="tl">' + flag(p.country) + '</td>';
-      h += '<td class="barcell bars-full"><div class="bar-grow">' + miniStack(p, modTab) + '</div></td>';
+      h += '<td class="barcell bars-full"><div class="bar-row"><div class="bar-grow" style="width:' + bw.toFixed(1) + '%">' + miniStack(p, modTab) + '</div><span class="bar-total">' + U.fmt(score, 1) + '</span></div></td>';
       h += '<td class="tl exp-col"><button class="expand-btn" data-expand="' + p.id + '" aria-label="' + esc(t('ui.more')) + '">›</button></td>';
       h += '</tr>';
       h += '<tr class="exp-row" data-expfor="' + p.id + '" hidden><td colspan="' + COLS.length + '"><div class="exp-slot" data-body="' + p.id + '"></div></td></tr>';
@@ -290,17 +303,28 @@
     return h;
   };
 
-  /* 展开行：每模块分值 / 权重 / 加权贡献（单列紧凑布局） */
+  /* 展开行：每模块 分值 / 权重 / 加权贡献（#10） */
   P.expandBody = function (p, state) {
     const sc = scoreOf(p);
-
+    const tab = (state && state.tab === 'peak') ? 'peak' : 'career';
+    const cs = contribs(p, tab);
+    const tot = cs.reduce(function (a, c) { return a + c.v; }, 0) || 1;
     let h = '<div class="exp-inner">';
-    /* 摘要：生涯 / 巅峰 / 均衡（加权贡献已上移至总榜“总分”列，此处不再展开） */
     h += '<div class="exp-summary">' +
       '<span><b>' + esc(t('rank.tab.career')) + '</b> ' + U.fmt(sc.career, 1) + '</span>' +
       '<span><b>' + esc(t('rank.tab.peak')) + '</b> ' + U.fmt(sc.peak, 1) + '</span>' +
+      '<span><b>' + esc(t('rank.tab.overall')) + '</b> ' + U.fmt(sc.overall, 1) + '</span>' +
       '<span><b>' + esc(t('col.balance')) + '</b> ' + U.fmt(sc.balance, 2) + '</span></div>';
-    /* 操作 */
+    h += '<div class="exp-modtable">';
+    h += '<div class="exp-modrow bk-head"><span>' + esc(t('rank.module')) + '</span><span class="bk-num">' + esc(t('player.raw')) + '</span><span class="bk-num">' + esc(t('player.weight')) + '</span><span class="bk-num">' + esc(t('player.contrib')) + '</span><span class="bk-num">' + esc(t('player.pct')) + '</span></div>';
+    cs.forEach(function (c) {
+      h += '<div class="exp-modrow"><span class="bk-name"><i style="background:' + c.color + '"></i>' + esc(c.name) + '</span>' +
+        '<span class="bk-num">' + U.fmt(c.raw, 1) + '</span>' +
+        '<span class="bk-num">' + U.fmt(c.w * 100, 1) + '%</span>' +
+        '<span class="bk-num"><b>' + U.fmt(c.v, 2) + '</b></span>' +
+        '<span class="bk-num">' + U.fmt(c.v / tot * 100, 1) + '%</span></div>';
+    });
+    h += '</div>';
     h += '<div class="exp-actions"><a class="btn" href="#/player/' + p.id + '">' + esc(t('player.title')) + '</a>' +
       '<button class="btn" data-pkadd="' + p.id + '">' + esc(t('player.compare')) + '</button></div>';
     h += '</div>';

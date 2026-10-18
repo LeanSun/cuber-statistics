@@ -39,6 +39,32 @@
     view.querySelectorAll('.stat .v[data-count]').forEach(countUp);
   }
 
+  /* ---------- 头像加载失败回退（首字母底色） ---------- */
+  window.goatAvatarFallback = function (img) {
+    if (!img || !img.parentNode) return;
+    var s = document.createElement('span');
+    s.className = 'avatar ' + (img.getAttribute('data-cls') || '');
+    s.style.background = 'hsl(' + (img.getAttribute('data-hue') || 0) + ',56%,48%)';
+    s.textContent = img.getAttribute('data-ini') || '';
+    img.parentNode.replaceChild(s, img);
+  };
+
+  /* ---------- 首页随机渐变彩蛋（#1 #2）：每次刷新打乱七色渐变顺序 ---------- */
+  function applyGradientEgg() {
+    try {
+      var root = document.documentElement;
+      var cs = getComputedStyle(root);
+      var keys = ['--m1', '--m2', '--m3', '--m4', '--m5', '--m6', '--m7'];
+      var cols = keys.map(function (k) { return cs.getPropertyValue(k).trim(); });
+      for (var i = cols.length - 1; i > 0; i--) {
+        var j = Math.floor(Math.random() * (i + 1));
+        var t = cols[i]; cols[i] = cols[j]; cols[j] = t;
+      }
+      var stops = cols.map(function (c, idx) { return c + ' ' + Math.round(idx * 100 / (cols.length - 1)) + '%'; }).join(',');
+      root.style.setProperty('--grad-egg', 'linear-gradient(100deg,' + stops + ')');
+    } catch (e) { }
+  }
+
   /* ---------- 总榜行展开 / 折叠 ---------- */
   function toggleRow(id) {
     const row = view.querySelector('[data-expfor="' + id + '"]');
@@ -66,6 +92,7 @@
     try { th = localStorage.getItem('goat-theme'); } catch (e) { }
     if (!th) th = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
     applyTheme(th);
+    applyGradientEgg();
   }
   function applyTheme(th) {
     document.documentElement.setAttribute('data-theme', th);
@@ -177,8 +204,8 @@
     fbEl.hidden = false;
     let h = '<div class="filterbar-inner">';
 
-    /* ---------- 项目范围：预设分组（快速筛选） + 事件图标多选 ---------- */
-    h += '<div class="fgroup ev-fgroup"><span class="flabel">' + esc(t('f.events')) + '</span>';
+    /* ---------- 预设分组（快速筛选） + 事件图标多选 ---------- */
+    h += '<div class="fgroup ev-fgroup">';
     h += '<div class="fctl presets" id="fgGroup">';
     const presets = [{ id: 'all', zh: t('f.all'), en: t('f.all') }].concat(M.presetGroups.filter(function (g) { return g.id !== 'all'; }));
     presets.forEach(function (g) {
@@ -213,6 +240,12 @@
       h += '<div class="fgroup"><span class="flabel">' + esc(t('f.region')) + '</span><div class="fctl">';
       h += '<select id="fgGeo" class="sel">';
       h += '<option value="">' + esc(t('f.all')) + '</option>';
+      h += '<optgroup label="' + esc(t.isEn() ? 'WCA regions' : 'WCA 地区') + '">';
+      Object.keys(M.regions).forEach(function (rg) {
+        const v = 'reg:' + rg;
+        h += '<option value="' + v + '"' + (state.region === rg ? ' selected' : '') + '>' + esc(t.isEn() ? M.regions[rg].en : M.regions[rg].zh) + '</option>';
+      });
+      h += '</optgroup>';
       const contOrder = ['As', 'NAm', 'SAm', 'Eu', 'Af', 'Oc'];
       h += '<optgroup label="' + esc(t.isEn() ? 'Continents' : '大洲') + '">';
       contOrder.forEach(function (c) {
@@ -220,7 +253,7 @@
         h += '<option value="' + v + '"' + (state.geo === v ? ' selected' : '') + '>' + esc(t.isEn() ? M.continents[c].en : M.continents[c].zh) + '</option>';
       });
       h += '</optgroup>';
-      h += '<optgroup label="' + esc(t.isEn() ? 'Regions & countries' : '地区') + '">';
+      h += '<optgroup label="' + esc(t.isEn() ? 'Countries' : '国家') + '">';
       const fixed = ['CN', 'HK', 'MO', 'TW'];
       fixed.forEach(function (iso) {
         h += '<option value="' + iso + '"' + (state.geo === iso ? ' selected' : '') + '>' + esc(M.countries[iso]) + '</option>';
@@ -266,7 +299,13 @@
     if (!el) return;
     let n = M.ranked.length;
     if (route === 'rank') n = P.filtered(state).length;
-    el.textContent = t('f.summary', { n: n });
+    let geoLabel = '';
+    if (state.region) geoLabel = P.util.regionName(state.region);
+    else if (state.geo) {
+      if (state.geo.indexOf('cont:') === 0) geoLabel = P.util.contName(state.geo.slice(5));
+      else geoLabel = M.countries[state.geo] || state.geo;
+    }
+    el.textContent = (geoLabel ? geoLabel + ' · ' : '') + t('f.summary', { n: n });
   }
 
   /* ---------- 主渲染 ---------- */
@@ -288,7 +327,7 @@
     renderFilterBar(route);
 
     let html = '';
-    if (route === 'home') html = P.home();
+    if (route === 'home') { applyGradientEgg(); html = P.home(); }
     else if (route === 'rank') html = P.rank(state);
     else if (route === 'player') html = P.player(r.seg[1] || '');
     else if (route === 'pk') html = P.pk(state);
@@ -500,14 +539,100 @@
     pkTrayEl.hidden = ps.length === 0;
     pkTrayGo.hidden = ps.length < 2;
     pkTrayList.innerHTML = ps.map(function (p) {
-      return '<span class="pk-tray-chip">' + U.avatar(p, 'sm') +
+      return '<span class="pk-tray-chip">' + P.util.avatar(p, 'sm') +
         '<span class="pk-tray-name">' + esc(p.name) + '</span>' +
         '<button class="pk-tray-rm" data-pktrayrm="' + p.id + '" aria-label="移除">×</button></span>';
     }).join('');
   }
 
+  /* ---------- 自定义重大事件导入 / 重置 / 示例（toast 复用上方已有实现） ---------- */
+  const MS_KEY = 'goat-milestones-custom';
+  function msImport() {
+    const ta = document.getElementById('msInput');
+    if (!ta) return;
+    let arr;
+    try { arr = JSON.parse(ta.value.trim()); } catch (e) { toast(t('tl.msErr')); return; }
+    if (!Array.isArray(arr)) { toast(t('tl.msErr')); return; }
+    const clean = [];
+    for (let i = 0; i < arr.length; i++) {
+      const it = arr[i];
+      if (!it || typeof it.year !== 'number' || !it.zh) { toast(t('tl.msErr')); return; }
+      clean.push({ year: it.year, zh: String(it.zh), en: it.en ? String(it.en) : String(it.zh) });
+    }
+    try { localStorage.setItem(MS_KEY, JSON.stringify(clean)); } catch (e) { }
+    toast(t('tl.msOk') + ' (' + clean.length + ')');
+    render(true);
+  }
+  function msReset() { try { localStorage.removeItem(MS_KEY); } catch (e) { } toast(t('tl.msReset')); render(true); }
+  function msSampleFill() { const ta = document.getElementById('msInput'); if (ta && P.msSample) ta.value = JSON.stringify(P.msSample(), null, 2); toast(t('tl.msSample')); }
+
+  /* ---------- 自定义设置（速率 / 宽度 / 颜色） ---------- */
+  const SETTINGS_KEY = 'goat-settings';
+  const PALETTES = {
+    vibrant: ['#ff2d8e', '#ff8a1f', '#ffd21f', '#1fd07a', '#13b9f0', '#8b5cf6', '#ef4444'],
+    pastel: ['#f472b6', '#fbbf24', '#a3e635', '#34d399', '#38bdf8', '#a78bfa', '#fb7185'],
+    ocean: ['#0ea5e9', '#06b6d4', '#14b8a6', '#22c55e', '#3b82f6', '#6366f1', '#0d9488'],
+    sunset: ['#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#ec4899', '#d946ef']
+  };
+  const PALETTE_NAMES = { vibrant: '活力', pastel: '柔和', ocean: '海洋', sunset: '日落' };
+  let SET = loadSettings();
+  function loadSettings() { try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; } catch (e) { return {}; } }
+  function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(SET)); } catch (e) { } }
+  function applySettings(s) {
+    const root = document.documentElement;
+    if (s.accent) {
+      root.style.setProperty('--accent', s.accent);
+      root.style.setProperty('--accent-soft', 'color-mix(in srgb,' + s.accent + ' 16%,transparent)');
+      root.style.setProperty('--accent-2', s.accent);
+    }
+    if (s.palette && PALETTES[s.palette]) {
+      PALETTES[s.palette].forEach(function (c, i) { root.style.setProperty('--m' + (i + 1), c); });
+    }
+    const barMax = (typeof s.barMax === 'number') ? s.barMax : 100;
+    const anim = (typeof s.anim === 'number') ? s.anim : 1;
+    root.style.setProperty('--bar-max', barMax + '%');
+    root.style.setProperty('--anim-rate', String(anim));
+    window.GOAT = window.GOAT || {};
+    window.GOAT.barMax = barMax; window.GOAT.anim = anim;
+  }
+  function openSettings() {
+    const modal = document.getElementById('settingsModal');
+    if (!modal) return;
+    const palSel = document.getElementById('setPalette');
+    if (palSel && !palSel.options.length) {
+      Object.keys(PALETTES).forEach(function (k) {
+        const o = document.createElement('option');
+        o.value = k; o.textContent = PALETTE_NAMES[k] || k;
+        palSel.appendChild(o);
+      });
+    }
+    const a = document.getElementById('setAccent'); if (a) a.value = SET.accent || '#2f6feb';
+    const p = document.getElementById('setPalette'); if (p) p.value = SET.palette || 'vibrant';
+    const b = document.getElementById('setBar'); if (b) { b.value = (typeof SET.barMax === 'number') ? SET.barMax : 100; const v = document.getElementById('setBarVal'); if (v) v.textContent = b.value + '%'; }
+    const an = document.getElementById('setAnim'); if (an) { an.value = (typeof SET.anim === 'number') ? SET.anim : 1; const v = document.getElementById('setAnimVal'); if (v) v.textContent = an.value + '×'; }
+    modal.hidden = false; requestAnimationFrame(function () { modal.classList.add('open'); });
+  }
+  function closeSettings() {
+    const modal = document.getElementById('settingsModal');
+    if (!modal) return;
+    modal.classList.remove('open');
+    setTimeout(function () { modal.hidden = true; }, 180);
+  }
+  function bindSettings() {
+    const a = document.getElementById('setAccent');
+    const p = document.getElementById('setPalette');
+    const b = document.getElementById('setBar');
+    const an = document.getElementById('setAnim');
+    if (a) a.addEventListener('input', function () { SET.accent = a.value; applySettings(SET); saveSettings(); });
+    if (p) p.addEventListener('change', function () { SET.palette = p.value; applySettings(SET); saveSettings(); });
+    if (b) b.addEventListener('input', function () { SET.barMax = +b.value; const v = document.getElementById('setBarVal'); if (v) v.textContent = b.value + '%'; applySettings(SET); saveSettings(); });
+    if (an) an.addEventListener('input', function () { SET.anim = +an.value; const v = document.getElementById('setAnimVal'); if (v) v.textContent = an.value + '×'; applySettings(SET); saveSettings(); });
+    const reset = document.querySelector('[data-setreset]');
+    if (reset) reset.addEventListener('click', function () { SET = {}; localStorage.removeItem(SETTINGS_KEY); applySettings(SET); if (a) a.value = '#2f6feb'; if (p) p.value = 'vibrant'; if (b) { b.value = 100; const v = document.getElementById('setBarVal'); if (v) v.textContent = '100%'; } if (an) { an.value = 1; const v = document.getElementById('setAnimVal'); if (v) v.textContent = '1×'; } toast(t('f.reset')); });
+  }
+
   /* ---------- 全局事件委托 ---------- */
-  const DELEGATE = '[data-sort],[data-page],[data-expand],[data-prow],[data-tab],[data-pkadd],[data-pkrm],[data-pktrayrm],[data-pktrayclear],[data-toggle],[data-expandall],[data-goto],[data-group],[data-gender],[data-retired],[data-tlmode],[data-tlview],[data-tlstep],[data-tlmetric],[data-tllane],[data-topic],[data-topicev],[data-topicboard],[data-other],[data-nation],[data-scope],[data-continent],[data-evpick],[data-evtab],[data-evtoggle],[data-evall],[data-evnone],[data-evsave],[data-gload],[data-gdel],[data-reclevel],[data-rectype],[data-podtier],[data-mdanchor],[data-mdsec]';
+  const DELEGATE = '[data-sort],[data-page],[data-expand],[data-prow],[data-tab],[data-pkadd],[data-pkrm],[data-pktrayrm],[data-pktrayclear],[data-toggle],[data-expandall],[data-goto],[data-group],[data-gender],[data-retired],[data-tlmode],[data-tlview],[data-tlstep],[data-tlmetric],[data-tllane],[data-topic],[data-topicev],[data-topicboard],[data-other],[data-nation],[data-scope],[data-continent],[data-evpick],[data-evtab],[data-evtoggle],[data-evall],[data-evnone],[data-evsave],[data-gload],[data-gdel],[data-reclevel],[data-rectype],[data-podtier],[data-mdanchor],[data-mdsec],[data-msimport],[data-msreset],[data-mssample]';
 
   document.addEventListener('click', function (e) {
     const el = e.target.closest ? e.target.closest(DELEGATE) : null;
@@ -525,6 +650,10 @@
 
     if (!el) return;
     if (el.hasAttribute('data-goto')) { location.hash = el.getAttribute('data-goto'); return; }
+
+    if (el.hasAttribute('data-msimport')) { msImport(); return; }
+    if (el.hasAttribute('data-msreset')) { msReset(); return; }
+    if (el.hasAttribute('data-mssample')) { msSampleFill(); return; }
 
     if (el.hasAttribute('data-tab')) {
       state.tab = el.getAttribute('data-tab'); state.page = 1; state.sortKey = 'score'; state.sortDir = 'desc';
@@ -690,7 +819,12 @@
 
   document.addEventListener('change', function (e) {
     const el = e.target;
-    if (el.id === 'fgGeo') { state.geo = el.value || ''; state.country = ''; state.continent = ''; state.region = ''; state.page = 1; render(true); }
+    if (el.id === 'fgGeo') {
+      const v = el.value || '';
+      if (v.indexOf('reg:') === 0) { state.region = v.slice(4); state.geo = ''; }
+      else { state.geo = v; state.region = ''; }
+      state.country = ''; state.continent = ''; state.page = 1; render(true);
+    }
     if (el.id === 'fgCountry') { state.country = el.value; state.page = 1; render(true); }
     if (el.id === 'fgRegion') { state.region = el.value; state.page = 1; render(true); }
     if (el.id === 'fgY0') { state.y0 = el.value ? +el.value : null; state.page = 1; render(true); }
@@ -748,6 +882,12 @@
 
   document.getElementById('themeBtn').addEventListener('click', toggleTheme);
   document.getElementById('langBtn').addEventListener('click', toggleLang);
+  const sb = document.getElementById('settingsBtn');
+  if (sb) sb.addEventListener('click', openSettings);
+  document.addEventListener('click', function (e) {
+    const cm = e.target.closest ? e.target.closest('[data-closemodal]') : null;
+    if (cm) closeSettings();
+  });
   document.getElementById('navToggle').addEventListener('click', function () {
     const open = navEl.classList.toggle('open');
     this.setAttribute('aria-expanded', open ? 'true' : 'false');
@@ -788,6 +928,9 @@
   }
 
   /* ---------- 启动 ---------- */
+  SET = loadSettings();
+  applySettings(SET);   /* 先应用配色，initTheme 的渐变彩蛋才能读到自定义色 */
+  bindSettings();
   initTheme();
   initLang();
   applyDataMode();
