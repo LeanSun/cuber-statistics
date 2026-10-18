@@ -53,6 +53,9 @@ jobs:
           ls -lh /tmp/wca_export.tsv.zip
 
       - name: Run ETL (WCA export -> js/data.js)
+        env:
+          # 全量导出（30 万选手 / 700 万成绩）计算峰值超过 Node 默认 4GB 堆
+          NODE_OPTIONS: --max-old-space-size=6144
         run: |
           EMIT="${{ github.event.inputs.emit_max || '1500' }}"
           node etl/build.js \

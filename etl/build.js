@@ -471,15 +471,8 @@ function computeModules() {
     p.months1 = 0; p.months10 = 0; p.months100 = 0; p.peakSpan = 0; p.peakAge = 0;
 
     p.events = Array.from(p.eventsSet).sort((a, b) => ((events.get(a) || { rank: 99 }).rank) - ((events.get(b) || { rank: 99 }).rank));
-    /* 每项目最佳成绩：原始值 + 展示字符串 */
-    const ebOut = {};
-    Object.keys(p.evBest).forEach((eid) => {
-      const o = p.evBest[eid];
-      const s = o.b > 0 ? fmtResult(eid, o.b, 'single') : '';
-      const a = o.a > 0 ? fmtResult(eid, o.a, 'avg') : '';
-      if (s || a) ebOut[eid] = { b: o.b, a: o.a, s: s, af: a };
-    });
-    p.evBest = ebOut;
+    /* 每项目最佳成绩保留原始编码值 {b,a}；展示字符串仅在入榜/输出时按需格式化，
+       避免为 30 万选手全部预生成字符串导致 CI 内存溢出（evBest 不进入最终数据） */
     p.comps = p.compsSet.size;
     p.start = p.start === 9999 ? 2003 : p.start;
     if (p.end === 0) p.end = p.start;
@@ -501,7 +494,11 @@ function computeModules() {
       if (r > EVENT_BOARD_MAX) return;
       const arr = EVENT_BOARDS[eid] || (EVENT_BOARDS[eid] = []);
       const e = eb[eid] || {};
-      arr.push({ id: p.wcaId, r: r, b: e.b || 0, a: e.a || 0, s: e.s || '', af: e.af || '' });
+      arr.push({
+        id: p.wcaId, r: r, b: e.b || 0, a: e.a || 0,
+        s: e.b > 0 ? fmtResult(eid, e.b, 'single') : '',
+        af: e.a > 0 ? fmtResult(eid, e.a, 'avg') : ''
+      });
     });
   });
   Object.keys(EVENT_BOARDS).forEach((eid) => {
@@ -509,6 +506,10 @@ function computeModules() {
     if (EVENT_BOARDS[eid].length > EVENT_BOARD_MAX) EVENT_BOARDS[eid] = EVENT_BOARDS[eid].slice(0, EVENT_BOARD_MAX);
   });
   log('每项目榜单:', Object.keys(EVENT_BOARDS).length, '个项目, 最大深度', EVENT_BOARD_MAX);
+
+  /* 释放中间结构：榜单已独立持有所需数据，evBest/worldRank/finalCounts 不再需要 */
+  list.forEach((p) => { p.evBest = null; });
+  worldRank.clear(); finalCounts.clear();
 
   return list;
 }
