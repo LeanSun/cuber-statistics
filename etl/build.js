@@ -98,6 +98,17 @@ function openEntry(base) {
   return child.stdout;
 }
 
+/* 各表的实际列名（首次读取时记录），用于兼容 camelCase / snake_case 差异 */
+const HEADERS = {};
+/* 从行对象里按候选列名取值（兼容不同导出版本的命名差异） */
+function pick(r, names) {
+  for (let i = 0; i < names.length; i++) {
+    const v = r[names[i]];
+    if (v !== undefined && v !== null && v !== '') return v;
+  }
+  return '';
+}
+
 function streamTsv(base, onRow) {
   return new Promise((resolve, reject) => {
     const stream = openEntry(base);
@@ -110,7 +121,13 @@ function streamTsv(base, onRow) {
       while ((nl = buf.indexOf('\n')) >= 0) {
         const line = buf.slice(0, nl).replace(/\r$/, '');
         buf = buf.slice(nl + 1);
-        if (cols === null) { cols = line.split('\t'); continue; }
+        if (cols === null) {
+          cols = line.split('\t');
+          /* 列名在不同导出版本里可能是 camelCase 或 snake_case，记录一份别名映射 */
+          HEADERS[base] = cols.slice();
+          log(base, 'columns:', cols.slice(0, 24).join(',') + (cols.length > 24 ? ' …(+' + (cols.length - 24) + ')' : ''));
+          continue;
+        }
         if (!line.trim()) continue;
         const parts = line.split('\t');
         rowN++;
@@ -215,7 +232,7 @@ async function loadDimensions() {
     const y = toInt(r.year);
     const mo = toInt(r.month), d = toInt(r.day);
     const date = (y ? (y + '-' + pad2(mo || 1) + '-' + pad2(d || 1)) : '');
-    comps.set(r.id, { name: r.name, country_id: r.country_id, year: y, date: date, city: r.cityName || '' });
+    comps.set(r.id, { name: r.name, country_id: r.country_id, year: y, date: date, city: pick(r, ['cityName', 'city_name', 'city']) });
   });
   log('competitions:', comps.size);
 
@@ -407,8 +424,9 @@ async function processResults() {
     if (year < p.start) p.start = year;
     if (year > p.end) p.end = year;
     p.resultRows++;
+    /* 单次尝试（value1..value5）：不同导出版本列名可能是 value1 或 value_1 */
     for (let vi = 1; vi <= 5; vi++) {
-      const vv = toInt(r['value' + vi]);
+      const vv = toInt(pick(r, ['value' + vi, 'value_' + vi]));
       if (vv === 0 || vv === -2) continue;   // 空 / DNS 不计入尝试
       p.attempts++;
       if (vv === -1) p.dnf++; else p.solves++;
@@ -601,17 +619,18 @@ function computeModules() {
 async function enrichCompStats(ids) {
   if (!ids || !ids.size) return;
   log('二次扫描 results（仅输出选手）…');
-  const cnt = new Map();          // pid -> Map(compId -> 项目数)
+  const cnt = new Map();          // pid -> Map(compId -> Set(项目))
   await streamTsv('results', (r) => {
     const pid = r.person_id; if (!pid || !ids.has(pid)) return;
     const cid = r.competition_id; if (!cid) return;
     let m = cnt.get(pid); if (!m) { m = new Map(); cnt.set(pid, m); }
-    m.set(cid, (m.get(cid) || 0) + 1);
+    let s = m.get(cid); if (!s) { s = new Set(); m.set(cid, s); }
+    s.add(r.event_id);
   });
   cnt.forEach((m, pid) => {
     const p = players.get(pid); if (!p) return;
     let mx = 0, multi = 0;
-    m.forEach((n) => { if (n > mx) mx = n; if (n >= 5) multi++; });
+    m.forEach((s) => { const n = s.size; if (n > mx) mx = n; if (n >= 5) multi++; });
     p.maxEventsPerComp = mx;
     p.multiEventComp = multi;
   });
@@ -739,14 +758,25 @@ function buildEventMilestones() {
     cities: p.cities || 0, maxEventsPerComp: p.maxEventsPerComp || 0, multiEventComp: p.multiEventComp || 0,
     yearly: p.yearly
   });
-  const emitPlayers = detail.map((p) => Object.assign(base(p), { records: p.records, podiums: p.podiums }))
-    .concat(slim.map((p) => {
-      const o = base(p);
-      /* 精简档案：去掉恒 0 / null / 空的字段，显著降低体积（28k 名选手） */
-      ['nameZh', 'months1', 'months10', 'months100', 'peakSpan', 'peakAge', 'balance', 'yearly'].forEach((k) => { delete o[k]; });
-      o.records = []; o.podiums = []; o.slim = 1;
-      return o;
-    }));
+  /* 精简档案用「数组 + 列名表」紧凑编码，浏览器端展开为对象后再 assemble。
+     相比完整对象（约 720 字节/人）可压到约 200 字节/人，让收录量扩大一个数量级。 */
+  const SLIM_KEYS = ['id', 'name', 'country', 'gender', 'start', 'end', 'comps', 'mainEvent', 'events', 'hue',
+    'm', 'pk', 'career', 'peak', 'overall', 'balance', 'wr', 'cr', 'nr', 'nrW', 'recTotal', 'podTotal',
+    'wcGold', 'ccGold', 'ncGold', 'eloPeak', 'resultRows', 'attempts', 'solves', 'dnf', 'cities',
+    'maxEventsPerComp', 'multiEventComp'];
+  const slimRows = slim.map((p) => SLIM_KEYS.map((k) => {
+    if (k === 'm' || k === 'pk') {
+      const o = p[k] || {};
+      return [round2(o.m1), round2(o.m2), round2(o.m3), round2(o.m4), round2(o.m5), round2(o.m6), round2(o.m7)];
+    }
+    if (k === 'events') return (p.events || []).join(',');
+    if (k === 'balance') return Math.round(Math.log(Math.max(p.career, 0.01) / Math.max(p.peak, 0.01)) * 1000) / 1000;
+    if (k === 'nrW') return Math.round((p.nrW || 0) * 100) / 100;
+    return p[k];
+  }));
+  function round2(v) { return Math.round((v || 0) * 100) / 100; }
+
+  const emitPlayers = detail.map((p) => Object.assign(base(p), { records: p.records, podiums: p.podiums }));
 
   const CFG = {
     countries: countryName, continentOf: continentShort, meta: meta,
@@ -758,9 +788,23 @@ function buildEventMilestones() {
 
   const header = '/* AUTO-GENERATED by etl/build.js — 真实 WCA 数据。请勿手动编辑。 */\n' +
     '(function () {\n  var PLAYERS = ' + JSON.stringify(emitPlayers) + ';\n' +
+    '  var SLIM_KEYS = ' + JSON.stringify(SLIM_KEYS) + ';\n' +
+    '  var SLIM = ' + JSON.stringify(slimRows) + ';\n' +
+    '  var MODK = ["m1","m2","m3","m4","m5","m6","m7"];\n' +
+    '  SLIM.forEach(function (a) {\n' +
+    '    var o = { slim: 1, records: [], podiums: [], yearly: {}, nameZh: null, months1: 0, months10: 0, months100: 0, peakSpan: 0, peakAge: 0 };\n' +
+    '    for (var i = 0; i < SLIM_KEYS.length; i++) {\n' +
+    '      var k = SLIM_KEYS[i], v = a[i];\n' +
+    '      if (k === "m" || k === "pk") { var mo = {}; for (var j = 0; j < 7; j++) mo[MODK[j]] = v[j]; o[k] = mo; }\n' +
+    '      else if (k === "events") { o.events = v ? String(v).split(",") : []; }\n' +
+    '      else o[k] = v;\n' +
+    '    }\n' +
+    '    o.wcaId = o.id;\n' +
+    '    PLAYERS.push(o);\n' +
+    '  });\n' +
     '  var CFG = ' + JSON.stringify(CFG) + ';\n' +
     '  var CalcRef = (typeof Calc !== "undefined") ? Calc : (typeof require !== "undefined" ? require("../js/calc.js") : null);\n' +
     '  window.MOCK = CalcRef.assemble(PLAYERS, CFG);\n})();\n';
   fs.writeFileSync(OUT, header, 'utf8');
-  log('写出', OUT, '| 玩家', emitPlayers.length, '| 总耗时', ((Date.now() - t0) / 1000).toFixed(1) + 's');
+  log('写出', OUT, '| 明细', emitPlayers.length, '| 精简', slimRows.length, '| 总耗时', ((Date.now() - t0) / 1000).toFixed(1) + 's');
 })().catch((e) => { console.error('[etl] ERROR', e); process.exit(1); });
