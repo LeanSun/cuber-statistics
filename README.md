@@ -8,22 +8,22 @@
 
 ```
 cube-goat/
-├─ web/                  纯静态前端（GitHub Pages 直接托管）
-│  ├─ index.html         外壳：导航 / 筛选条 / 页脚 / WCA 版权声明
-│  ├─ css/style.css      主题变量（深浅双主题）+ 组件 + 响应式 + 动效
-│  ├─ vendor/echarts.min.js   本地 ECharts（离线可用）
-│  └─ js/
-│     ├─ i18n.js         中英文语言包
-│     ├─ params.js       可配置评分参数（localStorage 持久化）
-│     ├─ groups.js       自定义项目分组（localStorage 持久化）
-│     ├─ mock.js         演示数据生成器（待替换为 ETL 输出）
-│     ├─ icons.js        内联 SVG 图标（WCA 项目图标 + 界面图标）
-│     ├─ charts.js       ECharts 封装（主题取色 / 自适应 / 动画）
-│     ├─ pages-core.js   首页 · 综合总榜
-│     ├─ pages-player.js 选手主页 · 选手 PK
-│     ├─ pages-extra.js  动态可视化 · 另类统计 · 评分原理说明
-│     └─ app.js          路由 / 状态 / 主题 / 语言 / 事件
+├─ index.html            外壳：导航 / 筛选条 / 页脚 / WCA 版权声明（站点根，GitHub Pages 直接托管）
+├─ css/style.css         主题变量（深浅双主题）+ 组件 + 响应式 + 动效
+├─ vendor/echarts.min.js 本地 ECharts（离线可用）
+├─ js/
+│  ├─ i18n.js            中英文语言包
+│  ├─ params.js          可配置评分参数（localStorage 持久化）
+│  ├─ groups.js          自定义项目分组（localStorage 持久化）
+│  ├─ mock.js            演示数据生成器（待替换为 ETL 输出）
+│  ├─ icons.js           内联 SVG 图标（WCA 项目图标 + 界面图标）
+│  ├─ charts.js          ECharts 封装（主题取色 / 自适应 / 动画）
+│  ├─ pages-core.js      首页 · 综合总榜
+│  ├─ pages-player.js    选手主页 · 选手 PK
+│  ├─ pages-extra.js     动态可视化 · 另类统计 · 评分原理说明
+│  └─ app.js             路由 / 状态 / 主题 / 语言 / 事件
 ├─ docs/                 模型文档（GOAT 评分模型公式手册）
+├─ GOAT评分模型_公式手册_v1.html  公式手册自包含网页版
 └─ etl/                  （待建）WCA 导出下载 → 清洗 → 七模块计算 → JSON
 ```
 
@@ -45,7 +45,7 @@ cube-goat/
 
 ## 本地预览
 
-直接双击 `web/index.html` 即可（无需构建、无需联网；国旗图片与公式渲染在离线时自动降级）。
+直接双击 `index.html` 即可（无需构建、无需联网；国旗图片与公式渲染在离线时自动降级）。
 
 ## 数据来源与授权
 
@@ -57,8 +57,10 @@ cube-goat/
 
 ## 部署到 GitHub Pages
 
-1. 新建仓库（如 `cuber-statistics`）并推送本目录
-2. Settings → Pages → Build and deployment → Source 选 **GitHub Actions**（或 `main` 分支 `/web` 目录）
-3. 每周自动更新由 `.github/workflows/update.yml` 完成（待建）：先请求
+1. 将本目录推送到 GitHub 仓库（如 `cuber-statistics`）
+2. 仓库 Settings → Pages → Build and deployment → Source 选 **Deploy from a branch**
+   → Branch 选 **main** → 目录选 **/(root)** → Save（约 1 分钟生效）
+3. 站点地址：`https://<用户名>.github.io/<仓库名>/`
+4. 每周自动更新由 `.github/workflows/update.yml` 完成（待建）：先请求
    `https://www.worldcubeassociation.org/api/v0/export/public` 比对 `export_date`，
    有新版本才下载 `WCA_export_*.tsv.zip` 并重跑 ETL，仅提交聚合后的 JSON。
