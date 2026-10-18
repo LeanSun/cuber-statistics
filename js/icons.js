@@ -1,6 +1,6 @@
 /* ============================================================
    icons.js — 内联 SVG 图标（离线可用，无外部依赖）
-   cubeIcon(id): WCA 官方项目图标风格
+   event(id): 参照 cubing.com / WCA 风格的极简线描图标
    glyph(name):  界面功能图标
    usage:  Icons.event('333')  /  Icons.glyph('trophy')
    ============================================================ */
@@ -8,97 +8,114 @@
   const S = function (inner, extra) {
     return '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false"' + (extra || '') + '>' + inner + '</svg>';
   };
-  const R = function (x, y, w, h, r, op) {
-    return '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + (r == null ? 1.1 : r) + '"' + (op != null ? ' opacity="' + op + '"' : '') + '/>';
-  };
 
-  function grid(o) {
-    // o: {n:每边格数, x,y,size, gap, r}
-    const n = o.n, x0 = o.x, y0 = o.y, size = o.size, gap = o.gap == null ? 0.55 : o.gap, r = o.r == null ? 1 : o.r;
-    const cell = (size - gap * (n - 1)) / n;
-    let s = '';
-    for (let i = 0; i < n; i++) {
-      for (let j = 0; j < n; j++) {
-        s += R(x0 + i * (cell + gap), y0 + j * (cell + gap), cell, cell, r);
-      }
+  /* 三阶立方体：等距立方体轮廓 + 正面网格 */
+  function cube3(o) {
+    o = o || {};
+    const s = o.size || 16, x = o.x || 4, y = o.y || 5;
+    const dx = s * 0.17, dy = s * 0.17, k = s / 3;
+    const A = x + ',' + y, B = (x + s) + ',' + y, C = (x + s) + ',' + (y + s), D = x + ',' + (y + s);
+    const F = (x + s + dx) + ',' + (y - dy), G = (x + s + dx) + ',' + (y + s - dy), H = (x + dx) + ',' + (y + s - dy);
+    let g = '<g fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round">';
+    g += '<path d="M' + A + 'L' + B + 'L' + C + 'L' + D + 'Z"/>';
+    g += '<path d="M' + B + 'L' + F + 'L' + G + 'L' + C + 'Z"/>';
+    g += '<path d="M' + D + 'L' + H + 'L' + G + 'L' + C + 'Z"/>';
+    for (let i = 1; i < 3; i++) {
+      const gx = x + k * i; g += '<path d="M' + gx + ' ' + y + 'L' + gx + ' ' + (y + s) + '" opacity=".5"/>';
+      const gy = y + k * i; g += '<path d="M' + x + ' ' + gy + 'L' + (x + s) + ' ' + gy + '" opacity=".5"/>';
     }
-    return s;
+    g += '</g>';
+    return g;
+  }
+  /* 通用 N×N 网格（高阶立方体 / 多盲） */
+  function gridBox(n, x, y, size) {
+    const k = size / n;
+    let g = '<g fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round">';
+    g += '<rect x="' + x + '" y="' + y + '" width="' + size + '" height="' + size + '" rx="1.5"/>';
+    for (let i = 1; i < n; i++) {
+      const gx = x + k * i; g += '<path d="M' + gx + ' ' + y + 'L' + gx + ' ' + (y + size) + '" opacity=".5"/>';
+      const gy = y + k * i; g += '<path d="M' + x + ' ' + gy + 'L' + (x + size) + ' ' + gy + '" opacity=".5"/>';
+    }
+    g += '</g>';
+    return g;
   }
 
   /* ---------- 项目图标 ---------- */
   const EVENTS = {
-    '333': function () { return S('<g fill="currentColor">' + grid({ n: 3, x: 4, y: 4, size: 16 }) + '</g>'); },
-    '222': function () { return S('<g fill="currentColor">' + grid({ n: 2, x: 4.5, y: 4.5, size: 15, gap: 1.2, r: 1.6 }) + '</g>'); },
-    '444': function () { return S('<g fill="currentColor">' + grid({ n: 4, x: 3.5, y: 3.5, size: 17, gap: 0.5, r: 0.8 }) + '</g>'); },
-    '555': function () { return S('<g fill="currentColor">' + grid({ n: 5, x: 3.2, y: 3.2, size: 17.6, gap: 0.45, r: 0.7 }) + '</g>'); },
-    '666': function () { return S('<g fill="currentColor">' + grid({ n: 6, x: 3, y: 3, size: 18, gap: 0.4, r: 0.6 }) + '</g>'); },
-    '777': function () { return S('<g fill="currentColor">' + grid({ n: 7, x: 2.8, y: 2.8, size: 18.4, gap: 0.36, r: 0.5 }) + '</g>'); },
+    '333': function () { return S(cube3({ size: 16, x: 4, y: 5 })); },
+    '222': function () { return S(gridBox(2, 6.5, 7.5, 11)); },
+    '444': function () { return S(gridBox(4, 4, 4, 16)); },
+    '555': function () { return S(gridBox(5, 3.4, 3.4, 17.2)); },
+    '666': function () { return S(gridBox(6, 3, 3, 18)); },
+    '777': function () { return S(gridBox(7, 2.6, 2.6, 18.8)); },
     '333oh': function () {
-      return S('<g fill="currentColor">' + grid({ n: 3, x: 3, y: 8.2, size: 12.4, gap: 0.5, r: 0.9, }) + '</g>' +
-        '<path d="M9.4 7.4c.5-2.3 1.3-3.6 2.6-3.6 1.2 0 1.7 1 1.7 2.4 0 1.5-.6 2.4-1.6 2.4-.6 0-1-.3-1.2-.8" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>');
+      return S(cube3({ size: 12, x: 3.6, y: 9 }) +
+        '<path d="M9.6 8.2c.6-2.4 1.4-3.7 2.7-3.7 1.3 0 1.8 1.1 1.8 2.6 0 1.7-.7 2.7-1.8 2.7-.7 0-1.1-.3-1.3-.9" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>');
     },
     '333bf': function () {
-      return S('<g fill="currentColor">' + grid({ n: 3, x: 4, y: 4, size: 16, gap: 0.55, r: 1.1 }) + '</g>' +
-        '<rect x="2.4" y="8.1" width="19.2" height="4.4" rx="2.2" fill="var(--bg-elev,#fff)"/>' +
-        '<rect x="2.4" y="8.1" width="19.2" height="4.4" rx="2.2" fill="none" stroke="currentColor" stroke-width="1.4"/>' +
-        '<path d="M6.2 10.3h4M13.8 10.3h4" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" opacity=".55"/>');
+      return S(cube3({ size: 16, x: 4, y: 4 }) +
+        '<rect x="2.2" y="8" width="19.6" height="4.6" rx="2.3" fill="none" stroke="currentColor" stroke-width="1.5"/>' +
+        '<path d="M6 10.3h3.6M14.4 10.3h3.6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".55"/>');
     },
     '444bf': function () {
-      return S('<g fill="currentColor">' + grid({ n: 4, x: 3.5, y: 3.5, size: 17, gap: 0.5, r: 0.8 }) + '</g>' +
-        '<rect x="2" y="8.1" width="20" height="4.4" rx="2.2" fill="var(--bg-elev,#fff)"/>' +
-        '<rect x="2" y="8.1" width="20" height="4.4" rx="2.2" fill="none" stroke="currentColor" stroke-width="1.4"/>');
+      return S(gridBox(4, 3.5, 3.5, 17) +
+        '<rect x="2" y="8" width="20" height="4.6" rx="2.3" fill="none" stroke="currentColor" stroke-width="1.5"/>');
     },
     '555bf': function () {
-      return S('<g fill="currentColor">' + grid({ n: 5, x: 3.2, y: 3.2, size: 17.6, gap: 0.45, r: 0.7 }) + '</g>' +
-        '<rect x="2" y="8.1" width="20" height="4.4" rx="2.2" fill="var(--bg-elev,#fff)"/>' +
-        '<rect x="2" y="8.1" width="20" height="4.4" rx="2.2" fill="none" stroke="currentColor" stroke-width="1.4"/>');
+      return S(gridBox(5, 3.2, 3.2, 17.6) +
+        '<rect x="2" y="8" width="20" height="4.6" rx="2.3" fill="none" stroke="currentColor" stroke-width="1.5"/>');
     },
     '333mbf': function () {
-      return S('<g fill="currentColor">' +
-        grid({ n: 3, x: 1.6, y: 7, size: 8.2, gap: 0.4, r: 0.6 }) +
-        grid({ n: 3, x: 11.6, y: 2.4, size: 8.2, gap: 0.4, r: 0.6 }) +
-        grid({ n: 3, x: 13.6, y: 12.4, size: 8.2, gap: 0.4, r: 0.6 }) +
-        '</g>');
+      return S('<g fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round">' +
+        gridBox(3, 1.6, 7.4, 8.2) + gridBox(3, 11.2, 2.6, 8.2) + gridBox(3, 13.4, 12.4, 8.2) + '</g>');
     },
     '333fm': function () {
-      return S('<circle cx="12" cy="12" r="8.6" fill="none" stroke="currentColor" stroke-width="1.5"/>' +
-        '<path d="M12 7.2V12l3.4 2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>' +
-        '<path d="M5.6 5.6l2 2M18.4 5.6l-2 2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>');
+      return S('<circle cx="12" cy="12" r="8.8" fill="none" stroke="currentColor" stroke-width="1.5"/>' +
+        '<path d="M12 7V12l3.4 2.1" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>' +
+        '<path d="M6 5.8l2 2M18 5.8l-2 2M6 18.2l2-2M18 18.2l-2-2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity=".55"/>');
     },
     'clock': function () {
-      return S('<rect x="4" y="4" width="16" height="16" rx="3" fill="none" stroke="currentColor" stroke-width="1.5"/>' +
-        '<circle cx="12" cy="12" r="1.7" fill="currentColor"/>' +
-        '<path d="M12 8.2V12l2.6 1.8M17.4 9.6h2.2M17.4 14.4h2.2M4.4 9.6h2.2M4.4 14.4h2.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" fill="none"/>');
+      return S('<rect x="3.6" y="3.6" width="16.8" height="16.8" rx="3" fill="none" stroke="currentColor" stroke-width="1.5"/>' +
+        '<circle cx="12" cy="12" r="1.8" fill="currentColor"/>' +
+        '<path d="M12 8V12l2.6 1.9M17.6 9.8h2.4M17.6 14.2h2.4M3.8 9.8h2.4M3.8 14.2h2.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" fill="none"/>');
     },
     'minx': function () {
-      return S('<path d="M12 3.4l8 5.9-3.1 9.5H7.1L4 9.3z" fill="none" stroke="currentColor" stroke-width="1.5"/>' +
-        '<path d="M12 3.4v16M4 9.3l16 .1M7.1 18.8l9.8-9.4M16.9 18.8L7.1 9.4" stroke="currentColor" stroke-width="1" opacity=".55"/>');
+      return S('<path d="M12 3.2l8.2 6-3.2 9.8H7L3.8 9.2z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>' +
+        '<path d="M12 3.2v16M3.8 9.2l16 .2M7 19l9.6-9.6M16 19L7 9.4" stroke="currentColor" stroke-width="1" opacity=".5" stroke-linejoin="round"/>');
     },
     'pyram': function () {
-      return S('<path d="M12 3.6l9 14.8H3z" fill="none" stroke="currentColor" stroke-width="1.5"/>' +
-        '<path d="M12 3.6v14.8M3 18.4l9-6.4 9 6.4" stroke="currentColor" stroke-width="1" opacity=".55"/>');
+      return S('<path d="M12 3.4l9 14.8H3z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>' +
+        '<path d="M12 3.4v14.8M3 18.2l9-6.4 9 6.4M6.6 10.9 9.8 0" stroke="currentColor" stroke-width="1" opacity=".5" stroke-linejoin="round"/>');
     },
     'skewb': function () {
-      return S('<path d="M12 3.4l9 6.2v5.4L12 20.6 3.2 15V9.6z" fill="none" stroke="currentColor" stroke-width="1.5"/>' +
-        '<path d="M3.2 9.6L12 12l8.8-2.4M12 12v8.6" stroke="currentColor" stroke-width="1.1" opacity=".6"/>');
+      return S('<path d="M12 3.2l9 6.3v5.3L12 21 3 14.8V9.5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>' +
+        '<path d="M12 3.2v18.3M3 9.5l9 2.7 9-2.7M12 12.2 3 14.8M12 12.2 21 14.8" stroke="currentColor" stroke-width="1.1" opacity=".55" stroke-linejoin="round"/>');
     },
     'sq1': function () {
-      return S('<path d="M4.6 7.4c0-2 3.3-3.4 7.4-3.4s7.4 1.4 7.4 3.4v9.2c0 2-3.3 3.4-7.4 3.4s-7.4-1.4-7.4-3.4z" fill="none" stroke="currentColor" stroke-width="1.5"/>' +
+      return S('<path d="M4.6 7.2c0-2.1 3.4-3.5 7.4-3.5s7.4 1.4 7.4 3.5v9.6c0 2.1-3.4 3.5-7.4 3.5s-7.4-1.4-7.4-3.5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>' +
         '<path d="M4.6 12h14.8" stroke="currentColor" stroke-width="1.4"/>' +
-        '<path d="M8 4.4v15.2M16 4.4v15.2" stroke="currentColor" stroke-width="1" opacity=".5"/>');
+        '<path d="M8 4.2v15.6M16 4.2v15.6" stroke="currentColor" stroke-width="1" opacity=".5"/>');
     },
     '333ft': function () {
-      return S('<path d="M9.2 4.2c1.4 0 2.6.5 3.4 1.6.6.8.9 1.9.9 3.1 0 1.3-.3 2.4-.9 3.3-.5.7-1.2 1.2-2.1 1.5.4 1 .9 1.7 1.5 2.2.9.8 1.3 1.7 1.3 2.9 0 2.4-1.8 4-4.2 4-2.5 0-4.3-1.6-4.3-4 0-1.2.4-2.1 1.3-2.9.6-.5 1.1-1.2 1.5-2.2-.9-.3-1.6-.8-2.1-1.5-.6-.9-.9-2-.9-3.3 0-1.2.3-2.3.9-3.1.8-1.1 2-1.6 3.4-1.6z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>');
+      return S('<rect x="8.5" y="6.5" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.5"/>' +
+        '<path d="M12 3.5v3M12 13.5v3M5.5 10h3M15.5 10h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>' +
+        '<path d="M9.5 8.5h5M8.5 10v4M15.5 10v4M9.5 12h5" stroke="currentColor" stroke-width="1" opacity=".5"/>');
     },
     'magic': function () {
-      return S('<rect x="3" y="7.4" width="18" height="9.2" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.5"/>' +
-        '<path d="M9 7.4v9.2M15 7.4v9.2" stroke="currentColor" stroke-width="1.3"/>' +
-        '<path d="M3 12h18" stroke="currentColor" stroke-width="1" opacity=".45"/>');
+      return S('<rect x="3" y="7.6" width="18" height="8.8" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.5"/>' +
+        '<path d="M9 7.6v8.8M15 7.6v8.8" stroke="currentColor" stroke-width="1.3"/>' +
+        '<path d="M3 12h18" stroke="currentColor" stroke-width="1" opacity=".4"/>');
     },
     'mmagic': function () {
-      return S('<rect x="2.6" y="7.4" width="18.8" height="9.2" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.5"/>' +
-        '<path d="M7.5 7.4v9.2M12 7.4v9.2M16.5 7.4v9.2" stroke="currentColor" stroke-width="1.2"/>' +
-        '<path d="M2.6 12h18.8" stroke="currentColor" stroke-width="1" opacity=".45"/>');
+      return S('<rect x="2.6" y="7.6" width="18.8" height="8.8" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.5"/>' +
+        '<path d="M7.5 7.6v8.8M12 7.6v8.8M16.5 7.6v8.8" stroke="currentColor" stroke-width="1.2"/>' +
+        '<path d="M2.6 12h18.8" stroke="currentColor" stroke-width="1" opacity=".4"/>');
+    },
+    /* 三盲旧规则（已停办，眼罩闭合）：三阶立方体 + 旧式闭合眼 */
+    '333ec': function () {
+      return S(cube3({ size: 16, x: 4, y: 4 }) +
+        '<path d="M5 12.6c1.6-1.8 4-1.8 5.6 0M13.4 12.6c1.6-1.8 4-1.8 5.6 0" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>' +
+        '<path d="M5 11.7l1.2-1.6M11 11.7l1.2-1.6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".6"/>');
     }
   };
 
@@ -129,7 +146,7 @@
   function eventIcon(id, cls) {
     const f = EVENTS[id];
     if (f) return f().replace('class="ic"', 'class="ic ev-ic ' + (cls || '') + '"');
-    return S('<g fill="currentColor">' + grid({ n: 3, x: 4, y: 4, size: 16 }) + '</g>').replace('class="ic"', 'class="ic ev-ic ' + (cls || '') + '"');
+    return S('<g fill="currentColor">' + gridBox(3, 4, 4, 16) + '</g>').replace('class="ic"', 'class="ic ev-ic ' + (cls || '') + '"');
   }
   function glyph(name, cls) {
     const g = GLYPH[name] || GLYPH.info;

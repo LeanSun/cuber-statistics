@@ -61,7 +61,8 @@
     { id: 'sq1', zh: 'SQ1', en: 'Square-1', group: 'other', groups: ['other'], w: 0.87 },
     { id: '333ft', zh: '脚拧', en: '3x3x3 With Feet', group: 'retired', groups: ['retired'], w: 0.66, retired: true },
     { id: 'magic', zh: '八板', en: 'Magic', group: 'retired', groups: ['retired'], w: 0.60, retired: true },
-    { id: 'mmagic', zh: '十二板', en: 'Master Magic', group: 'retired', groups: ['retired'], w: 0.58, retired: true }
+    { id: 'mmagic', zh: '十二板', en: 'Master Magic', group: 'retired', groups: ['retired'], w: 0.58, retired: true },
+    { id: '333ec', zh: '三盲旧规', en: '3x3x3 With Eyes Closed', group: 'retired', groups: ['retired'], w: 0.62, retired: true }
   ];
   const EV = {};
   EVENTS.forEach(e => { EV[e.id] = e; });
@@ -74,19 +75,20 @@
     { id: 'big', zh: '高阶组', en: 'Big cubes', ids: ['444', '555', '666', '777'] },
     { id: 'other', zh: '异形组', en: 'Other', ids: ['clock', 'minx', 'pyram', 'skewb', 'sq1'] },
     { id: 'fmc', zh: '最少步', en: 'FMC', ids: ['333fm'] },
-    { id: 'retired', zh: '已停办', en: 'Discontinued', ids: ['333ft', 'magic', 'mmagic'] }
+    { id: 'retired', zh: '已停办', en: 'Discontinued', ids: ['333ft', 'magic', 'mmagic', '333ec'] }
   ];
 
   /* ---------- 国家 / 大洲 / WCA 地区 ---------- */
   const COUNTRIES = {
-    CN: '中国', US: '美国', JP: '日本', KR: '韩国', DE: '德国', GB: '英国', FR: '法国',
+    CN: '中国', HK: '中国香港', MO: '中国澳门', TW: '中国台湾',
+    US: '美国', JP: '日本', KR: '韩国', DE: '德国', GB: '英国', FR: '法国',
     NL: '荷兰', PL: '波兰', SE: '瑞典', IT: '意大利', ES: '西班牙', RU: '俄罗斯', UA: '乌克兰',
     CA: '加拿大', AU: '澳大利亚', BR: '巴西', MX: '墨西哥', IN: '印度', ID: '印度尼西亚',
     MY: '马来西亚', SG: '新加坡', TH: '泰国', VN: '越南', PH: '菲律宾', NZ: '新西兰', CH: '瑞士',
-    NG: '尼日利亚', KE: '肯尼亚', EG: '埃及', ZA: '南非', AR: '阿根廷', CL: '智利'
+    NG: '尼日利亚', KE: '肯利亚', EG: '埃及', ZA: '南非', AR: '阿根廷', CL: '智利'
   };
   const CONTINENT_OF = {
-    CN: 'As', JP: 'As', KR: 'As', IN: 'As', ID: 'As', MY: 'As', SG: 'As', TH: 'As', VN: 'As', PH: 'As',
+    CN: 'As', HK: 'As', MO: 'As', TW: 'As', JP: 'As', KR: 'As', IN: 'As', ID: 'As', MY: 'As', SG: 'As', TH: 'As', VN: 'As', PH: 'As',
     US: 'NAm', CA: 'NAm', MX: 'NAm',
     BR: 'SAm', AR: 'SAm', CL: 'SAm',
     GB: 'Eu', DE: 'Eu', FR: 'Eu', NL: 'Eu', PL: 'Eu', SE: 'Eu', IT: 'Eu', ES: 'Eu', RU: 'Eu', UA: 'Eu', CH: 'Eu',
@@ -131,10 +133,13 @@
     PH: [['Joshua', 'Reyes'], ['Sofia', 'Cruz']], CH: [['Noah', 'Steiner'], ['Lina', 'Frei']],
     NG: [['Chidi', 'Okafor'], ['Amara', 'Eze']], KE: [['Brian', 'Otieno'], ['Aisha', 'Wanjiru']],
     EG: [['Omar', 'Hassan'], ['Nour', 'Fahmy']], ZA: [['Liam', 'Pretorius'], ['Thandi', 'Mokoena']],
-    AR: [['Santiago', 'Lopez'], ['Valentina', 'Gomez']], CL: [['Matias', 'Rojas'], ['Isidora', 'Vargas']]
+    AR: [['Santiago', 'Lopez'], ['Valentina', 'Gomez']], CL: [['Matias', 'Rojas'], ['Isidora', 'Vargas']],
+    HK: [['Ka Ho', 'Chan'], ['Wing', 'Lee'], ['Chi Wai', 'Tang'], ['Hiu', 'Cheng'], ['Man', 'Fung']],
+    MO: [['Chi Fong', 'Wong'], ['Sio', 'U'], ['Ka Ian', 'Lei'], ['Weng', 'Chao']],
+    TW: [['Yu', 'Chen'], ['Wei', 'Lin'], ['Chia', 'Huang'], ['Yi', 'Wang'], ['Hsuan', 'Wu'], ['Cheng', 'Liu']]
   };
   const CKEYS = Object.keys(COUNTRIES);
-  const CW = ['CN','CN','CN','CN','US','US','US','JP','JP','KR','DE','DE','GB','FR','NL','PL','SE','IT','ES','RU','UA','CA','AU','BR','MX','IN','IN','ID','MY','SG','TH','VN','PH','CH','NZ','NG','KE','EG','ZA','AR','CL'];
+  const CW = ['CN','CN','CN','CN','CN','US','US','US','JP','JP','KR','DE','DE','GB','FR','NL','PL','SE','IT','ES','RU','UA','CA','AU','BR','MX','IN','IN','ID','MY','SG','TH','VN','PH','CH','NZ','NG','KE','EG','ZA','AR','CL','HK','HK','MO','TW','TW','TW'];
 
   function fmtValue(ev, type) {
     const s = (a, b, n) => round(rr(a, b), n == null ? 2 : n).toFixed(n == null ? 2 : n);

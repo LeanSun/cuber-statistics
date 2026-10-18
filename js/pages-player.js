@@ -105,7 +105,7 @@
     h += '<div>' + ecBox('waterfall', cs.map(function (c) { return { name: c.name, value: c.v, color: c.color }; }), { name: t('player.contrib') }, 260) + '</div>';
     h += '</div>';
     h += '<div class="breakdown-table">';
-    h += '<div class="breakdown-row bk-head"><span>' + esc(t('m1.name')) + '</span><span>' + esc(t('player.raw')) + '</span><span class="bk-num">' + esc(t('player.weight')) + '</span><span class="bk-num">' + esc(t('player.contrib')) + '</span><span class="bk-num">' + esc(t('player.pct')) + '</span></div>';
+    h += '<div class="breakdown-row bk-head"><span>' + esc(t('m1.name')) + '</span><span></span><span>' + esc(t('player.raw')) + '</span><span class="bk-num">' + esc(t('player.weight')) + '</span><span class="bk-num">' + esc(t('player.contrib')) + '</span><span class="bk-num">' + esc(t('player.pct')) + '</span></div>';
     cs.forEach(function (c) {
       h += '<div class="breakdown-row">';
       h += '<span class="bk-name"><i style="background:' + c.color + '"></i>' + esc(c.name) + '</span>';

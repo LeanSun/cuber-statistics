@@ -85,11 +85,13 @@
 
   /* ---------- 通用渲染 ---------- */
   function render(el, option, opts) {
+    opts = opts || {};
     if (!el || !has()) return null;
     let inst = null;
     try { inst = window.echarts.getInstanceByDom(el); } catch (e) { }
     if (!inst) inst = window.echarts.init(el, null, { renderer: 'canvas' });
-    inst.setOption(option, true);
+    const notMerge = opts.notMerge !== false; /* 默认整图替换；仅当显式 notMerge:false 时做增量合并 */
+    inst.setOption(option, notMerge);
     if (!el.__ecResized) {
       el.__ecResized = true;
       window.addEventListener('resize', function () { try { inst.resize(); } catch (e) { } });
@@ -167,9 +169,12 @@
   }
 
   /* ---------- 雷达 ---------- */
-  function radar(rows, indicators, opts) {
+  function radar(data, opts) {
+    /* 兼容两种调用：ecBox('radar', { rows, indicators }, opts) 与旧式 radar(rows, indicators, opts) */
     opts = opts || {};
     const T = pal();
+    const rows = data && data.rows ? data.rows : data;
+    const indicators = data && data.indicators ? data.indicators : opts.indicators || [];
     return Object.assign(base({ duration: 620 }), {
       tooltip: Object.assign({ trigger: 'item' }, base().tooltip),
       legend: { show: true, bottom: 0, textStyle: { color: T.text2, fontSize: 11.5 }, itemWidth: 12, itemHeight: 8, data: rows.map(function (r) { return r.name; }) },
@@ -198,6 +203,8 @@
     opts = opts || {};
     const T = pal();
     const top = opts.top || 10;
+    /* 补齐到固定条数，保证增量合并时序列身份稳定，不会残留旧序列 */
+    while (rows.length < top) rows.push({ name: '', color: T.text3, pts: {} });
     const series = rows.map(function (r) {
       return {
         name: r.name, type: 'line', smooth: 0.28, symbol: 'circle', symbolSize: 7,
@@ -224,18 +231,20 @@
   function barRace(items, opts) {
     opts = opts || {};
     const T = pal();
-    const n = Math.min(items.length, opts.top || 12);
+    const n = opts.top || 12;
     const data = items.slice(0, n);
+    /* 补齐到固定条数，保证增量合并时竞速条身份稳定、平滑换位 */
+    while (data.length < n) data.push({ name: '', value: 0, itemStyle: { color: T.text3, opacity: 0 } });
     return Object.assign(base({ stagger: 55 }), {
       grid: { left: 6, right: 62, top: 6, bottom: 6, containLabel: true },
-      xAxis: Object.assign({ type: 'value' }, axisCommon()),
+      xAxis: Object.assign({ type: 'value', max: function (v) { return Math.max(v.max, 1) * 1.05; } }, axisCommon()),
       yAxis: Object.assign({ type: 'category', inverse: true, data: data.map(function (d) { return d.name; }) }, axisCommon(), { splitLine: { show: false }, axisLabel: { color: T.text, fontSize: 12 } }),
       tooltip: Object.assign({ trigger: 'axis', axisPointer: { type: 'shadow' } }, base().tooltip),
       series: [{
         type: 'bar', barMaxWidth: 22,
         realtimeSort: true,
         itemStyle: { borderRadius: [0, 5, 5, 0] },
-        label: { show: true, position: 'right', color: T.text2, fontSize: 11.5, formatter: function (p) { return round(p.value, 1); } },
+        label: { show: true, position: 'right', color: T.text2, fontSize: 11.5, formatter: function (p) { return p.value > 0 ? round(p.value, 1) : ''; } },
         data: data.map(function (d) { return { value: round(d.value), itemStyle: { color: d.color } }; })
       }]
     });
@@ -408,11 +417,13 @@
       if (!opt) return;
       const builder = BUILDERS[opt.type];
       if (!builder) return;
-      const o = builder(opt.data || {}, opt.opts || {});
-      o.backgroundColor = 'transparent';
-      resolveDeep(o);
-      render(el, o, opt.opts || {});
-      el.removeAttribute('data-ec');
+      try {
+        const o = builder(opt.data || {}, opt.opts || {});
+        o.backgroundColor = 'transparent';
+        resolveDeep(o);
+        render(el, o, opt.opts || {});
+        el.removeAttribute('data-ec');
+      } catch (e) { /* 单个图表失败不影响其余 */ }
     });
   }
 
@@ -424,6 +435,7 @@
 
   window.Charts = {
     has: has, mount: mount, render: render, refresh: refreshPalette, theme: pal, round: round,
+    resolveColor: resolveColor, resolveDeep: resolveDeep,
     stacked: stacked, waterfall: waterfall, donut: donut, radar: radar, bump: bump,
     barRace: barRace, lanes: lanes, line: lineChart, groupBars: groupBars,
     diverging: diverging, gauge: gauge, scatter: scatter

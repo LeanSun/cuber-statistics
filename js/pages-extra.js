@@ -61,29 +61,7 @@
     }
     h += '</div>';
 
-    /* 地区 / 国家筛选（非泳道视图展示） */
-    if (view !== 'lane') {
-      const region = state.tlRegion || '';
-      const country = state.tlCountry || '';
-      h += '<div class="row tl-top" style="margin-top:10px">';
-      h += '<div class="fgroup"><span class="flabel">' + esc(t('f.region')) + '</span><select id="tlRegion" class="sel">';
-      h += '<option value="">' + esc(t('f.all')) + '</option>';
-      Object.keys(M.regions).forEach(function (r) {
-        h += '<option value="' + r + '"' + (region === r ? ' selected' : '') + '>' + esc(t.isEn() ? M.regions[r].en : M.regions[r].zh) + '</option>';
-      });
-      h += '</select></div>';
-      const cList = M.countryList.filter(function (iso) {
-        if (!region) return true;
-        return M.regionOf[M.continentOf[iso]] === region;
-      });
-      h += '<div class="fgroup"><span class="flabel">' + esc(t('col.country')) + '</span><select id="tlCountry" class="sel">';
-      h += '<option value="">' + esc(t('f.all')) + '</option>';
-      cList.forEach(function (iso) {
-        h += '<option value="' + iso + '"' + (country === iso ? ' selected' : '') + '>' + esc(M.countries[iso]) + '</option>';
-      });
-      h += '</select></div>';
-      h += '</div>';
-    }
+    /* 地区 / 国家筛选改由顶部合并下拉（fgGeo）统一处理；此处不再单独呈现 */
 
     h += '<div class="tl-desc"><span class="tl-desc-ic">' + Ic.glyph('info') + '</span>' +
       '<div><b>' + esc(t('tl.mode.' + mode)) + '</b>：' + esc(t('tl.mode.' + mode + '.d')) +
@@ -99,12 +77,15 @@
     }
 
     const chH = view === 'rank' ? 540 : (view === 'race' ? 470 : 380);
+    const geoRegion = (state.geo && state.geo.indexOf('cont:') === 0) ? state.geo.slice(5) : '';
+    const geoCountry = (state.geo && state.geo.indexOf('cont:') !== 0 && state.geo) ? state.geo : '';
     h += '<div class="chart-box" id="tlChart" style="height:' + chH + 'px" data-view="' + view + '" data-mode="' + mode +
       '" data-fy="' + fy + '" data-metric="' + metric + '" data-lane="' + state.tlLane + '" data-smooth="' + (state.tlSmooth ? 1 : 0) +
-      '" data-region="' + (state.tlRegion || '') + '" data-country="' + (state.tlCountry || '') + '"></div>';
+      '" data-region="' + geoRegion + '" data-country="' + geoCountry + '"></div>';
     h += '</div>';
 
-    const singleEv = state.group && M.EV[state.group] ? state.group : '';
+    const evSel = state.evSel || [];
+    const singleEv = evSel.length === 1 ? evSel[0] : (state.group && M.EV[state.group] ? state.group : '');
     const ms = singleEv ? M.eventMilestones(singleEv) : M.milestones;
     TL_MS = ms;
     h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('tl.events')) +
@@ -157,18 +138,32 @@
     const smooth = box.getAttribute('data-smooth') === '1';
     const region = box.getAttribute('data-region') || '';
     const country = box.getAttribute('data-country') || '';
-    let inst = null;
-    try { inst = window.echarts.getInstanceByDom(box); } catch (e) { }
-    const opt = tlOption(view, mode, fy, smooth, metric, region, country, lane);
-    if (!opt) return null;
-    opt.backgroundColor = 'transparent';
-    if (inst) { inst.setOption(opt); return inst; }
-    return window.Charts.render(box, opt);
+    try {
+      const opt = tlOption(view, mode, fy, smooth, metric, region, country, lane);
+      if (!opt) return null;
+      opt.backgroundColor = 'transparent';
+      window.Charts.resolveDeep ? window.Charts.resolveDeep(opt) : (function () { })(opt);
+      /* 结构（视图 / 模式 / 维度 / 单均）不变时做增量合并，名次与分数丝滑过渡 */
+      const sig = view + '|' + mode + '|' + metric + '|' + lane;
+      const sameStruct = box.__tlSig === sig;
+      if (sameStruct) {
+        opt.animationDuration = 0;
+        opt.animationDurationUpdate = 480;
+        opt.animationEasingUpdate = 'cubicInOut';
+      }
+      let inst = null;
+      try { inst = window.Charts.render(box, opt, { notMerge: !sameStruct }); } catch (e) { inst = null; }
+      box.__tlSig = sig;
+      return inst;
+    } catch (e) { return null; }
   };
 
   function inScope(p, region, country) {
     if (country) return p.country === country;
-    if (region) return M.regionOf[M.continentOf[p.country]] === region;
+    if (region) {
+      if (M.continents[region]) return M.continentOf[p.country] === region;
+      return M.regionOf[M.continentOf[p.country]] === region;
+    }
     return true;
   }
   function metricScale(p, metric) {
@@ -263,26 +258,40 @@
       (tab === 'medal' ? ' ' + esc(t('top.medal.d')) : '') +
       (te ? ' <b>' + esc(t('top.eventFiltered')) + '</b>' : '') + '</div></div>';
 
-    defs.forEach(function (d) {
-      const list = M.board(tab, d.k, 12, te);
-      if (!list.length) return;
-      h += '<div class="card reveal board-card"><div class="card-head"><h2>' + esc(t('stat.' + d.k)) + '</h2>' +
-        '<span class="tiny muted">' + (t.isEn() ? 'Top' : '前') + ' ' + list.length + '</span></div>';
-      h += '<div class="grid grid-2" style="align-items:start">';
-      h += '<div class="table-wrap" style="border:none"><table class="data mini"><thead><tr><th class="tl">#</th><th class="tl">' +
-        esc(t('col.player')) + '</th><th class="tl">' + esc(t('col.country')) + '</th><th>' + esc(t('stat.' + d.k)) + '</th></tr></thead><tbody>';
-      list.forEach(function (row, i) {
-        h += '<tr><td class="tl">' + (i + 1) + '</td>' +
-          '<td class="tl"><div class="pname">' + avatar(row.p, 'sm') + playerLink(row.p) + '</div></td>' +
-          '<td class="tl">' + flag(row.p.country) + '</td>' +
-          '<td class="num"><b>' + (d.pct ? U.fmt(row.v * 100, 1) + '%' : U.num(row.v)) + '</b></td></tr>';
+    /* 指标筛选：同一 tab 下只展示选中的一个排行，其余通过此处切换 */
+    const tbKey = (state.topicBoard && defs.some(function (b) { return b.k === state.topicBoard; })) ? state.topicBoard : (defs[0] && defs[0].k);
+    if (defs.length > 1) {
+      h += '<div class="ev-filter-head reveal"><span class="ev-filter-label">' + esc(t('top.board')) + '</span><div class="seg" role="group" aria-label="' + esc(t('top.board')) + '">';
+      defs.forEach(function (b) {
+        h += '<button class="chip' + (b.k === tbKey ? ' on' : '') + '" data-topicboard="' + b.k + '">' + esc(t('stat.' + b.k)) + '</button>';
       });
-      h += '</tbody></table></div>';
-      h += '<div>' + ecBox('groupBars', list.slice(0, 8).map(function (row, i) {
-        return { label: row.p.name.split(' ')[0], value: d.pct ? round(row.v * 100, 1) : row.v };
-      }), { rotate: 30 }, 240) + '</div>';
       h += '</div></div>';
-    });
+    }
+
+    const d = defs.filter(function (b) { return b.k === tbKey; })[0];
+    if (d) {
+      const list = M.board(tab, d.k, 12, te);
+      if (list.length) {
+        h += '<div class="card reveal board-card"><div class="card-head"><h2>' + esc(t('stat.' + d.k)) + '</h2>' +
+          '<span class="tiny muted">' + (t.isEn() ? 'Top' : '前') + ' ' + list.length + '</span></div>';
+        h += '<div class="grid grid-2" style="align-items:start">';
+        h += '<div class="table-wrap" style="border:none"><table class="data mini"><thead><tr><th class="tl">#</th><th class="tl">' +
+          esc(t('col.player')) + '</th><th class="tl">' + esc(t('col.country')) + '</th><th>' + esc(t('stat.' + d.k)) + '</th></tr></thead><tbody>';
+        list.forEach(function (row, i) {
+          h += '<tr><td class="tl">' + (i + 1) + '</td>' +
+            '<td class="tl"><div class="pname">' + avatar(row.p, 'sm') + playerLink(row.p) + '</div></td>' +
+            '<td class="tl">' + flag(row.p.country) + '</td>' +
+            '<td class="num"><b>' + (d.pct ? U.fmt(row.v * 100, 1) + '%' : U.num(row.v)) + '</b></td></tr>';
+        });
+        h += '</tbody></table></div>';
+        h += '<div>' + ecBox('groupBars', list.slice(0, 8).map(function (row, i) {
+          return { label: row.p.name.split(' ')[0], value: d.pct ? round(row.v * 100, 1) : row.v };
+        }), { rotate: 30 }, 240) + '</div>';
+        h += '</div></div>';
+      } else {
+        h += '<div class="empty reveal">' + esc(t('ui.noresult')) + '</div>';
+      }
+    }
 
     if (tab === 'eff') h += sensitivity(state);
     return h;

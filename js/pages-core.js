@@ -115,23 +115,24 @@
   const COLS = [
     { k: 'rank', label: 'col.rank', cls: 'tl' },
     { k: 'player', label: 'col.player', cls: 'tl' },
-    { k: 'bars', label: 'col.contrib', cls: '' },
+    { k: 'gender', label: 'col.gender', cls: 'tl gcol' },
     { k: 'country', label: 'col.country', cls: 'tl' },
-    { k: 'total', label: 'col.total' },
-    { k: 'm1', label: 'col.m1', cls: 'hidden-sm' }, { k: 'm2', label: 'col.m2', cls: 'hidden-sm' },
-    { k: 'm3', label: 'col.m3', cls: 'hidden-sm' }, { k: 'm4', label: 'col.m4', cls: 'hidden-sm' },
-    { k: 'm5', label: 'col.m5', cls: 'hidden-sm' }, { k: 'm6', label: 'col.m6', cls: 'hidden-sm' },
-    { k: 'm7', label: 'col.m7', cls: 'hidden-sm' },
-    { k: 'wr', label: 'col.wr' }, { k: 'wc', label: 'col.wc' },
-    { k: 'months', label: 'col.months', cls: 'hidden-sm' }, { k: 'elo', label: 'col.elo' },
+    { k: 'bars', label: 'col.contrib', cls: 'bars-full' },
     { k: 'exp', label: '', cls: 'tl' }
   ];
 
-  /* 项目集合：预设分组 / 自定义分组 / 单个项目 / 停办开关 */
+  function genderBadge(p) {
+    if (p.gender === 'F') return '<span class="gpill g-f">' + esc(t('f.gender.f')) + '</span>';
+    return '<span class="gpill g-m">' + esc(t('f.gender.m')) + '</span>';
+  }
+
+  /* 项目集合：多选事件 / 预设分组 / 单个项目 / 停办开关 */
   function eventSet(state) {
     const incRetired = state.retired;
     let ids = null;
-    if (state.group === 'custom') {
+    if (state.evSel && state.evSel.length) {
+      ids = state.evSel.slice();
+    } else if (state.group === 'custom') {
       ids = (state.customIds && state.customIds.length) ? state.customIds.slice() : null;
     } else if (state.group && M.EV[state.group]) {
       ids = [state.group];
@@ -149,16 +150,22 @@
 
   P.filtered = function (state) {
     const pool = eventSet(state);
-    const scoped = !!state.group && state.group !== 'all';
+    const scoped = (state.group && state.group !== 'all') || (state.evSel && state.evSel.length);
     let rows = M.ranked.filter(function (p) {
+      if (state.geo) {
+        if (state.geo.indexOf('cont:') === 0) {
+          if (M.continentOf[p.country] !== state.geo.slice(5)) return false;
+        } else if (p.country !== state.geo) return false;
+      }
       if (state.country && p.country !== state.country) return false;
       if (state.continent && M.continentOf[p.country] !== state.continent) return false;
       if (state.region && M.regionOf[M.continentOf[p.country]] !== state.region) return false;
       if (state.gender && state.gender !== 'all' && p.gender !== state.gender) return false;
       if (state.y0 && p.end < state.y0) return false;
       if (state.y1 && p.start > state.y1) return false;
-      if (state.group === 'custom' && state.customIds && state.customIds.length) {
-        if (!p.events.some(function (e) { return state.customIds.indexOf(e) >= 0; })) return false;
+      if ((state.evSel && state.evSel.length) || (state.group === 'custom' && state.customIds && state.customIds.length)) {
+        const sel = (state.evSel && state.evSel.length) ? state.evSel : state.customIds;
+        if (!p.events.some(function (e) { return sel.indexOf(e) >= 0; })) return false;
       } else if (scoped && state.group !== 'custom') {
         if (!p.events.some(function (e) { return pool.indexOf(e) >= 0; })) return false;
       }
@@ -185,10 +192,11 @@
     const val = function (row) {
       const p = row.p;
       switch (k) {
-        case 'score': return row.score;
-        case 'player': return p.name;
-        case 'country': return p.country;
-        case 'total': return row.score;
+      case 'score': return row.score;
+      case 'player': return p.name;
+      case 'country': return p.country;
+      case 'gender': return p.gender;
+      case 'total': return row.score;
         default:
           if (MOD.indexOf(k) >= 0) return (state.tab === 'peak' ? p.pk : p.m)[k];
           if (k === 'wr') return p.wr;
@@ -227,12 +235,12 @@
     h += '</div>';
     if (state.tab === 'peak') h += '<div class="warnbox reveal" style="margin-bottom:12px">' + esc(t('rank.peakNote')) + '</div>';
 
-    h += '<div class="table-wrap reveal"><table class="data"><thead><tr>';
+    h += '<div class="table-wrap reveal"><table class="data rank-table"><thead><tr>';
     COLS.forEach(function (c) {
       const isSorted = (state.sortKey || 'score') === c.k;
       const arw = isSorted ? (state.sortDir === 'asc' ? '▲' : '▼') : '';
-      if (c.k === 'exp') { h += '<th class="tl"></th>'; return; }
-      if (c.k === 'bars') { h += '<th class="bars-head">' + esc(t(c.label)) + '</th>'; return; }
+      if (c.k === 'exp') { h += '<th class="tl exp-col"></th>'; return; }
+      if (c.k === 'bars') { h += '<th class="bars-head bars-full">' + esc(t(c.label)) + '</th>'; return; }
       h += '<th class="' + (c.cls || '') + (isSorted ? ' sorted' : '') + '" data-sort="' + c.k + '">' +
         esc(c.label ? t(c.label) : '') + '<span class="arw">' + arw + '</span></th>';
     });
@@ -243,16 +251,13 @@
       const p = row.p, no = startNo + i + 1;
       const modTab = state.tab === 'peak' ? p.pk : p.m;
       const topCls = no === 1 ? 'top1' : (no === 2 ? 'top2' : (no === 3 ? 'top3' : ''));
-      h += '<tr data-pid="' + p.id + '" data-prow="' + p.id + '" style="cursor:pointer">';
+      h += '<tr data-pid="' + p.id + '" data-prow="' + p.id + '" class="' + (topCls ? topCls + '-row' : '') + '" style="cursor:pointer">';
       h += '<td class="tl"><div class="rank-cell"><span class="rank-no ' + topCls + '">' + no + '</span></div></td>';
       h += '<td class="tl"><div class="pname">' + avatar(p) + playerLink(p) + '</div></td>';
-      h += '<td class="barcell">' + miniStack(p, modTab) + '</td>';
+      h += '<td class="tl gcol">' + genderBadge(p) + '</td>';
       h += '<td class="tl">' + flag(p.country) + '</td>';
-      h += '<td class="num"><b>' + U.fmt(row.score, 1) + '</b></td>';
-      MOD.forEach(function (k) { h += '<td class="num hidden-sm">' + U.fmt(modTab[k], 1) + '</td>'; });
-      h += '<td class="num">' + p.wr + '</td><td class="num">' + p.wcGold + '</td>';
-      h += '<td class="num hidden-sm">' + p.months1 + '</td><td class="num">' + p.eloPeak + '</td>';
-      h += '<td class="tl"><button class="expand-btn" data-expand="' + p.id + '" aria-label="' + esc(t('ui.more')) + '">›</button></td>';
+      h += '<td class="barcell bars-full"><div class="bar-grow">' + miniStack(p, modTab) + '</div></td>';
+      h += '<td class="tl exp-col"><button class="expand-btn" data-expand="' + p.id + '" aria-label="' + esc(t('ui.more')) + '">›</button></td>';
       h += '</tr>';
       h += '<tr class="exp-row" data-expfor="' + p.id + '" hidden><td colspan="' + COLS.length + '"><div class="exp-slot" data-body="' + p.id + '"></div></td></tr>';
     });
@@ -289,7 +294,7 @@
     return h;
   };
 
-  /* 展开行：每模块分值 / 权重 / 加权贡献 */
+  /* 展开行：每模块分值 / 权重 / 加权贡献（单列紧凑布局） */
   P.expandBody = function (p, state) {
     const w = Pm.weights();
     const sc = scoreOf(p);
@@ -297,19 +302,22 @@
     const tot = cs.reduce(function (a, c) { return a + c.v; }, 0) || 1;
 
     let h = '<div class="exp-inner">';
-    h += '<div class="exp-col">';
-    h += '<div class="tiny muted" style="margin-bottom:8px">' + esc(t('rank.contribution')) + '</div>';
-    h += ecBox('stacked', [{ name: p.name, values: cs.map(function (c) { return c.v; }) }], {
+    /* 顶部：迷你堆叠图（横向单条） + 图例 */
+    h += '<div class="exp-chart">' + ecBox('stacked', [{ name: p.name, values: cs.map(function (c) { return c.v; }) }], {
       max: Math.round(tot * 1.02 * 10) / 10,
       series: MOD.map(function (k) { return { name: modName(k), color: MODC[k] }; })
-    }, 92);
-    h += '<div class="modlegend">' + MOD.map(function (k) {
+    }, 60) + '</div>';
+    h += '<div class="exp-legend">' + MOD.map(function (k) {
       return '<span title="' + esc(t('m' + k[1] + '.d')) + '"><i style="background:' + MODC[k] + '"></i>' + esc(modName(k)) + '</span>';
     }).join('') + '</div>';
-    h += '</div>';
-
-    h += '<div class="exp-col">';
-    h += '<div class="breakdown-row bk-head"><span>' + esc(t('m1.name')) + '</span><span>' + esc(t('player.raw')) + '</span><span class="bk-num">' + esc(t('player.weight')) + '</span><span class="bk-num">' + esc(t('player.contrib')) + '</span><span class="bk-num">' + esc(t('player.pct')) + '</span></div>';
+    /* 摘要：生涯 / 巅峰 / 均衡 */
+    h += '<div class="exp-summary">' +
+      '<span><b>' + esc(t('rank.tab.career')) + '</b> ' + U.fmt(sc.career, 1) + '</span>' +
+      '<span><b>' + esc(t('rank.tab.peak')) + '</b> ' + U.fmt(sc.peak, 1) + '</span>' +
+      '<span><b>' + esc(t('col.balance')) + '</b> ' + U.fmt(sc.balance, 2) + '</span></div>';
+    /* 拆分表（全宽紧凑） */
+    h += '<div class="exp-break">';
+    h += '<div class="breakdown-row bk-head"><span>' + esc(t('m1.name')) + '</span><span></span><span>' + esc(t('player.raw')) + '</span><span class="bk-num">' + esc(t('player.weight')) + '</span><span class="bk-num">' + esc(t('player.contrib')) + '</span><span class="bk-num">' + esc(t('player.pct')) + '</span></div>';
     cs.forEach(function (c) {
       h += '<div class="breakdown-row">';
       h += '<span class="bk-name"><i style="background:' + c.color + '"></i>' + esc(c.name) + '</span>';
@@ -320,13 +328,11 @@
       h += '<span class="bk-num">' + U.fmt(c.v / tot * 100, 1) + '%</span>';
       h += '</div>';
     });
-    h += '<div class="tiny muted" style="margin-top:8px">' +
-      esc(t('rank.tab.career')) + ' ' + U.fmt(sc.career, 1) +
-      ' · ' + esc(t('rank.tab.peak')) + ' ' + U.fmt(sc.peak, 1) +
-      ' · ' + esc(t('col.balance')) + ' ' + U.fmt(sc.balance, 2) + '</div>';
-    h += '<div style="margin-top:10px"><a class="btn" href="#/player/' + p.id + '">' + esc(t('player.title')) + '</a> ' +
+    h += '</div>';
+    /* 操作 */
+    h += '<div class="exp-actions"><a class="btn" href="#/player/' + p.id + '">' + esc(t('player.title')) + '</a>' +
       '<button class="btn" data-pkadd="' + p.id + '">' + esc(t('player.compare')) + '</button></div>';
-    h += '</div></div>';
+    h += '</div>';
     return h;
   };
 })();

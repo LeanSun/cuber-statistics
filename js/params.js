@@ -89,8 +89,8 @@
   const LABEL = {
     b1: ['M1 纪录 权重 β₁', 'M1 records weight'], b2: ['M2 大赛领奖台 权重 β₂', 'M2 championship weight'],
     b3: ['M3 公开赛领奖台 权重 β₃', 'M3 open weight'], b4: ['M4 统治力 权重 β₄', 'M4 dominance weight'],
-    b5: ['M5 广度 权重 β₅', 'M5 breadth weight'], b6: ['M6 生涯厚度 权重 β₆', 'M6 career weight'],
-    b7: ['M7 对战强度 权重 β₇', 'M7 head-to-head weight'],
+    b5: ['M5 全能广度 权重 β₅', 'M5 all-round breadth weight'], b6: ['M6 生涯厚度 权重 β₆', 'M6 career weight'],
+    b7: ['M7 实战对战 权重 β₇', 'M7 head-to-head weight'],
     lambda: ['名次价值指数 λ', 'Place-value exponent λ'], lambdaD: ['统治力积分指数 λ_D', 'Dominance exponent λ_D'],
     eta: ['深度因子强度 η', 'Depth factor η'], xiCurrent: ['现行项目状态系数', 'Current-event status'],
     xiRetiring: ['即将停办（魔表）', 'Discontinued soon (Clock)'], xiRetired: ['已停办项目', 'Discontinued events'],

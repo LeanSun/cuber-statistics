@@ -11,11 +11,11 @@
 
   const state = {
     tab: 'overall', sortKey: 'score', sortDir: 'desc', page: 1,
-    group: 'all', customIds: [], country: '', continent: '', region: '',
+    group: 'all', customIds: [], evSel: [], country: '', continent: '', region: '',
     gender: 'all', y0: null, y1: null, retired: false,
-    scope: 'country',
+    scope: 'country', geo: '',
     pk: [], tlView: 'rank', tlMode: 'active', tlFy: 2025, tlStep: 'year', tlMetric: 'overall', tlLane: 'single', tlSmooth: false, tlPlaying: false, tlRegion: '', tlCountry: '',
-    topicTab: 'rec', otherTab: 'king', nationMetric: 'total', counterZero: 'wr'
+    topicTab: 'rec', topicStat: '', otherTab: 'king', nationMetric: 'total', counterZero: 'wr', topicBoard: ''
   };
 
   /* ---------- 数字跳动动画（首页统计） ---------- */
@@ -59,7 +59,6 @@
   let tlTimer = null;
   let lastRoute = '';
   let lastScroll = 0;
-  let pickerOpen = false;
 
   /* ---------- 主题 ---------- */
   function initTheme() {
@@ -178,103 +177,86 @@
     fbEl.hidden = false;
     let h = '<div class="filterbar-inner">';
 
-    h += '<div class="fgroup" style="width:100%"><span class="flabel">' + esc(t('f.events')) + '</span>';
-    h += '<div class="fctl" id="fgGroup">';
-    const groups = [{ id: 'all', zh: t('f.all'), en: t('f.all') }].concat(groupList());
-    groups.forEach(function (g) {
-      const on = state.group === g.id;
+    /* ---------- 项目范围：预设分组（快速筛选） + 事件图标多选 ---------- */
+    h += '<div class="fgroup ev-fgroup"><span class="flabel">' + esc(t('f.events')) + '</span>';
+    h += '<div class="fctl presets" id="fgGroup">';
+    const presets = [{ id: 'all', zh: t('f.all'), en: t('f.all') }].concat(M.presetGroups.filter(function (g) { return g.id !== 'all'; }));
+    presets.forEach(function (g) {
+      const on = state.group === g.id && !(state.evSel && state.evSel.length);
       h += '<button class="chip' + (on ? ' on' : '') + '" data-group="' + g.id + '">' + esc(t.isEn() ? g.en : g.zh) + '</button>';
     });
-    h += '<button class="chip" data-evpick="1">' + window.Icons.glyph('plus') + ' ' + esc(t('f.custom')) + '</button>';
     h += '</div>';
     h += '<div class="ev-strip" id="fgEvents" role="group" aria-label="' + esc(t('f.events')) + '">';
-    M.events.forEach(function (e) {
-      const on = state.group === e.id;
-      h += '<button class="ev-tab' + (on ? ' on' : '') + (e.retired ? ' retired' : '') + '" data-evtab="' + e.id + '" title="' + esc(t.isEn() ? e.en : e.zh) + '">' +
-        window.Icons.event(e.id) + '<span>' + esc(t.isEn() ? e.en : e.zh) + '</span></button>';
+    const evSel = state.evSel || [];
+    const activeEv = M.events.filter(function (e) { return !e.retired; });
+    const retiredEv = M.events.filter(function (e) { return e.retired; });
+    h += '<div class="ev-row">';
+    activeEv.forEach(function (e) {
+      const on = evSel.indexOf(e.id) >= 0;
+      h += '<button class="ev-tab' + (on ? ' on' : '') + '" data-evtab="' + e.id + '" title="' + esc(t.isEn() ? e.en : e.zh) + '">' + window.Icons.event(e.id) + '</button>';
+    });
+    h += '</div>';
+    h += '<div class="ev-row ev-row-retired">';
+    retiredEv.forEach(function (e) {
+      const on = evSel.indexOf(e.id) >= 0;
+      const dis = !state.retired;
+      h += '<button class="ev-tab' + (on ? ' on' : '') + (dis ? ' disabled' : '') + '" data-evtab="' + e.id + '" title="' + esc(t.isEn() ? e.en : e.zh) + '">' + window.Icons.event(e.id) + '</button>';
     });
     h += '</div>';
     h += '</div>';
+    h += '</div>';
 
-    h += '<div class="fgroup"><span class="flabel">' + esc(t('f.scope')) + '</span><div class="fctl seg" style="padding:2px">';
-    [['country', 'f.scope.country'], ['continent', 'f.scope.continent'], ['region', 'f.scope.region']].forEach(function (s) {
-      h += '<button data-scope="' + s[0] + '" class="' + (state.scope === s[0] ? 'on' : '') + '">' + esc(t(s[1])) + '</button>';
-    });
-    h += '</div></div>';
-
-    h += '<div class="fgroup"><span class="flabel">' + esc(t('f.region')) + '</span><div class="fctl">';
-    if (state.scope === 'continent') {
-      h += '<button class="chip' + (!state.continent ? ' on' : '') + '" data-continent="">' + esc(t('f.all')) + '</button>';
-      orderedContinents().forEach(function (c) {
-        h += '<button class="chip' + (state.continent === c ? ' on' : '') + '" data-continent="' + c + '">' + esc(t.isEn() ? M.continents[c].en : M.continents[c].zh) + '</button>';
+    /* ---------- 国家 / 地区 / 大洲 合并为单一下拉（总榜 + 动态演变） ---------- */
+    if (route === 'rank' || route === 'timeline') {
+      h += '<div class="fgroup"><span class="flabel">' + esc(t('f.region')) + '</span><div class="fctl">';
+      h += '<select id="fgGeo" class="sel">';
+      h += '<option value="">' + esc(t('f.all')) + '</option>';
+      const contOrder = ['As', 'NAm', 'SAm', 'Eu', 'Af', 'Oc'];
+      h += '<optgroup label="' + esc(t.isEn() ? 'Continents' : '大洲') + '">';
+      contOrder.forEach(function (c) {
+        const v = 'cont:' + c;
+        h += '<option value="' + v + '"' + (state.geo === v ? ' selected' : '') + '>' + esc(t.isEn() ? M.continents[c].en : M.continents[c].zh) + '</option>';
       });
-    } else if (state.scope === 'region') {
-      h += '<select id="fgRegion"><option value="">' + esc(t('f.all')) + '</option>';
-      orderedRegions().forEach(function (r) {
-        h += '<option value="' + r + '"' + (state.region === r ? ' selected' : '') + '>' + esc(t.isEn() ? M.regions[r].en : M.regions[r].zh) + '</option>';
+      h += '</optgroup>';
+      h += '<optgroup label="' + esc(t.isEn() ? 'Regions & countries' : '地区') + '">';
+      const fixed = ['CN', 'HK', 'MO', 'TW'];
+      fixed.forEach(function (iso) {
+        h += '<option value="' + iso + '"' + (state.geo === iso ? ' selected' : '') + '>' + esc(M.countries[iso]) + '</option>';
       });
-      h += '</select>';
-    } else {
-      h += '<select id="fgCountry"><option value="">' + esc(t('f.all')) + '</option>';
-      orderedCountries().forEach(function (n) {
-        h += '<option value="' + n.iso + '"' + (state.country === n.iso ? ' selected' : '') + '>' + esc(n.name) + '</option>';
+      const others = M.countryList.slice().sort();
+      others.forEach(function (iso) {
+        if (fixed.indexOf(iso) >= 0) return;
+        h += '<option value="' + iso + '"' + (state.geo === iso ? ' selected' : '') + '>' + esc(M.countries[iso]) + '</option>';
       });
-      h += '</select>';
+      h += '</optgroup>';
+      h += '</select></div></div>';
     }
-    h += '</div></div>';
 
-    h += '<div class="fgroup"><span class="flabel">' + esc(t('f.gender')) + '</span><div class="fctl">';
-    [['all', 'f.gender.all'], ['M', 'f.gender.m'], ['F', 'f.gender.f']].forEach(function (g) {
-      h += '<button class="chip' + (state.gender === g[0] ? ' on' : '') + '" data-gender="' + g[0] + '">' + esc(t(g[1])) + '</button>';
-    });
-    h += '</div></div>';
+    if (route === 'rank') {
+      h += '<div class="fgroup"><span class="flabel">' + esc(t('f.gender')) + '</span><div class="fctl">';
+      [['all', 'f.gender.all'], ['M', 'f.gender.m'], ['F', 'f.gender.f']].forEach(function (g) {
+        h += '<button class="chip' + (state.gender === g[0] ? ' on' : '') + '" data-gender="' + g[0] + '">' + esc(t(g[1])) + '</button>';
+      });
+      h += '</div></div>';
 
-    h += '<div class="fgroup"><span class="flabel">' + esc(t('f.period')) + '</span><div class="fctl">';
-    h += '<select id="fgY0"><option value="">1982</option>';
-    for (let y = 2003; y <= 2025; y++) h += '<option value="' + y + '"' + (state.y0 === y ? ' selected' : '') + '>' + y + '</option>';
-    h += '</select><span class="tiny muted">–</span>';
-    h += '<select id="fgY1">';
-    for (let y = 2003; y <= 2025; y++) h += '<option value="' + y + '"' + ((state.y1 === y || (state.y1 == null && y === 2025)) ? ' selected' : '') + '>' + y + '</option>';
-    h += '</select></div></div>';
+      h += '<div class="fgroup"><span class="flabel">' + esc(t('f.period')) + '</span><div class="fctl">';
+      h += '<select id="fgY0"><option value="">1982</option>';
+      for (let y = 2003; y <= 2025; y++) h += '<option value="' + y + '"' + (state.y0 === y ? ' selected' : '') + '>' + y + '</option>';
+      h += '</select><span class="tiny muted">–</span>';
+      h += '<select id="fgY1">';
+      for (let y = 2003; y <= 2025; y++) h += '<option value="' + y + '"' + ((state.y1 === y || (state.y1 == null && y === 2025)) ? ' selected' : '') + '>' + y + '</option>';
+      h += '</select></div></div>';
 
-    h += '<div class="fgroup"><span class="flabel">' + esc(t('f.retired')) + '</span><div class="fctl">';
-    h += '<button class="chip' + (state.retired ? ' on' : '') + '" data-retired="1">' + esc(state.retired ? t('f.include') : t('f.exclude')) + '</button>';
-    h += '</div></div>';
+      h += '<div class="fgroup"><span class="flabel">' + esc(t('f.retired')) + '</span><div class="fctl">';
+      h += '<button class="chip' + (state.retired ? ' on' : '') + '" data-retired="1">' + esc(state.retired ? t('f.include') : t('f.exclude')) + '</button>';
+      h += '</div></div>';
+    }
 
     h += '<button class="btn" id="fgReset">' + esc(t('f.reset')) + '</button>';
     h += '<span class="filter-summary" id="fgSummary"></span>';
     h += '</div>';
 
-    if (pickerOpen) h += eventPickerHtml();
     fbEl.innerHTML = h;
-  }
-
-  function eventPickerHtml() {
-    let h = '<div class="filterbar-inner evpicker" style="border-top:1px dashed var(--border)">';
-    h += '<div class="fgroup" style="width:100%"><span class="flabel">' + esc(t('f.pickEvents')) + '</span>';
-    h += '<div class="evp-grid" style="width:100%">';
-    M.events.forEach(function (e) {
-      const on = state.customIds.indexOf(e.id) >= 0;
-      h += '<label class="evp-item' + (on ? ' on' : '') + (e.retired ? ' retired' : '') + '" data-evtoggle="' + e.id + '">' +
-        window.Icons.event(e.id) + '<span>' + esc(t.isEn() ? e.en : e.zh) + '</span></label>';
-    });
-    h += '</div></div>';
-    h += '<div class="evp-foot" style="width:100%">';
-    h += '<button class="btn" data-evall="1">' + esc(t('f.selectAll')) + '</button>';
-    h += '<button class="btn" data-evnone="1">' + esc(t('f.clearAll')) + '</button>';
-    h += '<span class="spacer"></span>';
-    const saved = window.EvGroups.all();
-    if (saved.length) {
-      h += '<span class="tiny muted">' + esc(t('f.presetGroups')) + '</span>';
-      saved.forEach(function (g) {
-        h += '<span class="saved-group"><button data-gload="' + g.id + '">' + esc(t.isEn() ? g.en : g.zh) + '</button>' +
-          '<button data-gdel="' + g.id + '" aria-label="del">×</button></span>';
-      });
-    }
-    h += '<input type="text" id="evGroupName" placeholder="' + esc(t('f.groupName')) + '" style="width:130px">';
-    h += '<button class="btn btn-primary" data-evsave="1">' + esc(t('f.saveGroup')) + '</button>';
-    h += '</div></div>';
-    return h;
   }
 
   function updateSummary(route) {
@@ -294,7 +276,7 @@
 
     if (route === 'rank') {
       if (r.q.g) state.group = r.q.g;
-      if (r.q.country) state.country = r.q.country;
+      if (r.q.country) state.geo = r.q.country;
     }
     if (route === 'topics' && r.q.tab) state.topicTab = r.q.tab;
 
@@ -523,7 +505,7 @@
   }
 
   /* ---------- 全局事件委托 ---------- */
-  const DELEGATE = '[data-sort],[data-page],[data-expand],[data-prow],[data-tab],[data-pkadd],[data-pkrm],[data-pktrayrm],[data-pktrayclear],[data-toggle],[data-expandall],[data-goto],[data-group],[data-gender],[data-retired],[data-tlmode],[data-tlview],[data-tlstep],[data-tlmetric],[data-tllane],[data-topic],[data-topicev],[data-other],[data-nation],[data-scope],[data-continent],[data-evpick],[data-evtab],[data-evtoggle],[data-evall],[data-evnone],[data-evsave],[data-gload],[data-gdel],[data-reclevel],[data-rectype],[data-podtier],[data-mdanchor],[data-mdsec]';
+  const DELEGATE = '[data-sort],[data-page],[data-expand],[data-prow],[data-tab],[data-pkadd],[data-pkrm],[data-pktrayrm],[data-pktrayclear],[data-toggle],[data-expandall],[data-goto],[data-group],[data-gender],[data-retired],[data-tlmode],[data-tlview],[data-tlstep],[data-tlmetric],[data-tllane],[data-topic],[data-topicev],[data-topicboard],[data-other],[data-nation],[data-scope],[data-continent],[data-evpick],[data-evtab],[data-evtoggle],[data-evall],[data-evnone],[data-evsave],[data-gload],[data-gdel],[data-reclevel],[data-rectype],[data-podtier],[data-mdanchor],[data-mdsec]';
 
   document.addEventListener('click', function (e) {
     const el = e.target.closest ? e.target.closest(DELEGATE) : null;
@@ -613,16 +595,17 @@
     }
     if (el.hasAttribute('data-group')) {
       state.group = el.getAttribute('data-group');
-      state.page = 1;
-      if (state.group !== 'custom') { pickerOpen = false; }
+      state.evSel = []; state.page = 1;
       syncFilterUrl(); return;
     }
     if (el.hasAttribute('data-evtab')) {
-      state.group = el.getAttribute('data-evtab');
-      state.page = 1; pickerOpen = false;
-      el.classList.add('pop');
-      setTimeout(function () { el.classList.remove('pop'); }, 440);
-      syncFilterUrl(); return;
+      const id = el.getAttribute('data-evtab');
+      if (M.EV[id] && M.EV[id].retired && !state.retired) return;
+      state.evSel = state.evSel || [];
+      const i = state.evSel.indexOf(id);
+      if (i >= 0) state.evSel.splice(i, 1); else state.evSel.push(id);
+      state.group = 'all'; state.page = 1;
+      render(true); return;
     }
     if (el.hasAttribute('data-scope')) {
       state.scope = el.getAttribute('data-scope');
@@ -631,35 +614,6 @@
     }
     if (el.hasAttribute('data-continent')) {
       state.continent = el.getAttribute('data-continent') || ''; state.page = 1; render(true); return;
-    }
-    if (el.hasAttribute('data-evpick')) { pickerOpen = !pickerOpen; renderFilterBar(parseHash().seg[0] || 'home'); return; }
-    if (el.hasAttribute('data-evtoggle')) {
-      const id = el.getAttribute('data-evtoggle');
-      const i = state.customIds.indexOf(id);
-      if (i >= 0) state.customIds.splice(i, 1); else state.customIds.push(id);
-      state.group = 'custom'; state.page = 1;
-      render(true); return;
-    }
-    if (el.hasAttribute('data-evall')) { state.customIds = M.events.map(function (x) { return x.id; }); state.group = 'custom'; render(true); return; }
-    if (el.hasAttribute('data-evnone')) { state.customIds = []; state.group = 'custom'; render(true); return; }
-    if (el.hasAttribute('data-evsave')) {
-      const inp = document.getElementById('evGroupName');
-      const name = (inp && inp.value || '').trim() || (t.isEn() ? 'My group' : '我的分组');
-      if (!state.customIds.length) { toast(t('ui.noresult')); return; }
-      const g = window.EvGroups.add(name, state.customIds);
-      state.group = g.id; pickerOpen = false; state.page = 1;
-      render(true); toast(t('f.saved')); return;
-    }
-    if (el.hasAttribute('data-gload')) {
-      const id = el.getAttribute('data-gload');
-      const g = window.EvGroups.all().filter(function (x) { return x.id === id; })[0];
-      if (g) { state.customIds = g.ids.slice(); state.group = g.id; state.page = 1; render(true); }
-      return;
-    }
-    if (el.hasAttribute('data-gdel')) {
-      window.EvGroups.remove(el.getAttribute('data-gdel'));
-      if (state.group === el.getAttribute('data-gdel')) { state.group = 'all'; state.customIds = []; }
-      render(true); return;
     }
     if (el.hasAttribute('data-gender')) { state.gender = el.getAttribute('data-gender'); state.page = 1; render(true); return; }
     if (el.hasAttribute('data-retired')) { state.retired = !state.retired; state.page = 1; render(true); return; }
@@ -675,8 +629,9 @@
     }
     if (el.hasAttribute('data-tlmetric')) { state.tlMetric = el.getAttribute('data-tlmetric'); render(true); return; }
     if (el.hasAttribute('data-tllane')) { state.tlLane = el.getAttribute('data-tllane'); render(true); return; }
-    if (el.hasAttribute('data-topic')) { state.topicTab = el.getAttribute('data-topic'); render(true); return; }
+    if (el.hasAttribute('data-topic')) { state.topicTab = el.getAttribute('data-topic'); state.topicBoard = ''; render(true); return; }
     if (el.hasAttribute('data-topicev')) { state.topicEvent = el.getAttribute('data-topicev'); render(true); return; }
+    if (el.hasAttribute('data-topicboard')) { state.topicBoard = el.getAttribute('data-topicboard'); render(true); return; }
     if (el.hasAttribute('data-other')) { state.otherTab = el.getAttribute('data-other'); render(true); return; }
     if (el.hasAttribute('data-nation')) { state.nationMetric = el.getAttribute('data-nation'); render(true); return; }
     if (el.hasAttribute('data-reclevel')) {
@@ -733,6 +688,7 @@
 
   document.addEventListener('change', function (e) {
     const el = e.target;
+    if (el.id === 'fgGeo') { state.geo = el.value || ''; state.country = ''; state.continent = ''; state.region = ''; state.page = 1; render(true); }
     if (el.id === 'fgCountry') { state.country = el.value; state.page = 1; render(true); }
     if (el.id === 'fgRegion') { state.region = el.value; state.page = 1; render(true); }
     if (el.id === 'fgY0') { state.y0 = el.value ? +el.value : null; state.page = 1; render(true); }
@@ -770,8 +726,10 @@
     const b = document.getElementById('fgReset');
     if (!b) return;
     b.addEventListener('click', function () {
-      state.group = 'all'; state.customIds = []; state.country = ''; state.continent = ''; state.region = '';
-      state.gender = 'all'; state.y0 = null; state.y1 = null; state.page = 1; pickerOpen = false;
+      state.group = 'all'; state.customIds = []; state.evSel = []; state.geo = '';
+      state.country = ''; state.continent = ''; state.region = '';
+      state.gender = 'all'; state.y0 = null; state.y1 = null; state.page = 1;
+      state.topicBoard = ''; state.topicEvent = '';
       location.hash = (location.hash.split('?')[0] || '#/rank');
       render();
     });
@@ -780,7 +738,7 @@
   function syncFilterUrl() {
     const q = [];
     if (state.group && state.group !== 'all' && !state.group.match(/^u[0-9a-z]+$/)) q.push('g=' + state.group);
-    if (state.country) q.push('country=' + state.country);
+    if (state.geo) q.push('country=' + state.geo);
     const base = location.hash.split('?')[0] || '#/rank';
     location.hash = base + (q.length ? '?' + q.join('&') : '');
     render();
@@ -797,7 +755,7 @@
   window.addEventListener('hashchange', function () {
     const r = parseHash();
     const route = r.seg[0] || 'home';
-    if (route === 'rank') { state.group = r.q.g || state.group; state.country = r.q.country || ''; }
+    if (route === 'rank') { state.group = r.q.g || state.group; if (r.q.country) state.geo = r.q.country; }
     if (route !== 'timeline') { state.tlPlaying = false; clearInterval(tlTimer); }
     render();
   });
