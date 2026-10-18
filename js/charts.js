@@ -235,7 +235,7 @@
     const data = items.slice(0, n);
     /* 补齐到固定条数，保证增量合并时竞速条身份稳定、平滑换位 */
     while (data.length < n) data.push({ name: '', value: 0, itemStyle: { color: T.text3, opacity: 0 } });
-    return Object.assign(base({ stagger: 55 }), {
+    return Object.assign(base({ stagger: 55, duration: opts.duration == null ? 720 : opts.duration }), {
       grid: { left: 6, right: 62, top: 6, bottom: 6, containLabel: true },
       xAxis: Object.assign({ type: 'value', max: function (v) { return Math.max(v.max, 1) * 1.05; } }, axisCommon()),
       yAxis: Object.assign({ type: 'category', inverse: true, data: data.map(function (d) { return d.name; }) }, axisCommon(), { splitLine: { show: false }, axisLabel: { color: T.text, fontSize: 12 } }),

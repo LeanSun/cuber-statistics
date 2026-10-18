@@ -89,7 +89,16 @@
     h += '<div id="homeSearchResult" class="home-result"></div>';
     h += '</section>';
 
-    h += '<div class="sec-head reveal"><h2>' + esc(t('home.feat')) + '</h2></div>';
+    const sc = M.meta;
+    h += '<div class="sec-head reveal"><h2>' + esc(t('home.overview')) + '</h2></div>';
+    h += '<div class="card reveal"><div class="grid grid-4">';
+    h += '<div class="stat"><div class="k">' + esc(t('home.stat.players')) + '</div><div class="v hc1" data-count="' + sc.players + '" data-dec="0">0</div></div>';
+    h += '<div class="stat"><div class="k">' + esc(t('home.stat.comps')) + '</div><div class="v hc2" data-count="' + sc.comps + '" data-dec="0">0</div></div>';
+    h += '<div class="stat"><div class="k">' + esc(t('home.stat.wr')) + '</div><div class="v hc3" data-count="' + sc.wr + '" data-dec="0">0</div></div>';
+    h += '<div class="stat"><div class="k">' + esc(t('home.stat.records')) + '</div><div class="v hc4" data-count="' + sc.records + '" data-dec="0">0</div></div>';
+    h += '</div></div>';
+
+    h += '<div class="sec-head reveal" style="margin-top:18px"><h2>' + esc(t('home.feat')) + '</h2></div>';
     h += '<div class="grid grid-3">';
     feats.forEach(function (f, i) {
       h += '<a class="feat reveal" style="--d:' + (i * 45) + 'ms" href="' + f.href + '">';
@@ -100,14 +109,6 @@
       h += '</a>';
     });
     h += '</div>';
-
-    const sc = M.meta;
-    h += '<div class="card reveal" style="margin-top:16px"><div class="grid grid-4">';
-    h += '<div class="stat"><div class="k">' + esc(t('home.stat.players')) + '</div><div class="v hc1" data-count="' + sc.players + '" data-dec="0">0</div></div>';
-    h += '<div class="stat"><div class="k">' + esc(t('home.stat.comps')) + '</div><div class="v hc2" data-count="' + sc.comps + '" data-dec="0">0</div></div>';
-    h += '<div class="stat"><div class="k">' + esc(t('home.stat.wr')) + '</div><div class="v hc3" data-count="' + sc.wr + '" data-dec="0">0</div></div>';
-    h += '<div class="stat"><div class="k">' + esc(t('home.stat.records')) + '</div><div class="v hc4" data-count="' + sc.records + '" data-dec="0">0</div></div>';
-    h += '</div></div>';
     return h;
   };
 
@@ -117,7 +118,7 @@
     { k: 'player', label: 'col.player', cls: 'tl' },
     { k: 'gender', label: 'col.gender', cls: 'tl gcol' },
     { k: 'country', label: 'col.country', cls: 'tl' },
-    { k: 'bars', label: 'col.contrib', cls: 'bars-full' },
+    { k: 'bars', label: 'col.total', cls: 'bars-full' },
     { k: 'exp', label: '', cls: 'tl' }
   ];
 
@@ -147,6 +148,18 @@
     }
     return pool;
   }
+
+  /* 当前激活分组的事件集合（用于筛选条图标联动：点分组→下方图标选中） */
+  P.groupEventIds = function (state) {
+    if (!state.group || state.group === 'all') return null;
+    if (state.evSel && state.evSel.length) return null;
+    if (M.EV[state.group]) return [state.group];
+    const g = M.presetGroups.filter(function (x) { return x.id === state.group; })[0];
+    if (g && g.ids) return g.ids.slice();
+    const cg = (window.EvGroups && window.EvGroups.all && window.EvGroups.all().filter(function (x) { return x.id === state.group; })[0]);
+    if (cg && cg.ids) return cg.ids.slice();
+    return null;
+  };
 
   P.filtered = function (state) {
     const pool = eventSet(state);
@@ -263,23 +276,6 @@
     });
     h += '</tbody></table></div>';
 
-    /* 堆叠柱状图 */
-    if (rows.length) {
-      const chartRows = rows.slice(0, 25).map(function (r) {
-        const cs = contribs(r.p, state.tab);
-        return { name: r.p.name, values: cs.map(function (c) { return c.v; }), total: cs.reduce(function (a, c) { return a + c.v; }, 0) };
-      });
-      const max = Math.max.apply(null, chartRows.map(function (d) { return d.total; })) * 1.05;
-      h += '<div class="card reveal" style="margin-top:14px">';
-      h += '<div class="card-head"><h2>' + esc(t('rank.chartTitle')) + '</h2><span class="tiny muted">' + esc(t('rank.contribution')) + '</span></div>';
-      h += '<p class="tiny muted" style="margin-bottom:10px">' + esc(t('rank.chartNote')) + '</p>';
-      h += ecBox('stacked', chartRows, {
-        max: Math.round(max * 10) / 10, legend: true,
-        series: MOD.map(function (k, i) { return { name: modName(k), color: MODC[k] }; })
-      }, Math.max(300, chartRows.length * 22 + 90));
-      h += '</div>';
-    }
-
     h += '<div class="pager">';
     h += '<button data-page="1"' + (pg === 1 ? ' disabled' : '') + '>«</button>';
     h += '<button data-page="' + (pg - 1) + '"' + (pg === 1 ? ' disabled' : '') + '>‹</button>';
@@ -296,39 +292,14 @@
 
   /* 展开行：每模块分值 / 权重 / 加权贡献（单列紧凑布局） */
   P.expandBody = function (p, state) {
-    const w = Pm.weights();
     const sc = scoreOf(p);
-    const cs = contribs(p, state.tab);
-    const tot = cs.reduce(function (a, c) { return a + c.v; }, 0) || 1;
 
     let h = '<div class="exp-inner">';
-    /* 顶部：迷你堆叠图（横向单条） + 图例 */
-    h += '<div class="exp-chart">' + ecBox('stacked', [{ name: p.name, values: cs.map(function (c) { return c.v; }) }], {
-      max: Math.round(tot * 1.02 * 10) / 10,
-      series: MOD.map(function (k) { return { name: modName(k), color: MODC[k] }; })
-    }, 60) + '</div>';
-    h += '<div class="exp-legend">' + MOD.map(function (k) {
-      return '<span title="' + esc(t('m' + k[1] + '.d')) + '"><i style="background:' + MODC[k] + '"></i>' + esc(modName(k)) + '</span>';
-    }).join('') + '</div>';
-    /* 摘要：生涯 / 巅峰 / 均衡 */
+    /* 摘要：生涯 / 巅峰 / 均衡（加权贡献已上移至总榜“总分”列，此处不再展开） */
     h += '<div class="exp-summary">' +
       '<span><b>' + esc(t('rank.tab.career')) + '</b> ' + U.fmt(sc.career, 1) + '</span>' +
       '<span><b>' + esc(t('rank.tab.peak')) + '</b> ' + U.fmt(sc.peak, 1) + '</span>' +
       '<span><b>' + esc(t('col.balance')) + '</b> ' + U.fmt(sc.balance, 2) + '</span></div>';
-    /* 拆分表（全宽紧凑） */
-    h += '<div class="exp-break">';
-    h += '<div class="breakdown-row bk-head"><span>' + esc(t('m1.name')) + '</span><span></span><span>' + esc(t('player.raw')) + '</span><span class="bk-num">' + esc(t('player.weight')) + '</span><span class="bk-num">' + esc(t('player.contrib')) + '</span><span class="bk-num">' + esc(t('player.pct')) + '</span></div>';
-    cs.forEach(function (c) {
-      h += '<div class="breakdown-row">';
-      h += '<span class="bk-name"><i style="background:' + c.color + '"></i>' + esc(c.name) + '</span>';
-      h += '<span class="bk-bar"><i style="width:' + Math.min(100, c.raw) + '%;background:' + c.color + '"></i></span>';
-      h += '<span class="bk-num">' + U.fmt(c.raw, 1) + '</span>';
-      h += '<span class="bk-num">' + U.fmt(c.w * 100, 1) + '%</span>';
-      h += '<span class="bk-num"><b>' + U.fmt(c.v, 2) + '</b></span>';
-      h += '<span class="bk-num">' + U.fmt(c.v / tot * 100, 1) + '%</span>';
-      h += '</div>';
-    });
-    h += '</div>';
     /* 操作 */
     h += '<div class="exp-actions"><a class="btn" href="#/player/' + p.id + '">' + esc(t('player.title')) + '</a>' +
       '<button class="btn" data-pkadd="' + p.id + '">' + esc(t('player.compare')) + '</button></div>';

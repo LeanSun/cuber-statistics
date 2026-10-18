@@ -8,6 +8,22 @@
   const esc = U.esc;
   const { avatar, flag, playerLink, modName, ecBox, scoreOf, infoTip, evName, contName, countryName } = P.util;
 
+  /* 国家配色：主要国家用本国标志性色，其余按 iso 稳定取色 */
+  const COUNTRY_COLORS = {
+    CN: '#de2910', HK: '#de2910', MO: '#009944', TW: '#003399',
+    US: '#1f4fd8', JP: '#bc002d', KR: '#0047a0', DE: '#111111', GB: '#012169',
+    FR: '#0055a4', NL: '#ec0000', PL: '#dc143c', SE: '#006aa7', IT: '#008c45',
+    ES: '#aa151b', RU: '#0039a6', UA: '#005bbb', CA: '#d80621', AU: '#00843d',
+    BR: '#009b3a', MX: '#006847', IN: '#ff671f', ID: '#e70011', MY: '#010080',
+    SG: '#ef3340', TH: '#2d2a4a', VN: '#da251d', PH: '#0038a8', NZ: '#00247d',
+    CH: '#d52b1e', NG: '#008751', KE: '#006600', EG: '#ce1126', ZA: '#002395',
+    AR: '#74acdf', CL: '#0033a0'
+  };
+  function countryColor(iso) {
+    if (COUNTRY_COLORS[iso]) return COUNTRY_COLORS[iso];
+    return 'hsl(' + U.hue(iso || '??') + ',55%,50%)';
+  }
+
   /* ================= 动态可视化 ================= */
   const VIEWS = [['rank', 'tl.view.rank', 'timeline'], ['race', 'tl.view.race', 'speed'], ['lane', 'tl.view.lane', 'record']];
   let TL_MS = M.milestones; /* 当前单项筛选下的里程碑集合（供图表标线使用） */
@@ -178,7 +194,7 @@
       const sc = metricScale(p, metric);
       let v = fn(p, fy) * sc;
       if (smooth) v = (fn(p, fy) + fn(p, fy - 1) + fn(p, fy - 2)) * sc / 3;
-      return { name: p.name, country: p.country, hue: p.hue, id: p.id, value: v };
+      return { name: p.name, country: p.country, hue: p.hue, id: p.id, value: v, color: countryColor(p.country) };
     }).filter(function (d) { return d.value > 0; }).sort(function (a, b) { return b.value - a.value; });
   }
 
@@ -204,9 +220,9 @@
     const TOP = 15;
     if (view === 'race') {
       const snap = snapshot(mode, fy, smooth, metric, region, country).slice(0, TOP).map(function (d) {
-        return { name: d.name, value: d.value, color: 'hsl(' + d.hue + ',58%,50%)' };
+        return { name: d.name, value: d.value, color: d.color };
       });
-      return window.Charts.barRace(snap, { top: TOP });
+      return window.Charts.barRace(snap, { top: TOP, duration: 800 });
     }
     const lastY = Math.max(2003, Math.floor(fy));
     const years = [];
@@ -214,7 +230,7 @@
     const rowsMap = {};
     years.forEach(function (y) {
       snapshot(mode, y, smooth, metric, region, country).slice(0, TOP).forEach(function (d, i) {
-        if (!rowsMap[d.id]) rowsMap[d.id] = { name: d.name, color: 'hsl(' + d.hue + ',58%,50%)', pts: {} };
+        if (!rowsMap[d.id]) rowsMap[d.id] = { name: d.name, color: d.color, pts: {} };
         rowsMap[d.id].pts[y] = i + 1;
       });
     });
@@ -327,7 +343,7 @@
       const key = metric === 'per' ? 'perCapita' : (metric === 'top' ? 'best' : 'total');
       const items = M.nations.slice().sort(function (a, b) { return b[key] - a[key]; }).slice(0, 14);
       h += '<div class="card reveal">' + ecBox('groupBars', items.map(function (n) {
-        return { label: n.iso, value: n[key], color: 'hsl(' + U.hue(n.iso) + ',55%,50%)' };
+        return { label: n.iso, value: n[key], color: countryColor(n.iso) };
       }), { top: 14 }, 320) + '</div>';
       h += '<div class="table-wrap reveal"><table class="data mini"><thead><tr><th class="tl">' + esc(t('f.region')) +
         '</th><th class="tl">' + esc(t('f.continent')) + '</th><th>' + esc(t('top.nation.total')) + '</th><th>' +

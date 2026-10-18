@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  etl-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Syntax check ETL
+        run: node --check etl/build.js
+      - name: Syntax check shared calc
+        run: node --check js/calc.js
+      - name: Regenerate sample fixtures
+        run: python3 etl/make_sample.py
+      - name: Run ETL against sample & verify output shape
+        run: |
+          node etl/build.js --dir etl/sample --out /tmp/sample_data.js --date 2026-10-18 --ver v2.0.2
+          node -e '
+            const fs=require("fs"); const Calc=require("./js/calc.js");
+            global.window={Calc:Calc,U:Calc.U}; global.Calc=Calc; global.U=Calc.U;
+            eval(fs.readFileSync("/tmp/sample_data.js","utf8"));
+            const M=global.window.MOCK;
+            if(!M||!M.ranked||!M.ranked.length) { console.error("MOCK invalid"); process.exit(1); }
+            if(M.meta.demo!==false){ console.error("expected real meta"); process.exit(1); }
+            const mp=M.ranked.find(x=>x.name==="Max Park");
+            const mbf=(mp.records.find(r=>r.ev==="333mbf")||{}).value;
+            if(mbf!=="40/40 59999"){ console.error("mbf decode wrong: "+mbf); process.exit(1); }
+            console.log("ETL smoke OK:",M.ranked.length,"players, mbf:",mbf);
+          '

@@ -1,0 +1,67 @@
+name: Update WCA data
+
+on:
+  schedule:
+    # 每周一 06:17 UTC（WCA 通常在每个比赛周末后更新导出）
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      emit_max:
+        description: 'Top-N players to emit (0 = all)'
+        required: false
+        default: '1500'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wca-data-update
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Fetch WCA export metadata & download TSV zip
+        run: |
+          curl -fsSL "https://www.worldcubeassociation.org/api/v0/export/public" -o /tmp/wca_api.json
+          TSV_URL=$(python3 -c "import json,sys; print(json.load(open('/tmp/wca_api.json'))['tsv_url'])")
+          echo "TSV_URL=$TSV_URL" >> "$GITHUB_ENV"
+          VER=$(python3 -c "import json; print(json.load(open('/tmp/wca_api.json')).get('export_version','v2.0.2'))")
+          echo "EXPORT_VER=$VER" >> "$GITHUB_ENV"
+          DATE=$(python3 -c "import json; print(json.load(open('/tmp/wca_api.json')).get('export_date','')[:10])")
+          echo "EXPORT_DATE=$DATE" >> "$GITHUB_ENV"
+          echo "Downloading $TSV_URL"
+          curl -fsSL "$TSV_URL" -o /tmp/wca_export.tsv.zip
+          ls -lh /tmp/wca_export.tsv.zip
+
+      - name: Run ETL (WCA export -> js/data.js)
+        run: |
+          EMIT="${{ github.event.inputs.emit_max || '1500' }}"
+          node etl/build.js \
+            --zip /tmp/wca_export.tsv.zip \
+            --out js/data.js \
+            --emit-max "${EMIT}" \
+            --date "${EXPORT_DATE:-$(date +%F)}" \
+            --ver "${EXPORT_VER:-v2.0.2}"
+
+      - name: Commit & push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add js/data.js
+          if git diff --cached --quiet; then
+            echo "No changes to js/data.js"
+          else
+            git commit -m "chore: update WCA data (${EXPORT_DATE:-$(date +%F)})"
+            git push
+          fi

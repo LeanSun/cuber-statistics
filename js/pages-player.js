@@ -118,6 +118,15 @@
     });
     h += '</div></div>';
 
+    /* 横向对比（七模块雷达）：本选手 vs 历史第一人 vs 全体均值 */
+    h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('player.cmp')) + '</h2>' + infoTip(t('player.cmp.d')) + '</div>';
+    const cmp = P.playerCompare ? P.playerCompare(p) : null;
+    if (cmp) {
+      h += '<div class="cmp-radar-wrap"><div class="pk-radar-wrap">' + ecBox('radar', { rows: cmp.series, indicators: cmp.indicators }, { max: 100 }, 360) + '</div></div>';
+      h += '<p class="tiny muted" style="text-align:center;margin-bottom:8px">' + esc(t('player.cmp.note')) + '</p>';
+    }
+    h += '</div>';
+
     /* 附加分 */
     h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('player.bonus')) + '</h2>' +
       infoTip(t('player.bonus.d')) + '</div>';
@@ -185,6 +194,30 @@
     });
     h += '</div></div>';
     return h;
+  };
+
+  /* 七模块雷达对比：本选手 vs 历史第一人 vs 全体均值（各轴按三者最大值归一为 100） */
+  P.playerCompare = function (p) {
+    const goat = M.ranked[0];
+    const n = M.ranked.length || 1;
+    const aV = contribs(p, 'career').map(function (c) { return c.v; });
+    const gV = contribs(goat, 'career').map(function (c) { return c.v; });
+    const sumV = MOD.map(function () { return 0; });
+    M.ranked.forEach(function (x) {
+      const cx = contribs(x, 'career');
+      cx.forEach(function (c, i) { sumV[i] += c.v; });
+    });
+    const avgV = sumV.map(function (s) { return s / n; });
+    const maxPer = MOD.map(function (k, i) { return Math.max(aV[i], gV[i], avgV[i]) || 1; });
+    function mk(name, color, vals) {
+      return { name: name, color: color, values: vals.map(function (v, i) { return v / maxPer[i] * 100; }) };
+    }
+    const series = [
+      mk(p.name, 'hsl(' + p.hue + ',58%,50%)', aV),
+      mk(goat.name, '#e0533d', gV),
+      mk(t('player.cmp.avg'), '#7a8aa0', avgV)
+    ];
+    return { indicators: MOD.map(function (k) { return modName(k); }), series: series };
   };
 
   function segBtn(val, labelKey, attr) {

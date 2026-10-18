@@ -1,0 +1,7 @@
+id	name	rank	format
+333	3x3x3 Cube	1	time
+222	2x2x2 Cube	2	time
+333oh	3x3x3 One-Handed	3	time
+333bf	3x3x3 Blindfolded	4	time
+333fm	3x3x3 Fewest Moves	5	number
+333mbf	3x3x3 Multi-Blind	6	multi

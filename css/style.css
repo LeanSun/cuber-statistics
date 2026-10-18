@@ -85,7 +85,7 @@ code,kbd{font-family:var(--mono);font-size:.92em;background:var(--bg-soft);paddi
 .ic{width:1em;height:1em;display:inline-block;vertical-align:-.14em;flex:none}
 .gl-ic{width:18px;height:18px}
 .featured .gl-ic{width:26px;height:26px}
-.ev-ic{width:22px;height:22px}
+.ev-ic{display:inline-block;width:22px;height:22px;font-size:22px;line-height:1;vertical-align:middle}
 .ev-mini{width:16px;height:16px;vertical-align:-.18em}
 
 /* ============ Topbar ============ */
@@ -190,6 +190,7 @@ select:focus,input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 
 .card-head h2,.card-head h3{font-size:15px}
 .grid{display:grid;gap:14px}
 .grid-2{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+.grid-2 > *{min-width:0}
 .grid-3{grid-template-columns:repeat(auto-fit,minmax(232px,1fr))}
 .grid-4{grid-template-columns:repeat(auto-fit,minmax(176px,1fr))}
 .mjx-container{font-size:1.08em!important}
@@ -379,7 +380,7 @@ tr:hover .rank-no{transform:scale(1.08)}
   background:var(--bg-elev);border-radius:var(--r-md);cursor:pointer;color:var(--text-2);
   transition:transform .16s cubic-bezier(.34,1.5,.64,1),border-color .16s,background .16s,color .16s,box-shadow .16s;
 }
-.ev-tab .ev-ic{width:27px;height:27px;color:inherit;opacity:.92;transition:transform .2s cubic-bezier(.34,1.6,.5,1)}
+.ev-tab .ev-ic{width:27px;height:27px;font-size:27px;color:inherit;opacity:.92;transition:transform .2s cubic-bezier(.34,1.6,.5,1)}
 .ev-tab:hover{border-color:var(--accent);color:var(--accent);transform:translateY(-2px);box-shadow:0 6px 16px rgba(47,111,235,.18)}
 .ev-tab:hover .ev-ic{transform:scale(1.16) rotate(-6deg)}
 .ev-tab.on{background:linear-gradient(145deg,var(--accent),var(--accent-2));border-color:transparent;color:#fff;box-shadow:0 6px 16px rgba(47,111,235,.32)}
@@ -495,6 +496,10 @@ tr:hover .rank-no{transform:scale(1.08)}
 
 /* ============ PK ============ */
 .pk-radar-wrap{max-width:520px;margin:0 auto}
+.cmp-radar-wrap{padding:10px 0}
+.cmp-legend{display:flex;flex-wrap:wrap;justify-content:center;gap:12px 18px;margin:12px 0 6px}
+.cmp-lg-item{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--text-2)}
+.cmp-lg-item i{width:12px;height:12px;border-radius:50%;display:inline-block}
 .pk-tag{display:inline-flex;align-items:center;gap:6px;padding:3px 5px 3px 8px}
 .legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12px;margin-top:10px}
 .legend i{width:10px;height:10px;border-radius:2px;display:inline-block;margin-right:6px}
@@ -585,9 +590,11 @@ tr:hover .rank-no{transform:scale(1.08)}
 .board-card .table-wrap{border:none}
 .ev-filter-head{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
 .ev-filter-label{font-size:12px;font-weight:600;color:var(--text-3);letter-spacing:.02em}
-.ev-strip-topic{margin-top:0}
+.ev-strip-topic{margin-top:0;flex-direction:row;flex-wrap:wrap;gap:8px}
+.ev-strip-topic .ev-tab{width:auto;height:auto;padding:6px 10px;gap:6px;flex:0 0 auto}
+.ev-strip-topic .ev-tab .ev-ic{width:22px;height:22px;font-size:22px}
 .king-card{padding:13px 15px}
-.king-card .ev-ic{width:28px;height:28px;color:var(--accent)}
+.king-card .ev-ic{width:28px;height:28px;font-size:28px;color:var(--accent)}
 
 /* ============ 评分原理 ============ */
 .md-preset{margin-bottom:14px}

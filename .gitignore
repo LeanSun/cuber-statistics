@@ -4,6 +4,10 @@ data/raw/
 *.tsv.zip
 WCA_export*
 
+# 例外：保留 ETL 样例数据（schema 校验 / CI 测试用，仅约 2KB）
+!etl/sample/
+!etl/sample/*.tsv
+
 # Python
 __pycache__/
 *.py[cod]

@@ -124,7 +124,7 @@
 
   function renderNav(route) {
     const items = [
-      ['rank', '#/rank'], ['pk', '#/pk'], ['timeline', '#/timeline'],
+      ['rank', '#/rank'], ['timeline', '#/timeline'],
       ['topics', '#/topics'], ['model', '#/model']
     ];
     navEl.innerHTML = items.map(function (x) {
@@ -188,17 +188,19 @@
     h += '</div>';
     h += '<div class="ev-strip" id="fgEvents" role="group" aria-label="' + esc(t('f.events')) + '">';
     const evSel = state.evSel || [];
+    const gids = (P.groupEventIds ? P.groupEventIds(state) : null);
+    const inSet = function (id) { return evSel.indexOf(id) >= 0 || (gids && gids.indexOf(id) >= 0); };
     const activeEv = M.events.filter(function (e) { return !e.retired; });
     const retiredEv = M.events.filter(function (e) { return e.retired; });
     h += '<div class="ev-row">';
     activeEv.forEach(function (e) {
-      const on = evSel.indexOf(e.id) >= 0;
+      const on = inSet(e.id);
       h += '<button class="ev-tab' + (on ? ' on' : '') + '" data-evtab="' + e.id + '" title="' + esc(t.isEn() ? e.en : e.zh) + '">' + window.Icons.event(e.id) + '</button>';
     });
     h += '</div>';
     h += '<div class="ev-row ev-row-retired">';
     retiredEv.forEach(function (e) {
-      const on = evSel.indexOf(e.id) >= 0;
+      const on = inSet(e.id);
       const dis = !state.retired;
       h += '<button class="ev-tab' + (on ? ' on' : '') + (dis ? ' disabled' : '') + '" data-evtab="' + e.id + '" title="' + esc(t.isEn() ? e.en : e.zh) + '">' + window.Icons.event(e.id) + '</button>';
     });
@@ -766,9 +768,29 @@
     });
   });
 
+  /* ---------- 真实 / 演示数据模式 ---------- */
+  function applyDataMode() {
+    const banner = document.getElementById('demoBanner');
+    const real = M && M.meta && M.meta.demo === false;
+    if (real) {
+      if (banner) banner.style.display = 'none';
+      const fd = document.querySelector('[data-i18n="foot.data"]');
+      if (fd) {
+        fd.removeAttribute('data-i18n');
+        fd.textContent = '数据来源：World Cube Association 官方成绩导出（' +
+          (M.meta.updated || '') + '，v' + (M.meta.exportVersion || '') + '）';
+      }
+      const wc = document.getElementById('wcaCredit');
+      if (wc) wc.textContent = 'This information is based on competition results owned and maintained by the World Cube Association, published at https://worldcubeassociation.org/results as of ' + (M.meta.updated || '') + '.';
+    } else {
+      if (banner) banner.style.display = '';
+    }
+  }
+
   /* ---------- 启动 ---------- */
   initTheme();
   initLang();
+  applyDataMode();
   if (!location.hash) location.hash = '#/home';
   const gh = document.getElementById('ghLink');
   if (gh) { gh.href = 'https://github.com/LeanSun/cuber-statistics'; }
