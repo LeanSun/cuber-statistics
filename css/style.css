@@ -353,6 +353,15 @@ tr:hover .rank-no{transform:scale(1.08)}
 .bar-row{display:flex;align-items:center;gap:9px;height:100%}
 .bar-grow{flex:0 0 auto;height:100%;transform-origin:left center;animation:barGrow calc(.8s / var(--anim-rate,1)) cubic-bezier(.2,.75,.25,1) both}
 .bar-total{flex:none;min-width:36px;text-align:right;font-size:12.5px;font-weight:700;color:var(--text-2);font-variant-numeric:tabular-nums}
+/* 单项目模式：色条 + 最佳成绩 + 该项目世界排名 */
+.bar-row.evmode{gap:10px}
+.bar-row.evmode .bar-grow{height:12px;border-radius:6px;background:linear-gradient(90deg,var(--m1),var(--m2))}
+.bar-row.evmode .bar-grow{min-width:8px}
+.ev-res{flex:none;font-size:12.5px;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums;white-space:nowrap}
+.ev-res i{font-style:normal;color:var(--text-3);margin:0 1px}
+.ev-res.muted{font-weight:400;color:var(--text-3)}
+.bar-total.ev-rank{min-width:44px;color:var(--accent)}
+.ev-tag{white-space:nowrap}
 @keyframes barGrow{from{transform:scaleX(0);opacity:.35}to{transform:scaleX(1);opacity:1}}
 .gcol{width:1%;white-space:nowrap}
 .gpill{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 7px;border-radius:11px;font-size:11.5px;font-weight:600;line-height:1}

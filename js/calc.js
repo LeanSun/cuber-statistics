@@ -70,18 +70,18 @@
     { id: '333ft', zh: '脚拧', en: '3x3x3 With Feet', group: 'retired', groups: ['retired'], w: 0.66, retired: true },
     { id: 'magic', zh: '八板', en: 'Magic', group: 'retired', groups: ['retired'], w: 0.60, retired: true },
     { id: 'mmagic', zh: '十二板', en: 'Master Magic', group: 'retired', groups: ['retired'], w: 0.58, retired: true },
-    { id: '333ec', zh: '三盲旧规', en: '3x3x3 With Eyes Closed', group: 'retired', groups: ['retired'], w: 0.62, retired: true }
+    { id: '333mbo', zh: '旧多盲', en: 'Multi-Blind Old Style', group: 'retired', groups: ['retired', 'blind'], w: 0.62, retired: true, singleOnly: true, format: 'multi' }
   ];
   var EV = {}; EVENTS.forEach(function (e) { EV[e.id] = e; });
 
   var PRESET_GROUPS = [
     { id: 'all', zh: '全部项目', en: 'All events', ids: EVENTS.map(function (e) { return e.id; }) },
     { id: 'speed', zh: '速拧组', en: 'Speed', ids: ['333', '222', '444', '555', '666', '777', '333oh'] },
-    { id: 'blind', zh: '盲拧组', en: 'Blindfolded', ids: ['333bf', '444bf', '555bf', '333mbf'] },
+    { id: 'blind', zh: '盲拧组', en: 'Blindfolded', ids: ['333bf', '444bf', '555bf', '333mbf', '333mbo'] },
     { id: 'big', zh: '高阶组', en: 'Big cubes', ids: ['444', '555', '666', '777'] },
     { id: 'other', zh: '异形组', en: 'Other', ids: ['clock', 'minx', 'pyram', 'skewb', 'sq1'] },
     { id: 'fmc', zh: '最少步', en: 'FMC', ids: ['333fm'] },
-    { id: 'retired', zh: '已停办', en: 'Discontinued', ids: ['333ft', 'magic', 'mmagic', '333ec'] }
+    { id: 'retired', zh: '已停办', en: 'Discontinued', ids: ['333ft', 'magic', 'mmagic', '333mbo'] }
   ];
 
   /* ---------------- 洲际 / 地区 ---------------- */
@@ -142,11 +142,11 @@
     '555bf': [['180', 2009], ['150', 2014], ['120', 2019]],
     '333mbf': [['25', 2008], ['35', 2012], ['45', 2016], ['55', 2020]],
     '333fm': [['30', 2006], ['25', 2011], ['22', 2014], ['20', 2017], ['19', 2019], ['18', 2021], ['17', 2023], ['16', 2025]],
-    '333ec': [['60', 2004], ['50', 2008], ['40', 2012]]
+    '333mbo': [['5', 2006], ['6', 2007], ['10', 2008], ['24', 2008]]
   };
   function milestoneLabel(ev, bar, e) {
     if (ev === '333fm') return { zh: e.zh + ' 最少步单次首次 ≤' + bar + ' 步', en: e.en + ' FMC single first ≤' + bar + ' moves' };
-    if (ev === '333mbf') return { zh: e.zh + ' 多盲单次首次 ≥' + bar + ' 个', en: e.en + ' MBLD single first ≥' + bar };
+    if (ev === '333mbf' || ev === '333mbo') return { zh: e.zh + ' 单次首次 ≥' + bar + ' 个', en: e.en + ' single first ≥' + bar + ' cubes' };
     return { zh: e.zh + ' 单次首次 sub ' + bar + ' 秒', en: e.en + ' single first sub-' + bar };
   }
   function defaultEventMilestones(ev) {
@@ -285,7 +285,7 @@
     var items = [
       { k: 'breadth', v: round(Math.pow(Math.max((p.m ? p.m.m5 : 1), 1), 0.7) / 12, 2) },
       { k: 'coverage', v: round(Math.min(raw, cap) * 100, 2) },
-      { k: 'lineCount', v: (p.events || []).indexOf('333mbf') >= 0 ? round(41.4 / 100, 2) : 0 },
+      { k: 'lineCount', v: ((p.events || []).indexOf('333mbf') >= 0 || (p.events || []).indexOf('333mbo') >= 0) ? round(41.4 / 100, 2) : 0 },
       { k: 'multi', v: round(Math.min((p.events || []).length, 17) / 17 * 1.6, 2) }
     ];
     var total = round(Math.min(items.reduce(function (a, b) { return a + b.v; }, 0), cap * 100 + 2), 2);
@@ -472,6 +472,7 @@
       lanes: lanes, lanesAvg: lanesAvg, nations: nations,
       milestones: milestones, eventMilestones: eventMilestonesFn,
       boards: boards, board: function (k, key, n, e) { return board(k, key, n, e, ctx); },
+      eventBoards: cfg.eventBoards || {},
       meta: meta, years: years,
       ensureDetail: ensureDetail, stats: function (p) { return stats(p); },
       bonus: function (p) { return bonus(p); }, ranksOf: function (p) { return ranksOf(p, ctx); },

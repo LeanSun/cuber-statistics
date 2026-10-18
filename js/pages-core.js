@@ -170,6 +170,28 @@
     return null;
   };
 
+  /* 单项目模式：筛选条件恰好只选中一个项目时，按该项目成绩单独排名 */
+  function singleEvent(state) {
+    if (state.evSel && state.evSel.length === 1) return state.evSel[0];
+    if (state.evSel && state.evSel.length > 1) return '';
+    if (state.group === 'custom') return '';
+    const pool = eventSet(state);
+    return pool.length === 1 ? pool[0] : '';
+  }
+  /* 每项目榜单（ETL 预计算，按该项目世界排名） */
+  function eventBoard(ev) {
+    const arr = (M.eventBoards || {})[ev];
+    if (!arr || !arr.length) return { list: [], idx: {}, len: 0 };
+    const idx = {};
+    arr.forEach(function (e) { idx[e.id] = e; });
+    return { list: arr, idx: idx, len: arr.length };
+  }
+  /* 色条宽度：按世界排名对数缩放，使不同页面的相对位置可见 */
+  function evBarPct(r, len) {
+    if (!r || r <= 0) return 6;
+    return Math.max(6, Math.min(100, 100 * (1 - Math.log(r) / Math.log((len || 2000) + 1))));
+  }
+
   P.filtered = function (state) {
     const pool = eventSet(state);
     const scoped = (state.group && state.group !== 'all') || (state.evSel && state.evSel.length);
@@ -193,6 +215,8 @@
       }
       return true;
     });
+    const sev = singleEvent(state);
+    const bd = sev ? eventBoard(sev) : null;
     rows = rows.map(function (p) {
       const sc = scoreOf(p);
       let score = sc[state.tab] || sc.overall;
@@ -203,7 +227,7 @@
         const hit = p.events.filter(function (e) { return pool.indexOf(e) >= 0; }).length;
         score = score * (0.45 + 0.55 * (hit / pool.length));
       }
-      return { p: p, score: score, sc: sc };
+      return { p: p, score: score, sc: sc, ev: sev || '', be: bd ? (bd.idx[p.id] || null) : null, bdLen: bd ? bd.len : 0 };
     });
     return sortRows(rows, state);
   };
@@ -214,11 +238,14 @@
     const val = function (row) {
       const p = row.p;
       switch (k) {
-      case 'score': return row.score;
+      case 'score':
+      case 'total':
+        /* 单项目模式：按该项目世界排名排序（升序即从好到差） */
+        if (row.ev) return row.be ? -row.be.r : -1e9;
+        return row.score;
       case 'player': return p.name;
       case 'country': return p.country;
       case 'gender': return p.gender;
-      case 'total': return row.score;
         default:
           if (MOD.indexOf(k) >= 0) return (state.tab === 'peak' ? p.pk : p.m)[k];
           if (k === 'wr') return p.wr;
@@ -238,6 +265,7 @@
   P.rank = function (state) {
     const rowsAll = P.filtered(state);
     const per = 50;
+    const evMode = rowsAll.length ? (rowsAll[0].ev || '') : '';
     const maxScore = Math.max(1, rowsAll.reduce(function (m, r) { return Math.max(m, r.score); }, 0));
     const pages = Math.max(1, Math.ceil(rowsAll.length / per));
     const pg = Math.min(pages, Math.max(1, state.page));
@@ -246,24 +274,29 @@
     let h = '<div class="page-head reveal"><h1>' + esc(t('rank.title')) + '</h1><p class="sub">' + esc(t('rank.sub')) + '</p></div>';
 
     h += '<div class="rank-toolbar reveal">';
-    h += '<div class="seg" id="tabSeg">';
-    ['career', 'peak', 'overall'].forEach(function (tb) {
-      h += '<button data-tab="' + tb + '" class="' + (state.tab === tb ? 'on' : '') + '">' + esc(t('rank.tab.' + tb)) + '</button>';
-    });
-    h += '</div>';
-    h += '<span class="tiny muted">' + esc(t('rank.tab.' + state.tab + '.d')) + '</span>';
+    if (evMode) {
+      h += '<span class="tag acc ev-tag">' + esc(evName(M.EV[evMode])) + ' · ' + esc(t('rank.evMode')) + '</span>';
+      h += '<span class="tiny muted">' + esc(t('rank.evNote', { ev: evName(M.EV[evMode]) })) + '</span>';
+    } else {
+      h += '<div class="seg" id="tabSeg">';
+      ['career', 'peak', 'overall'].forEach(function (tb) {
+        h += '<button data-tab="' + tb + '" class="' + (state.tab === tb ? 'on' : '') + '">' + esc(t('rank.tab.' + tb)) + '</button>';
+      });
+      h += '</div>';
+      h += '<span class="tiny muted">' + esc(t('rank.tab.' + state.tab + '.d')) + '</span>';
+    }
     h += '<span class="spacer"></span>';
     h += '<span class="tiny muted">' + esc(t('rank.perPage')) + '</span>';
     h += '<a class="btn" href="#/model">' + Ic.glyph('sliders') + ' ' + esc(t('rank.params')) + '</a>';
     h += '</div>';
-    if (state.tab === 'peak') h += '<div class="warnbox reveal" style="margin-bottom:12px">' + esc(t('rank.peakNote')) + '</div>';
+    if (!evMode && state.tab === 'peak') h += '<div class="warnbox reveal" style="margin-bottom:12px">' + esc(t('rank.peakNote')) + '</div>';
 
     h += '<div class="table-wrap reveal"><table class="data rank-table"><thead><tr>';
     COLS.forEach(function (c) {
       const isSorted = (state.sortKey || 'score') === c.k;
       const arw = isSorted ? (state.sortDir === 'asc' ? '▲' : '▼') : '';
       if (c.k === 'exp') { h += '<th class="tl exp-col"></th>'; return; }
-      if (c.k === 'bars') { h += '<th class="bars-head bars-full">' + esc(t(c.label)) + '</th>'; return; }
+      if (c.k === 'bars') { h += '<th class="bars-head bars-full">' + esc(t(evMode ? 'rank.evScore' : c.label)) + '</th>'; return; }
       h += '<th class="' + (c.cls || '') + (isSorted ? ' sorted' : '') + '" data-sort="' + c.k + '">' +
         esc(c.label ? t(c.label) : '') + '<span class="arw">' + arw + '</span></th>';
     });
@@ -282,7 +315,24 @@
       h += '<td class="tl"><div class="pname">' + avatar(p) + playerLink(p) + '</div></td>';
       h += '<td class="tl gcol">' + genderBadge(p) + '</td>';
       h += '<td class="tl">' + flag(p.country) + '</td>';
-      h += '<td class="barcell bars-full"><div class="bar-row"><div class="bar-grow" style="width:' + bw.toFixed(1) + '%">' + miniStack(p, modTab) + '</div><span class="bar-total">' + U.fmt(score, 1) + '</span></div></td>';
+      if (evMode) {
+        /* 单项目模式：显示该项目最佳成绩（单次 / 平均）与该项目世界排名 */
+        const be = row.be;
+        if (be) {
+          const w = evBarPct(be.r, row.bdLen);
+          h += '<td class="barcell bars-full"><div class="bar-row evmode">' +
+            '<div class="bar-grow" style="width:' + w.toFixed(1) + '%"></div>' +
+            '<span class="ev-res">' + esc(be.s) + (be.af ? ' <i>/</i> ' + esc(be.af) : '') + '</span>' +
+            '<span class="bar-total ev-rank" title="' + esc(t('player.rankWorld')) + '">#' + be.r + '</span></div></td>';
+        } else {
+          h += '<td class="barcell bars-full"><div class="bar-row evmode">' +
+            '<div class="bar-grow" style="width:6%"></div>' +
+            '<span class="ev-res muted">—</span>' +
+            '<span class="bar-total muted">—</span></div></td>';
+        }
+      } else {
+        h += '<td class="barcell bars-full"><div class="bar-row"><div class="bar-grow" style="width:' + bw.toFixed(1) + '%">' + miniStack(p, modTab) + '</div><span class="bar-total">' + U.fmt(score, 1) + '</span></div></td>';
+      }
       h += '<td class="tl exp-col"><button class="expand-btn" data-expand="' + p.id + '" aria-label="' + esc(t('ui.more')) + '">›</button></td>';
       h += '</tr>';
       h += '<tr class="exp-row" data-expfor="' + p.id + '" hidden><td colspan="' + COLS.length + '"><div class="exp-slot" data-body="' + p.id + '"></div></td></tr>';
@@ -315,6 +365,15 @@
       '<span><b>' + esc(t('rank.tab.peak')) + '</b> ' + U.fmt(sc.peak, 1) + '</span>' +
       '<span><b>' + esc(t('rank.tab.overall')) + '</b> ' + U.fmt(sc.overall, 1) + '</span>' +
       '<span><b>' + esc(t('col.balance')) + '</b> ' + U.fmt(sc.balance, 2) + '</span></div>';
+    /* 单项目模式：补充该项目最佳成绩 */
+    if (state && state.evSel && state.evSel.length === 1) {
+      const be = ((M.eventBoards || {})[state.evSel[0]] || []).filter(function (x) { return x.id === p.id; })[0];
+      if (be) {
+        h += '<div class="exp-summary exp-evsum">' +
+          '<span><b>' + esc(t('rank.evScore')) + '</b> ' + esc(be.s) + (be.af ? ' <i>/</i> ' + esc(be.af) : '') + '</span>' +
+          '<span><b>' + esc(t('player.rankWorld')) + '</b> #' + be.r + '</span></div>';
+      }
+    }
     h += '<div class="exp-modtable">';
     h += '<div class="exp-modrow bk-head"><span>' + esc(t('rank.module')) + '</span><span class="bk-num">' + esc(t('player.raw')) + '</span><span class="bk-num">' + esc(t('player.weight')) + '</span><span class="bk-num">' + esc(t('player.contrib')) + '</span><span class="bk-num">' + esc(t('player.pct')) + '</span></div>';
     cs.forEach(function (c) {

@@ -111,11 +111,10 @@
         '<path d="M7.5 7.6v8.8M12 7.6v8.8M16.5 7.6v8.8" stroke="currentColor" stroke-width="1.2"/>' +
         '<path d="M2.6 12h18.8" stroke="currentColor" stroke-width="1" opacity=".4"/>');
     },
-    /* 三盲旧规则（已停办，眼罩闭合）：三阶立方体 + 旧式闭合眼 */
-    '333ec': function () {
-      return S(cube3({ size: 16, x: 4, y: 4 }) +
-        '<path d="M5 12.6c1.6-1.8 4-1.8 5.6 0M13.4 12.6c1.6-1.8 4-1.8 5.6 0" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>' +
-        '<path d="M5 11.7l1.2-1.6M11 11.7l1.2-1.6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".6"/>');
+    /* 旧多盲（已停办）：三阶多盲 + 虚线表示旧式规则 */
+    '333mbo': function () {
+      return S('<g fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="2.6 1.8">' +
+        gridBox(3, 1.6, 7.4, 8.2) + gridBox(3, 11.2, 2.6, 8.2) + gridBox(3, 13.4, 12.4, 8.2) + '</g>');
     }
   };
 

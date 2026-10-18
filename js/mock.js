@@ -130,6 +130,8 @@
     var evs = [mainEv];
     var guard0 = 0;
     while (evs.length < evCount && guard0++ < 500) { var e = pick(pool).id; if (evs.indexOf(e) < 0) evs.push(e); }
+    /* 少量选手参加已停办项目（便于本地预览"包含停办"筛选与旧多盲） */
+    if (rnd() < 0.10) { var rt = pick(['333ft', 'magic', 'mmagic', '333mbo']); if (evs.indexOf(rt) < 0) evs.push(rt); }
 
     var p = {
       id: 'P' + String(i + 1).padStart(4, '0'),
@@ -145,6 +147,7 @@
     };
 
     p._m1 = s * rr(0.6, 1.4) * 100;
+    p._s = s; /* 技能代理值（仅供演示榜单排序用） */
     p._m2 = s * rr(0.5, 1.5) * 100;
     p._m3 = Math.pow(s, 0.8) * rr(0.6, 1.6) * 100;
     p._m4 = s * rr(0.5, 1.5) * 100;
@@ -276,7 +279,52 @@
     comps: totComps, wr: totWR, records: totRec, podiums: totPod, nations: Object.keys(seen).length, demo: true
   };
 
+  /* ---------- 每项目榜单（演示数据：伪世界排名 + 伪最佳成绩，形状与 ETL 产出一致） ---------- */
+  var EV_WR = {
+    '333': 3.4, '222': 0.85, '444': 15.5, '555': 32, '666': 61, '777': 94, '333oh': 6.0,
+    '333bf': 12.8, '444bf': 58, '555bf': 125, '333fm': 17, 'clock': 2.4, 'minx': 23,
+    'pyram': 0.75, 'skewb': 0.75, 'sq1': 4.2, '333ft': 15.5, 'magic': 0.65, 'mmagic': 1.3,
+    '333mbo': 0, '333mbf': 0
+  };
+  function fmtT(v) {
+    var s = v.toFixed(2);
+    if (v >= 60) { var m = Math.floor(v / 60); s = m + ':' + (v - m * 60).toFixed(2).padStart(5, '0'); }
+    return s;
+  }
+  var eventBoards = {};
+  EVENTS.forEach(function (ev) {
+    var cands = PLAYERS.filter(function (p) { return p.events.indexOf(ev.id) >= 0; });
+    if (!cands.length) return;
+    /* 每个 (选手, 项目) 一个确定性抖动，使不同项目的强弱排序不完全相同 */
+    function jit(p) {
+      var x = Math.sin(p.id.charCodeAt(1) * 12.9898 + ev.id.length * 78.233 + ev.id.charCodeAt(0) * 3.17) * 43758.5453;
+      return 0.6 + (x - Math.floor(x));
+    }
+    cands = cands.slice().sort(function (a, b) { return (b._s * jit(b)) - (a._s * jit(a)); });
+    var base = EV_WR[ev.id] || 5;
+    cands.forEach(function (p, i) {
+      var r = i + 1, s = '', af = '', b = 0, a = 0;
+      if (ev.format === 'multi') {
+        var solved = Math.max(2, Math.round(58 - Math.pow(r, 0.85) * 1.1));
+        var att = solved + ri(0, 3);
+        s = solved + '/' + att + ' ' + ri(45, 59) + ':' + String(ri(10, 59)).padStart(2, '0');
+        b = solved * 100 + att;
+      } else if (ev.format === 'number') {
+        var mv = Math.max(16, Math.round(18 + Math.pow(r, 0.9) / 5));
+        s = String(mv); af = String(mv + ri(1, 5));
+        b = mv; a = mv + 2;
+      } else {
+        var v = base * (1 + Math.pow(r, 0.85) / 12);
+        var av = v * rr(1.12, 1.55);
+        s = fmtT(v); af = fmtT(av);
+        b = Math.round(v * 100); a = Math.round(av * 100);
+      }
+      (eventBoards[ev.id] = eventBoards[ev.id] || []).push({ id: p.id, r: r, b: b, a: a, s: s, af: af });
+    });
+  });
+
   window.MOCK = window.Calc.assemble(PLAYERS, {
-    demo: true, countries: COUNTRIES, continentOf: CONTINENT_OF, meta: meta, years: YEARS
+    demo: true, countries: COUNTRIES, continentOf: CONTINENT_OF, meta: meta, years: YEARS,
+    eventBoards: eventBoards
   });
 })();
