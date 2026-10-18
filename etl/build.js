@@ -235,17 +235,31 @@ async function loadDimensions() {
 
   log('加载 ranks_single / ranks_average …');
   let rankRows = 0;
-  const ingestRank = (r) => {
+  /* 每选手每项目：{r: 世界排名, b: 官方最佳单次原始值, a: 官方最佳平均原始值}
+     成绩直接取 ranks 表的 best 列（权威值），避免从 results 重新取 min——
+     旧/新多盲编码跨格式数值不可比（新格式缺前导 1，数值恒小），只有 ranks 表
+     的排序是 WCA 官方口径；展示时按前导位自动选择旧/新编码解码。 */
+  const ingestRank = (r, isAvg) => {
     const pid = r.person_id, eid = r.event_id;
     if (!pid || !eid) return;
     rankRows++;
     const wr = toInt(r.world_rank);
+    const best = toInt(r.best);
     let m = worldRank.get(pid); if (!m) { m = {}; worldRank.set(pid, m); }
-    if (!(eid in m) || wr < m[eid]) m[eid] = wr;
+    if (!(eid in m)) m[eid] = { r: 0, b: 0, a: 0 };
+    if (isAvg) {
+      /* 平均成绩：存最佳平均；世界排名仅在该选手无单次排名时兜底
+         （单次名次是该项目 canonical 排名，ranks_single 先于 ranks_average 加载） */
+      if (best > 0 && (m[eid].a === 0 || best < m[eid].a)) m[eid].a = best;
+      if (m[eid].r === 0 && wr > 0) m[eid].r = wr;
+    } else {
+      if (wr > 0 && (m[eid].r === 0 || wr < m[eid].r)) m[eid].r = wr;
+      if (best > 0 && (m[eid].b === 0 || best < m[eid].b)) m[eid].b = best;
+    }
     eventCounts[eid] = (eventCounts[eid] || 0) + 1;
   };
-  await streamTsv('ranks_single', ingestRank);
-  await streamTsv('ranks_average', ingestRank);
+  await streamTsv('ranks_single', (r) => ingestRank(r, false));
+  await streamTsv('ranks_average', (r) => ingestRank(r, true));
   log('rank rows:', rankRows);
 }
 
@@ -266,7 +280,6 @@ function getPlayer(id) {
       eventsSet: new Set(), compsSet: new Set(),
       start: 9999, end: 0, wr: 0, cr: 0, nr: 0,
       podiums: [], records: [], yearly: {},
-      evBest: {},   /* event_id -> {b: 最佳单次原始值, a: 最佳平均原始值}（编码值统一越小越好） */
       activeStreak: 1
     };
     players.set(id, p);
@@ -351,11 +364,6 @@ async function processResults() {
     if (rar === 'WR') (wrAvgG[eid] = wrAvgG[eid] || []).push({ date: year, name: p.name, country: p.country });
 
     trackMilestone(eid, r.best, year);
-
-    /* 每项目最佳成绩（WCA 编码值对 time/number/multi 均为越小越好，可直接取 min） */
-    const eb = p.evBest[eid] || (p.evBest[eid] = { b: 0, a: 0 });
-    if (r.best > 0 && (eb.b === 0 || r.best < eb.b)) eb.b = r.best;
-    if (r.average > 0 && (eb.a === 0 || r.average < eb.a)) eb.a = r.average;
 
     if (isFinal && pos >= 1 && pos <= 3) {
       const tier = champWC.has(compId) ? 'WC' : (champCC.has(compId) ? 'CC' : 'OP');
@@ -461,7 +469,7 @@ function computeModules() {
 
     const wr = worldRank.get(p.wcaId) || {};
     let bestEv = null, bestRk = 1e9;
-    Object.keys(wr).forEach((eid) => { if (wr[eid] < bestRk) { bestRk = wr[eid]; bestEv = eid; } });
+    Object.keys(wr).forEach((eid) => { if (wr[eid].r < bestRk) { bestRk = wr[eid].r; bestEv = eid; } });
     if (!bestEv) { let bestN = -1; p.eventsSet.forEach((eid) => { if ((eventCounts[eid] || 0) > bestN) { bestN = eventCounts[eid]; bestEv = eid; } }); if (!bestEv) bestEv = '333'; }
     p.mainEvent = bestEv;
 
@@ -471,8 +479,6 @@ function computeModules() {
     p.months1 = 0; p.months10 = 0; p.months100 = 0; p.peakSpan = 0; p.peakAge = 0;
 
     p.events = Array.from(p.eventsSet).sort((a, b) => ((events.get(a) || { rank: 99 }).rank) - ((events.get(b) || { rank: 99 }).rank));
-    /* 每项目最佳成绩保留原始编码值 {b,a}；展示字符串仅在入榜/输出时按需格式化，
-       避免为 30 万选手全部预生成字符串导致 CI 内存溢出（evBest 不进入最终数据） */
     p.comps = p.compsSet.size;
     p.start = p.start === 9999 ? 2003 : p.start;
     if (p.end === 0) p.end = p.start;
@@ -483,21 +489,21 @@ function computeModules() {
 
   /* ---------------- 每项目榜单（按该项目世界排名取前 N） ----------------
      供前端"筛选单个项目后按该项目成绩单独排名"使用；
-     未入榜者在该项目上必然排在入榜者之后，前端追加在榜尾即可保证整体次序正确。 */
+     成绩取 ranks_single/ranks_average 的官方 best 列（WCA 权威口径，
+     旧/新多盲编码由此自动正确解码）；未入榜者在该项目上必然弱于入榜者，
+     前端追加在榜尾即可保证整体次序正确。 */
   const EVENT_BOARD_MAX = 2000;
   list.forEach((p) => {
     const wr = worldRank.get(p.wcaId) || {};
-    const eb = p.evBest || {};
     Object.keys(wr).forEach((eid) => {
       if (!Calc.EV[eid]) return;
-      const r = wr[eid];
-      if (r > EVENT_BOARD_MAX) return;
+      const o = wr[eid];
+      if (o.r > EVENT_BOARD_MAX || o.r <= 0) return;
       const arr = EVENT_BOARDS[eid] || (EVENT_BOARDS[eid] = []);
-      const e = eb[eid] || {};
       arr.push({
-        id: p.wcaId, r: r, b: e.b || 0, a: e.a || 0,
-        s: e.b > 0 ? fmtResult(eid, e.b, 'single') : '',
-        af: e.a > 0 ? fmtResult(eid, e.a, 'avg') : ''
+        id: p.wcaId, r: o.r, b: o.b || 0, a: o.a || 0,
+        s: o.b > 0 ? fmtResult(eid, o.b, 'single') : '',
+        af: o.a > 0 ? fmtResult(eid, o.a, 'avg') : ''
       });
     });
   });
@@ -507,8 +513,7 @@ function computeModules() {
   });
   log('每项目榜单:', Object.keys(EVENT_BOARDS).length, '个项目, 最大深度', EVENT_BOARD_MAX);
 
-  /* 释放中间结构：榜单已独立持有所需数据，evBest/worldRank/finalCounts 不再需要 */
-  list.forEach((p) => { p.evBest = null; });
+  /* 释放中间结构：榜单已独立持有所需数据，worldRank/finalCounts 不再需要 */
   worldRank.clear(); finalCounts.clear();
 
   return list;
