@@ -142,9 +142,10 @@
     info: '<circle cx="12" cy="12" r="8.4" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M12 11v5.4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="12" cy="7.9" r="1" fill="currentColor"/>'
   };
 
-  /* 官方 cubing.net 图标字体覆盖的事件（其余回退内联 SVG） */
+  /* 官方 cubing.net 图标字体覆盖的事件（其余回退内联 SVG）。
+     字体与 CSS 已本地化到 vendor/cubing-icons.*，包含 event-333mbo（旧多盲）。 */
   const CUBING = {
-    '222': 1, '333': 1, '333bf': 1, '333fm': 1, '333ft': 1, '333mbf': 1, '333oh': 1,
+    '222': 1, '333': 1, '333bf': 1, '333fm': 1, '333ft': 1, '333mbf': 1, '333mbo': 1, '333oh': 1,
     '444': 1, '444bf': 1, '555': 1, '555bf': 1, '666': 1, '777': 1,
     'clock': 1, 'magic': 1, 'minx': 1, 'mmagic': 1, 'pyram': 1, 'skewb': 1, 'sq1': 1
   };

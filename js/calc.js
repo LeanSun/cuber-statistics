@@ -48,6 +48,39 @@
     return Math.pow(Math.max(c, 0.01), 0.6) * Math.pow(Math.max(pk, 0.01), 0.4);
   }
 
+  /* ---------------- 国家表（ISO2 → [英文名, 中文名, 洲际码]） ----------------
+     WCA 导出里 country_id 可能是国家全名、ISO2 或 ISO3（不同导出版本不一致），
+     统一归一化为 ISO2，并据此取中英文名称与洲际归属（不依赖 continents.tsv）。 */
+  var CT = (function () {
+    try { if (typeof require !== 'undefined' && require) return require('./country-table.js'); } catch (e) { }
+    try { return (root && root.COUNTRY_TABLE) || {}; } catch (e) { return {}; }
+  })();
+  var ISO3_TO_2 = {};
+  (function () {
+    /* 常见 ISO3 → ISO2（仅用于兜底；country-table 里已有 ISO2 主键） */
+    var pairs = 'USA:US CHN:CN GBR:GB DEU:DE FRA:FR JPN:JP KOR:KR AUS:AU CAN:CA NLD:NL ITA:IT ESP:ES POL:PL SWE:SE NOR:NO DNK:DK FIN:FI CHE:CH AUT:AT BEL:BE PRT:PT IRL:IE NZL:NZ BRA:BR MEX:MX ARG:AR CHL:CL COL:CO PER:PE VEN:VE RUS:RU UKR:UA BLR:BY CZE:CZ SVK:SK HUN:HU ROU:RO BGR:BG GRC:GR TUR:TR ISR:IL IND:IN IDN:ID MYS:MY SGP:SG THA:TH PHL:PH VNM:VN KAZ:KZ UZB:UZ NPL:NP LKA:LK BGD:BD PAK:PK IRN:IR IRQ:IQ SAU:SA ARE:AE EGY:EG ZAF:ZA NGA:NG KEN:KE MAR:MA ETH:ET TUN:TN DZA:DZ UGA:UG GHA:GH TZA:TZ ZWE:ZW ZMB:ZM MOZ:MZ AGO:AO SEN:SN CIV:CI CMR:CM URY:UY PRY:PY BOL:BO ECU:EC CRI:CR PAN:PA GTM:GT CUB:CU DOM:DO HTI:HT JAM:JM TTO:TT ISL:IS LUX:LU LIE:LI MCO:MC MLT:MT CYP:CY ALB:AL MKD:MK SRB:RS HRV:HR SVN:SI BIH:BA MNE:ME MDA:MD LTU:LT LVA:LV EST:EE GEO:GE ARM:AM AZE:AZ MNG:MN KGZ:KG TJK:TJ TKM:TM AFG:AF LBN:LB JOR:JO SYR:SY OMN:OM QAT:QA KWT:KW BHR:BH YEM:YE MMR:MM LAO:LA KHM:KH TWN:TW HKG:HK MAC:MO PRK:KP FJI:FJ PNG:PG WSM:WS TON:TO VUT:VU SLB:SB NCL:NC PYF:PF FRO:FO GRL:GL XKX:XK NAM:NA BWA:BW LSO:LS SWZ:SZ MDG:MG MWI:MW RWA:RW BDI:BI SSD:SS SDN:SD LBY:LY MRT:MR SOM:SO DJI:DJ ERI:ER GMB:GM GIN:GN GNB:GW LBR:LR SLE:SL TGO:TG BEN:BJ BFA:BF CAF:CF TCD:TD COG:CG COD:CD GNQ:GQ GAB:GA MUS:MU SYC:SC CPV:CV Comoros:COM COM:KM STP:ST ATG:AG BRB:BB BHS:BS BLZ:BZ DMA:DM GRD:GD KNA:KN LCA:LC VCT:VC NIC:NI HND:HN SLV:SV BLR_:BY';
+    pairs.split(' ').forEach(function (p) {
+      var a = p.split(':');
+      if (a.length === 2 && a[0] && a[1]) ISO3_TO_2[a[0]] = a[1];
+    });
+  })();
+
+  function isoNorm(id) {
+    if (!id) return '';
+    var s = String(id).trim();
+    var up = s.toUpperCase();
+    if (CT[up]) return up;
+    if (/^[A-Z]{2}$/.test(up)) return up;
+    if (ISO3_TO_2[up]) return ISO3_TO_2[up];
+    /* 按英文名查 */
+    var low = s.toLowerCase();
+    for (var k in CT) { if (CT[k][0] && CT[k][0].toLowerCase() === low) return k; }
+    return up;
+  }
+  function countryEn(iso) { var r = CT[isoNorm(iso)]; return r ? r[0] : (iso || '—'); }
+  function countryZh(iso) { var r = CT[isoNorm(iso)]; return r ? (r[1] || r[0]) : (iso || '—'); }
+  function contOfIso(iso) { var r = CT[isoNorm(iso)]; return r ? r[2] : ''; }
+
   /* ---------------- 项目表（可被 cfg.events 覆盖） ---------------- */
   var EVENTS = [
     { id: '333', zh: '三阶', en: '3x3x3 Cube', group: 'speed', groups: ['speed'], w: 1.00 },
@@ -74,13 +107,13 @@
   ];
   var EV = {}; EVENTS.forEach(function (e) { EV[e.id] = e; });
 
+  /* 正阶组＝2~7 阶；三阶单手与最少步归入「其他组」；最少步不再单独成组 */
   var PRESET_GROUPS = [
     { id: 'all', zh: '全部项目', en: 'All events', ids: EVENTS.map(function (e) { return e.id; }) },
-    { id: 'speed', zh: '速拧组', en: 'Speed', ids: ['333', '222', '444', '555', '666', '777', '333oh'] },
+    { id: 'speed', zh: '正阶组', en: 'NxN cubes', ids: ['222', '333', '444', '555', '666', '777'] },
     { id: 'blind', zh: '盲拧组', en: 'Blindfolded', ids: ['333bf', '444bf', '555bf', '333mbf', '333mbo'] },
     { id: 'big', zh: '高阶组', en: 'Big cubes', ids: ['444', '555', '666', '777'] },
-    { id: 'other', zh: '异形组', en: 'Other', ids: ['clock', 'minx', 'pyram', 'skewb', 'sq1'] },
-    { id: 'fmc', zh: '最少步', en: 'FMC', ids: ['333fm'] },
+    { id: 'other', zh: '其他组', en: 'Other', ids: ['333oh', '333fm', 'clock', 'minx', 'pyram', 'skewb', 'sq1'] },
     { id: 'retired', zh: '已停办', en: 'Discontinued', ids: ['333ft', 'magic', 'mmagic', '333mbo'] }
   ];
 
@@ -236,19 +269,23 @@
       if (r <= 100) yrTop.t100++;
     });
 
+    /* 以下全部取自 ETL 真实统计；仅在旧数据缺字段时回退为 0（不再用估算公式） */
     var totalPod = pods.length;
+    if (p.podTotal) totalPod = p.podTotal;
     var st = {
       wrCount: p.wr, crCount: p.cr, nrCount: p.nr,
-      recTotal: recs.length, recEvents: Object.keys(evSet).length, recBestYear: bestYear,
+      recTotal: p.recTotal || ((p.wr || 0) + (p.cr || 0) + (p.nr || 0)),
+      recEvents: Object.keys(evSet).length, recBestYear: bestYear,
       heldTotal: heldTotal, heldLongest: longest, holdingNow: holdingNow,
       compCount: p.comps,
-      compEventRows: Math.round(p.comps * (1.4 + (p.events ? p.events.length : 0) / 12)),
-      resultRows: Math.round(p.comps * (p.events ? p.events.length : 0) * 0.62) + recs.length,
-      attempts: Math.round(p.comps * (p.events ? p.events.length : 0) * 3.5),
-      solves: Math.round(p.comps * (p.events ? p.events.length : 0) * 3.0),
+      compEventRows: p.resultRows || 0,
+      resultRows: p.resultRows || 0,
+      attempts: p.attempts || 0,
+      solves: p.solves || 0,
       activeYears: years.length, activeStreak: maxStreak,
-      maxEventsPerComp: clamp((p.events ? p.events.length : 0), 1, 20),
-      cities: Math.round(p.comps * 0.6),
+      maxEventsPerComp: p.maxEventsPerComp || clamp((p.events ? p.events.length : 0), 1, 20),
+      multiEventComp: p.multiEventComp || 0,
+      cities: p.cities || 0,
       podiumTotal: totalPod, gold: g, silver: si, bronze: br,
       podiumWC: podiumByTier.WC, podiumCC: podiumByTier.CC, podiumNC: podiumByTier.NC,
       podiumLocal: podiumByTier.Local, podiumOpen: podiumByTier.OP,
@@ -261,8 +298,8 @@
       coverage: (p.events ? p.events.length : 0), dominance: round((p.eloPeak - 1400) / 900, 3),
       lowCompHighAch: round(p.overall / Math.max(1, p.comps), 4),
       compDensity: round(p.comps / Math.max(1, years.length), 2),
-      multiEventComp: 0,
-      dnf: 0
+      multiEventComp: p.multiEventComp || 0,
+      dnf: p.dnf || 0
     };
     p.stats = st;
     return st;
@@ -389,8 +426,36 @@
     var events = cfg.events || EVENTS;
     var ev = {}; events.forEach(function (e) { ev[e.id] = e; });
     var presetGroups = cfg.presetGroups || PRESET_GROUPS;
-    var countries = cfg.countries || {};
-    var continentOf = cfg.continentOf || {};
+    /* 国家维度统一归一化为 ISO2：国家名（含中文 / 英文）与洲际码都取自国家表，
+       不再依赖导出里的 countries.tsv / continents.tsv（不同版本列名不一致） */
+    var countries = {}, countriesZh = {}, continentMap = {};
+    var countriesRaw = cfg.countries || {}, continentRaw = cfg.continentOf || {};
+    var continentOf = continentMap;
+    Object.keys(countriesRaw).forEach(function (id) {
+      const iso = isoNorm(id);
+      if (!iso) return;
+      countries[iso] = countryEn(iso);
+      countriesZh[iso] = countryZh(iso);
+      const c = contOfIso(iso) || continentRaw[id] || continentRaw[iso] || '';
+      if (c) continentMap[iso] = c;
+    });
+    Object.keys(continentRaw).forEach(function (id) {
+      const iso = isoNorm(id);
+      if (iso && continentRaw[id] && !continentMap[iso]) continentMap[iso] = continentRaw[id];
+    });
+    /* 数据中出现的国家：即使国家表缺项也补上，保证下拉与筛选不空白 */
+    players.forEach(function (p) {
+      const iso = isoNorm(p.country);
+      if (!iso) return;
+      if (!countries[iso]) { countries[iso] = countryEn(iso); countriesZh[iso] = countryZh(iso); }
+      const c = contOfIso(iso);
+      if (c && !continentMap[iso]) continentMap[iso] = c;
+    });
+    const countryList = Object.keys(countries);
+
+    /* 选手 country 归一化为 ISO2（前端旗帜 / 中文名 / 洲际筛选都依赖它） */
+    players.forEach(function (p) { p.country = isoNorm(p.country) || p.country; });
+
     var continents = CONTINENTS, regions = REGIONS, regionOf = REGION_OF;
     var milestones = cfg.milestones || MILESTONES;
     var emMap = cfg.eventMilestonesMap || null;
@@ -464,7 +529,7 @@
 
     var M = {
       events: events, EV: ev, presetGroups: presetGroups,
-      countries: countries, countryList: Object.keys(countries),
+      countries: countries, countriesZh: countriesZh, countryList: countryList,
       continents: continents, continentOf: continentOf,
       regions: regions, regionOf: regionOf,
       players: players, ranked: ranked,
@@ -486,6 +551,7 @@
     CONTINENTS: CONTINENTS, REGIONS: REGIONS, REGION_OF: REGION_OF, CONTINENT_CODE: CONTINENT_CODE,
     MILESTONES: MILESTONES, BOARDS: BOARDS, EV_BARRIERS: EV_BARRIERS,
     weighted: weighted, overall: overall, round: round, clamp: clamp, esc: esc,
+    CT: CT, isoNorm: isoNorm, countryEn: countryEn, countryZh: countryZh, contOfIso: contOfIso,
     stats: stats, bonus: bonus, ranksOf: ranksOf, board: board,
     cumAt: cumAt, actAt: actAt, cumAtF: cumAtF, actAtF: actAtF,
     makeLanes: makeLanes, defaultEventMilestones: defaultEventMilestones, assemble: assemble

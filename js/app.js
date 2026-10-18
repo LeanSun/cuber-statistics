@@ -14,7 +14,7 @@
     group: 'all', customIds: [], evSel: [], country: '', continent: '', region: '',
     gender: 'all', y0: null, y1: null, retired: false,
     scope: 'country', geo: '',
-    pk: [], tlView: 'rank', tlMode: 'active', tlFy: 2025, tlStep: 'year', tlMetric: 'overall', tlLane: 'single', tlSmooth: false, tlPlaying: false, tlRegion: '', tlCountry: '',
+    pk: [], tlView: 'race', tlMode: 'cumulative', tlFy: 2025, tlStep: 'year', tlMetric: 'overall', tlLane: 'single', tlSmooth: false, tlPlaying: false, tlRegion: '', tlCountry: '',
     topicTab: 'rec', topicStat: '', otherTab: 'king', nationMetric: 'total', counterZero: 'wr', topicBoard: ''
   };
 
@@ -253,15 +253,15 @@
         h += '<option value="' + v + '"' + (state.geo === v ? ' selected' : '') + '>' + esc(t.isEn() ? M.continents[c].en : M.continents[c].zh) + '</option>';
       });
       h += '</optgroup>';
-      h += '<optgroup label="' + esc(t.isEn() ? 'Countries' : '国家') + '">';
+      h += '<optgroup label="' + esc(t.isEn() ? 'Countries' : '国家 / 地区') + '">';
       const fixed = ['CN', 'HK', 'MO', 'TW'];
-      fixed.forEach(function (iso) {
-        h += '<option value="' + iso + '"' + (state.geo === iso ? ' selected' : '') + '>' + esc(M.countries[iso]) + '</option>';
-      });
-      const others = M.countryList.slice().sort();
-      others.forEach(function (iso) {
-        if (fixed.indexOf(iso) >= 0) return;
-        h += '<option value="' + iso + '"' + (state.geo === iso ? ' selected' : '') + '>' + esc(M.countries[iso]) + '</option>';
+      const cn = P.util.countryName;
+      const optLabel = function (iso) {
+        const zh = (M.countriesZh && M.countriesZh[iso]) || cn(iso) || iso;
+        return t.isEn() ? (M.countries[iso] || iso) : zh;
+      };
+      fixed.concat(M.countryList.slice().sort()).filter(function (iso, i, a) { return a.indexOf(iso) === i; }).forEach(function (iso) {
+        h += '<option value="' + iso + '"' + (state.geo === iso ? ' selected' : '') + '>' + esc(optLabel(iso)) + '</option>';
       });
       h += '</optgroup>';
       h += '</select></div></div>';
@@ -303,7 +303,7 @@
     if (state.region) geoLabel = P.util.regionName(state.region);
     else if (state.geo) {
       if (state.geo.indexOf('cont:') === 0) geoLabel = P.util.contName(state.geo.slice(5));
-      else geoLabel = M.countries[state.geo] || state.geo;
+      else geoLabel = P.util.countryName(state.geo) || state.geo;
     }
     el.textContent = (geoLabel ? geoLabel + ' · ' : '') + t('f.summary', { n: n });
   }
@@ -393,16 +393,25 @@
       function doSearch() {
         const q = (inp.value || '').trim().toLowerCase();
         if (!q) { box.innerHTML = ''; return; }
+        /* 搜索范围＝本站点收录的全部选手（含精简档案），支持姓名 / WCA ID / 国家（中英文）/ 项目 */
+        const q2 = q.replace(/^#/, '');
         const hits = M.ranked.filter(function (p) {
-          return p.name.toLowerCase().indexOf(q) >= 0 || p.country.toLowerCase() === q ||
-            (M.countries[p.country] || '').indexOf(q) >= 0 ||
-            p.events.some(function (e) { return (M.EV[e].zh.indexOf(q) >= 0) || M.EV[e].en.toLowerCase().indexOf(q) >= 0; });
-        }).slice(0, 12);
+          if (String(p.wcaId || p.id).toLowerCase().indexOf(q2) >= 0) return true;
+          if (p.name.toLowerCase().indexOf(q) >= 0) return true;
+          if (p.country.toLowerCase() === q) return true;
+          if ((M.countries[p.country] || '').toLowerCase().indexOf(q) >= 0) return true;
+          if ((M.countriesZh && (M.countriesZh[p.country] || '').indexOf(q) >= 0)) return true;
+          return p.events.some(function (e) {
+            const E = M.EV[e]; if (!E) return false;
+            return (E.zh && E.zh.indexOf(q) >= 0) || (E.en && E.en.toLowerCase().indexOf(q) >= 0);
+          });
+        }).sort(function (a, b) { return b.overall - a.overall; }).slice(0, 12);
         if (!hits.length) { box.innerHTML = '<p class="tiny muted">' + esc(t('ui.noresult')) + '</p>'; return; }
         box.innerHTML = '<div class="card" style="padding:10px">' + hits.map(function (p) {
           return '<div class="row" style="gap:10px;padding:5px 0;border-bottom:1px solid var(--border)">' +
-            P.util.avatar(p) + '<a href="#/player/' + p.id + '" style="flex:1">' + esc(p.name) + '</a>' +
-            P.util.flag(p.country) + '<span class="tiny muted">' + U.fmt(P.util.scoreOf(p).overall, 1) + '</span></div>';
+            '<a href="#/player/' + p.id + '" style="flex:1">' + esc(p.name) + '</a>' +
+            P.util.flag(p.country) + '<span class="tiny muted">' + esc(P.util.countryName(p.country)) + '</span>' +
+            '<span class="tiny muted">' + U.fmt(P.util.scoreOf(p).overall, 1) + '</span></div>';
         }).join('') + '</div>';
       }
       if (inp) inp.addEventListener('input', doSearch);
@@ -448,7 +457,9 @@
         if (state.tlPlaying) { stopPlay(); return; }
         if (!range) return;
         state.tlPlaying = true; play.textContent = t('tl.pause');
-        const inc = state.tlStep === 'week' ? 3 : 1;
+        /* 时间跳跃速率：jump 越大，每次前进的年份越多 */
+        const rate = (P.tlRate ? P.tlRate() : { jump: 1, anim: 800, fps: 900 });
+        const inc = Math.max(1, Math.round(rate.jump));
         tlTimer = setInterval(function () {
           const sl = P.tlSlider(state.tlStep, state.tlFy);
           let idx = +range.value;
@@ -457,12 +468,31 @@
           range.value = idx;
           setFyFromRange(range);
           if (idx >= sl.max) stopPlay();
-        }, state.tlStep === 'week' ? 240 : 460);
+        }, Math.max(120, rate.fps || 900));
       });
       function stopPlay() {
         state.tlPlaying = false; clearInterval(tlTimer);
         const pb = document.getElementById('tlPlay'); if (pb) pb.textContent = t('tl.play');
       }
+      /* 动画速率自定义：时间跳跃 / 动画时长 / 刷新间隔 */
+      ['Jump', 'Anim', 'Fps'].forEach(function (k) {
+        const el = document.getElementById('tlRate' + k);
+        if (!el) return;
+        el.addEventListener('input', function () {
+          const r = (P.tlRate ? P.tlRate() : { jump: 1, anim: 800, fps: 900 });
+          const key = k === 'Jump' ? 'jump' : (k === 'Anim' ? 'anim' : 'fps');
+          r[key] = parseFloat(el.value);
+          try { localStorage.setItem('goat-tlrate-v1', JSON.stringify(r)); } catch (e) { }
+          const lab = document.getElementById('tlRate' + k + 'V');
+          if (lab) lab.textContent = (key === 'jump' ? r.jump + '×' : r[key] + 'ms');
+          if (key === 'anim' && box) P.drawTimeline(box);
+        });
+      });
+      const rateReset = document.getElementById('tlRateReset');
+      if (rateReset) rateReset.addEventListener('click', function () {
+        try { localStorage.removeItem('goat-tlrate-v1'); } catch (e) { }
+        render(true);
+      });
       const regSel = document.getElementById('tlRegion');
       if (regSel) regSel.addEventListener('change', function () {
         state.tlRegion = regSel.value; state.tlCountry = '';
@@ -487,6 +517,12 @@
       });
       const rs = document.getElementById('pReset');
       if (rs) rs.addEventListener('click', function () { Pm.reset(); render(true); toast(t('ui.ok')); });
+      const mcr = document.getElementById('mColorReset');
+      if (mcr) mcr.addEventListener('click', function () { Pm.resetColors(); render(true); toast(t('ui.ok')); });
+      document.querySelectorAll('input[data-modcolor]').forEach(function (c) {
+        c.addEventListener('input', function () { if (Pm.setColor) { Pm.setColor(c.getAttribute('data-modcolor'), c.value); } });
+        c.addEventListener('change', function () { render(true); toast(t('md.colorsOk')); });
+      });
       document.querySelectorAll('.md-tgl').forEach(function (b) {
         b.addEventListener('click', function () {
           const sec = b.closest('.md-sec');
@@ -545,26 +581,30 @@
     }).join('');
   }
 
-  /* ---------- 自定义重大事件导入 / 重置 / 示例（toast 复用上方已有实现） ---------- */
+  /* ---------- 自定义重大事件：三输入框（项目 / 时间 / 事件内容） ---------- */
   const MS_KEY = 'goat-milestones-custom';
+  function msList() { try { const a = JSON.parse(localStorage.getItem(MS_KEY)); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
   function msImport() {
-    const ta = document.getElementById('msInput');
-    if (!ta) return;
-    let arr;
-    try { arr = JSON.parse(ta.value.trim()); } catch (e) { toast(t('tl.msErr')); return; }
-    if (!Array.isArray(arr)) { toast(t('tl.msErr')); return; }
-    const clean = [];
-    for (let i = 0; i < arr.length; i++) {
-      const it = arr[i];
-      if (!it || typeof it.year !== 'number' || !it.zh) { toast(t('tl.msErr')); return; }
-      clean.push({ year: it.year, zh: String(it.zh), en: it.en ? String(it.en) : String(it.zh) });
-    }
-    try { localStorage.setItem(MS_KEY, JSON.stringify(clean)); } catch (e) { }
-    toast(t('tl.msOk') + ' (' + clean.length + ')');
+    const ev = document.getElementById('msEv');
+    const yr = document.getElementById('msYear');
+    const tx = document.getElementById('msText');
+    if (!tx) return;
+    const text = (tx.value || '').trim();
+    const y = parseInt((yr && yr.value || '').trim().slice(0, 4), 10);
+    if (!text || !y || isNaN(y)) { toast(t('tl.msEmpty')); return; }
+    const list = msList();
+    const evId = (ev && ev.value) || '';
+    const evNameTxt = evId && M.EV[evId] ? (t.isEn() ? M.EV[evId].en : M.EV[evId].zh) : '';
+    const zh = evNameTxt ? evNameTxt + ' · ' + text : text;
+    const en = evId && M.EV[evId] ? M.EV[evId].en + ' · ' + text : text;
+    list.push({ year: y, zh: zh, en: en, ev: evId || '' });
+    try { localStorage.setItem(MS_KEY, JSON.stringify(list)); } catch (e) { }
+    if (tx) tx.value = '';
+    toast(t('tl.msOk'));
     render(true);
   }
   function msReset() { try { localStorage.removeItem(MS_KEY); } catch (e) { } toast(t('tl.msReset')); render(true); }
-  function msSampleFill() { const ta = document.getElementById('msInput'); if (ta && P.msSample) ta.value = JSON.stringify(P.msSample(), null, 2); toast(t('tl.msSample')); }
+  function msSampleFill() { }
 
   /* ---------- 自定义设置（速率 / 宽度 / 颜色） ---------- */
   const SETTINGS_KEY = 'goat-settings';
@@ -585,8 +625,12 @@
       root.style.setProperty('--accent-soft', 'color-mix(in srgb,' + s.accent + ' 16%,transparent)');
       root.style.setProperty('--accent-2', s.accent);
     }
-    if (s.palette && PALETTES[s.palette]) {
+    /* 用户在评分系统里自定义过模块配色时，预置调色板不再覆盖 */
+    const hasCustom = (window.Params && window.Params.hasCustomColors) ? window.Params.hasCustomColors() : false;
+    if (s.palette && PALETTES[s.palette] && !hasCustom) {
       PALETTES[s.palette].forEach(function (c, i) { root.style.setProperty('--m' + (i + 1), c); });
+    } else if (hasCustom && window.Params && window.Params.applyColors) {
+      window.Params.applyColors();
     }
     const barMax = (typeof s.barMax === 'number') ? s.barMax : 100;
     const anim = (typeof s.anim === 'number') ? s.anim : 1;
@@ -632,7 +676,7 @@
   }
 
   /* ---------- 全局事件委托 ---------- */
-  const DELEGATE = '[data-sort],[data-page],[data-expand],[data-prow],[data-tab],[data-pkadd],[data-pkrm],[data-pktrayrm],[data-pktrayclear],[data-toggle],[data-expandall],[data-goto],[data-group],[data-gender],[data-retired],[data-tlmode],[data-tlview],[data-tlstep],[data-tlmetric],[data-tllane],[data-topic],[data-topicev],[data-topicboard],[data-other],[data-nation],[data-scope],[data-continent],[data-evpick],[data-evtab],[data-evtoggle],[data-evall],[data-evnone],[data-evsave],[data-gload],[data-gdel],[data-reclevel],[data-rectype],[data-podtier],[data-mdanchor],[data-mdsec],[data-msimport],[data-msreset],[data-mssample]';
+  const DELEGATE = '[data-sort],[data-page],[data-expand],[data-prow],[data-tab],[data-pkadd],[data-pkrm],[data-pktrayrm],[data-pktrayclear],[data-toggle],[data-expandall],[data-goto],[data-group],[data-gender],[data-retired],[data-tlmode],[data-tlview],[data-tlstep],[data-tlmetric],[data-tllane],[data-topic],[data-topicev],[data-topicboard],[data-other],[data-nation],[data-scope],[data-continent],[data-evpick],[data-evtab],[data-evtoggle],[data-evall],[data-evnone],[data-evsave],[data-gload],[data-gdel],[data-reclevel],[data-rectype],[data-podtier],[data-mdanchor],[data-mdsec],[data-msimport],[data-msreset],[data-msdel],[data-modcolor]';
 
   document.addEventListener('click', function (e) {
     const el = e.target.closest ? e.target.closest(DELEGATE) : null;
@@ -651,9 +695,25 @@
     if (!el) return;
     if (el.hasAttribute('data-goto')) { location.hash = el.getAttribute('data-goto'); return; }
 
+    if (el.hasAttribute('data-modcolor')) {
+      const k = el.getAttribute('data-modcolor');
+      if (window.Params && window.Params.setColor) { window.Params.setColor(k, el.value); toast(t('md.colorsOk')); }
+      return;
+    }
     if (el.hasAttribute('data-msimport')) { msImport(); return; }
     if (el.hasAttribute('data-msreset')) { msReset(); return; }
-    if (el.hasAttribute('data-mssample')) { msSampleFill(); return; }
+    if (el.hasAttribute('data-msdel')) {
+      const i = parseInt(el.getAttribute('data-msdel'), 10);
+      const list = msList();
+      /* 索引是「内置 + 自定义」合并后的序号，换算回自定义列表下标 */
+      const customIdx = i - ((function () {
+        const evSel = state.evSel || [];
+        const singleEv = evSel.length === 1 ? evSel[0] : (state.group && M.EV[state.group] ? state.group : '');
+        return singleEv ? M.eventMilestones(singleEv).length : M.milestones.length;
+      })());
+      if (customIdx >= 0 && customIdx < list.length) { list.splice(customIdx, 1); try { localStorage.setItem(MS_KEY, JSON.stringify(list)); } catch (e) { } render(true); }
+      return;
+    }
 
     if (el.hasAttribute('data-tab')) {
       state.tab = el.getAttribute('data-tab'); state.page = 1; state.sortKey = 'score'; state.sortDir = 'desc';
@@ -930,6 +990,7 @@
   /* ---------- 启动 ---------- */
   SET = loadSettings();
   applySettings(SET);   /* 先应用配色，initTheme 的渐变彩蛋才能读到自定义色 */
+  if (window.Params && window.Params.applyColors) window.Params.applyColors();
   bindSettings();
   initTheme();
   initLang();

@@ -1,6 +1,6 @@
-id	name	country_id	year	month	day
-WC2023	World Championship 2023	USA	2023	8	13
-CC2022	Asian Championship 2022	CHN	2022	5	1
-NAC2021	US Nationals 2021	USA	2021	7	1
-OP2020	Open Holland 2020	NLD	2020	10	1
-GO2008	German Open 2008	DEU	2008	4	19
+id	name	country_id	year	month	day	cityName
+WC2023	World Championship 2023	USA	2023	8	13	Incheon
+CC2022	Asian Championship 2022	CHN	2022	5	1	Beijing
+NAC2021	US Nationals 2021	USA	2021	7	1	Chicago
+OP2020	Open Holland 2020	NLD	2020	10	1	Amsterdam
+GO2008	German Open 2008	DEU	2008	4	19	Munich

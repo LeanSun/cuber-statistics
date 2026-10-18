@@ -59,6 +59,13 @@
     const st = M.stats(p);
 
     let h = '<div class="page-head reveal"><a class="tiny" href="#/rank">‹ ' + esc(t('player.back')) + '</a></div>';
+    /* 精简档案（排名 2500 名之后）：不含纪录 / 领奖台明细，引导到 WCA 官网 */
+    if (p.slim) {
+      h += '<div class="warnbox reveal" style="margin-bottom:12px">' +
+        esc(tt('该选手为本站点收录的精简档案：包含评分、世界排名与参赛概况，但不含逐条纪录与领奖台明细。完整成绩请查看 WCA 官方主页。',
+          'This player is stored as a compact profile: scores, world rankings and participation summary are included, but per-record and podium details are not. See their WCA profile for the full results.')) +
+        ' <a href="https://www.worldcubeassociation.org/persons/' + esc(p.wcaId) + '" target="_blank" rel="noopener">WCA ↗</a></div>';
+    }
 
     /* 信息栏 */
     h += '<div class="card pcard reveal">';
@@ -165,7 +172,7 @@
       '<span class="rc rc-ev">' + esc(t('pod.event')) + '</span>' +
       '<span class="rc rc-val">' + esc(t('rec.value')) + '</span>' +
       '<span class="rc rc-date">' + esc(t('rec.date')) + '</span>' +
-      '<span class="rc rc-held">' + esc(t('tl.days')) + '</span>' +
+      '<span class="rc rc-held">' + esc(t('rec.held')) + '</span>' +
       '<span class="rc rc-score">' + esc(t('rec.score')) + '</span>' +
       '<span class="rc rc-caret"></span></div>';
     p.records.slice().sort(function (a, b) { return (b.R || 0) - (a.R || 0); }).forEach(function (r, i) {
@@ -249,7 +256,7 @@
     h += '<span class="rc rc-ev">' + Ic.event(r.ev, 'ev-mini') + ' ' + esc(evName(M.EV[r.ev])) + ' · ' + esc(t('rec.' + (r.type === 'single' ? 'single' : 'average'))) + '</span>';
     h += '<span class="rc rc-val mono">' + esc(r.value) + '</span>';
     h += '<span class="rc rc-date tiny muted">' + esc(r.date) + '</span>';
-    h += '<span class="rc rc-held tiny muted">' + U.num(r.held) + '</span>';
+    h += '<span class="rc rc-held tiny muted">' + esc(P.util.heldText(r.held)) + '</span>';
     h += '<span class="rc rc-score"><b>' + U.fmt(r.R, 1) + '</b></span>';
     h += '<span class="rc rc-caret"><span class="caret">›</span></span>';
     h += '</div>';
@@ -269,8 +276,17 @@
     h += '<span class="op">=</span><span class="chain-result">' + U.fmt(r.R, 1) + '</span>';
     h += '</div>';
     h += '<div class="rec-meta"><span class="tiny muted">' + esc(t('rec.date')) + ' ' + esc(r.date) + ' · ' + esc(r.comp) + '</span>' +
-      '<span class="tiny muted">' + esc(t('tl.days')) + ' ' + U.num(r.held) + ' ' + (t.isEn() ? 'days' : '天') + '</span>' +
+      '<span class="tiny muted">' + esc(t('rec.held')) + ' ' + esc(P.util.heldText(r.held)) + '</span>' +
       (r.current ? '<span class="tag acc">' + (t.isEn() ? 'still held' : '仍持有') + '</span>' : '') + '</div>';
+    /* NR 记分按「该国该项目参赛人数」加权：人数少的国家 NR 更贬值，避免靠刷 NR 堆分 */
+    if (r.level === 'NR' && r.factors && r.factors.NRS != null) {
+      h += '<div class="rec-meta"><span class="tiny muted">' +
+        esc(tt('NR 记分已按该国该项目的参赛人数加权：人数越少，NR 越容易拿到，记分越低。',
+          'This NR is weighted by how many people from that country compete in the event: fewer competitors means an easier NR and a lower score.')) +
+        '　<b>' + esc(t('rec.nrScale')) + ' ' + U.fmt(r.factors.NRS, 2) + '×</b>' +
+        (r.factors.natN ? '（' + esc(t('rec.natN')) + ' ' + U.num(r.factors.natN) + '）' : '') +
+        '</span></div>';
+    }
     return h;
   }
 

@@ -251,10 +251,34 @@
   }
 
   /* ---------- WR 泳道 ---------- */
+  /* 从 css/flags.css 读取国旗的 data URI（首次访问时用一个隐藏节点探测，结果缓存） */
+  const _flagUri = {};
+  let _flagProbe = null;
+  function flagUri(iso) {
+    const code = String(iso || '').toUpperCase();
+    if (!code || code === 'UNKNOWN') return '';
+    if (_flagUri[code] !== undefined) return _flagUri[code];
+    let url = '';
+    try {
+      if (!_flagProbe) {
+        _flagProbe = document.createElement('span');
+        _flagProbe.style.cssText = 'position:absolute;left:-9999px;top:0;width:10px;height:10px';
+        document.body.appendChild(_flagProbe);
+      }
+      _flagProbe.className = 'fi fi-' + code.toLowerCase();
+      const bg = getComputedStyle(_flagProbe).backgroundImage || '';
+      const m = bg.match(/url\((['"]?)(.*?)\1\)/);
+      if (m) url = m[2];
+    } catch (e) { url = ''; }
+    _flagUri[code] = url;
+    return url;
+  }
+
   function lanes(laneData, opts) {
     opts = opts || {};
     const T = pal();
     const y0 = opts.y0 || 2004, y1 = opts.y1 || 2026;
+    const laneH = opts.laneH || 34;          /* 每条泳道的色块高度（可调大以容纳名字与国旗） */
     const cats = laneData.map(function (L) { return L.label; });
     const data = [];
     laneData.forEach(function (L, li) {
@@ -266,13 +290,46 @@
       const catIdx = api.value(1);
       const start = api.coord([api.value(0), catIdx]);
       const end = api.coord([api.value(2), catIdx]);
-      const h = Math.min(20, api.size([0, 1])[1] * 0.62);
+      const h = Math.min(laneH, api.size([0, 1])[1] * 0.78);
       const rect = window.echarts.graphic.clipRectByRect(
         { x: start[0], y: start[1] - h / 2, width: Math.max(2, end[0] - start[0]), height: h },
         { x: params.coordSys.x, y: params.coordSys.y, width: params.coordSys.width, height: params.coordSys.height }
       );
       if (!rect) return;
-      return { type: 'rect', transition: ['shape'], shape: Object.assign({ r: 4 }, rect), style: { fill: api.visual('color'), stroke: T.elev, lineWidth: 1 } };
+      const kids = [{
+        type: 'rect', transition: ['shape'], shape: Object.assign({ r: 5 }, rect),
+        style: { fill: api.visual('color'), stroke: T.elev, lineWidth: 1 }
+      }];
+      const w = rect.width;
+      if (w > 40 && h >= 16) {
+        const iso = api.value(5);
+        const name = String(api.value(4) || '');
+        let x = rect.x + 7;
+        const uri = flagUri(iso);
+        if (uri) {
+          kids.push({
+            type: 'image', style: {
+              image: uri, x: x, y: rect.y + h / 2 - 5, width: 14, height: 10
+            }
+          });
+          x += 18;
+        }
+        const room = rect.x + w - x - 5;
+        const per = 6.4;
+        let txt = name;
+        const maxc = Math.max(1, Math.floor(room / per));
+        if (txt.length > maxc) txt = maxc > 1 ? txt.slice(0, maxc - 1) + '…' : txt.slice(0, maxc);
+        if (txt) {
+          kids.push({
+            type: 'text', style: {
+              text: txt, x: x, y: rect.y + h / 2, fill: '#fff',
+              font: '600 11.5px "Segoe UI",system-ui,sans-serif',
+              textVerticalAlign: 'middle', textBaseline: 'middle'
+            }
+          });
+        }
+      }
+      return { type: 'group', children: kids };
     }
     return Object.assign(base({ stagger: 8 }), {
       grid: { left: 6, right: 16, top: 22, bottom: 6, containLabel: true },
@@ -286,17 +343,22 @@
         extraCssText: 'box-shadow:0 6px 20px rgba(0,0,0,.14);border-radius:10px;',
         formatter: function (p) {
           const v = p.data.value;
-          return v[4] + ' · ' + v[5] + '<br/>' + v[0] + '–' + v[2] + ' · ' + v[6] + ' 天';
+          const days = v[6] || 0;
+          const mo = Math.round(days / 30.4375);
+          const span = mo < 12 ? (mo + ' ' + (LANE_I18N.mo || '个月')) : (Math.floor(mo / 12) + ' ' + (LANE_I18N.y || '年') + (mo % 12 ? ' ' + (mo % 12) + (LANE_I18N.mo || '个月') : ''));
+          return '<b>' + v[4] + '</b> · ' + v[5] + '<br/>' + v[0] + '–' + v[2] + ' · ' + span;
         }
       },
       series: [{
         type: 'custom', renderItem: renderItem, encode: { x: [0, 2], y: 1 },
         data: data,
-        itemStyle: { opacity: 0.92 },
+        itemStyle: { opacity: 0.94 },
         emphasis: { itemStyle: { opacity: 1 } }
       }]
     });
   }
+  let LANE_I18N = { mo: '个月', y: '年' };
+  function setLaneI18n(o) { LANE_I18N = o || LANE_I18N; }
 
   /* ---------- 折线 ---------- */
   function lineChart(series, opts) {
@@ -430,6 +492,7 @@
   const BUILDERS = {
     stacked: stacked, waterfall: waterfall, donut: donut, radar: radar, bump: bump,
     barRace: barRace, lanes: lanes, line: lineChart, groupBars: groupBars,
+    setLaneI18n: setLaneI18n, flagUri: flagUri,
     diverging: diverging, gauge: gauge, scatter: scatter
   };
 
@@ -438,6 +501,7 @@
     resolveColor: resolveColor, resolveDeep: resolveDeep,
     stacked: stacked, waterfall: waterfall, donut: donut, radar: radar, bump: bump,
     barRace: barRace, lanes: lanes, line: lineChart, groupBars: groupBars,
+    setLaneI18n: setLaneI18n, flagUri: flagUri,
     diverging: diverging, gauge: gauge, scatter: scatter
   };
 })();

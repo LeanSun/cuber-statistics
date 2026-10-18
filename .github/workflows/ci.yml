@@ -15,22 +15,20 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Syntax check ETL
-        run: node --check etl/build.js
-      - name: Syntax check shared calc
-        run: node --check js/calc.js
+      - name: Syntax check all JS
+        run: |
+          for f in js/*.js etl/*.js; do node --check "$f" || exit 1; done
       - name: Regenerate sample fixtures
         run: python3 etl/make_sample.py
       - name: Run ETL against sample & verify output shape
         run: |
-          node etl/build.js --dir etl/sample --out /tmp/sample_data.js --date 2026-10-18 --ver v2.0.2
+          node etl/build.js --dir etl/sample --out ./_sample_data.js --date 2026-10-18 --ver v2.0.2 --detail-max 5 --slim-max 20
           node -e '
             const fs=require("fs"); const Calc=require("./js/calc.js");
             global.window={Calc:Calc,U:Calc.U}; global.Calc=Calc; global.U=Calc.U;
-            eval(fs.readFileSync("/tmp/sample_data.js","utf8"));
+            eval(fs.readFileSync("./_sample_data.js","utf8"));
             const M=global.window.MOCK;
-            if(!M||!M.ranked||!M.ranked.length) { console.error("MOCK invalid"); process.exit(1); }
-            if(M.meta.demo!==false){ console.error("expected real meta"); process.exit(1); }
+            function bad(m){ console.error(m); process.exit(1); }
             const mp=M.ranked.find(x=>x.name==="Max Park");
             const mbf=(mp.records.find(r=>r.ev==="333mbf")||{}).value;
             if(mbf!=="40/40 58:33"){ console.error("mbf decode wrong: "+mbf); process.exit(1); }
@@ -45,4 +43,26 @@ jobs:
             const mboB=(M.eventBoards["333mbo"]||[])[0];
             if(!mboB||mboB.s!=="6/6 47:58"){ console.error("mbo board top wrong: "+JSON.stringify(mboB)); process.exit(1); }
             console.log("ETL smoke OK:",M.ranked.length,"players, mbf:",mbf,", mbo:",mbo,", boards:",Object.keys(M.eventBoards).length);
+
+            /* 国家维度：ISO2 归一化 + 中文名 + 洲际映射（此前全为 null，导致地区筛选失效） */
+            const iso=M.ranked[0].country;
+            if(!/^[A-Z]{2}$/.test(iso)) bad("country not normalized to ISO2: "+iso);
+            if(!M.countriesZh||!M.countriesZh[iso]) bad("missing zh country name for "+iso);
+            if(!M.continentOf||!M.continentOf[iso]) bad("missing continent mapping for "+iso);
+            /* 真实统计：参赛行数 / 尝试 / 成功 / 城市 / 单场最多项目数 */
+            const st=M.stats(M.ranked[0]);
+            if(!(st.resultRows>0)) bad("resultRows not real: "+st.resultRows);
+            if(!(st.attempts>0&&st.solves>0)) bad("attempts/solves not real: "+st.attempts+"/"+st.solves);
+            if(!(st.cities>0)) bad("cities not real: "+st.cities);
+            if(!(st.maxEventsPerComp>0)) bad("maxEventsPerComp not real: "+st.maxEventsPerComp);
+            /* 纪录保持天数：此前恒为 0 */
+            if(!(st.heldLongest>0)) bad("held days still zero: "+st.heldLongest);
+            /* 分组：正阶组=2~7 阶、无最少步组 */
+            const sp=M.presetGroups.find(g=>g.id==="speed");
+            if(!sp||sp.ids.join(",")!=="222,333,444,555,666,777") bad("speed group wrong: "+JSON.stringify(sp));
+            if(M.presetGroups.some(g=>g.id==="fmc")) bad("fmc group should be removed");
+            console.log("extra assertions OK: iso="+iso+" zh="+M.countriesZh[iso]+" cont="+M.continentOf[iso]+" held="+st.heldLongest);
           '
+      - name: Page render smoke (DOM stubs)
+        run: |
+          SMOKE_DATA=./_sample_data.js node etl/smoke_pages.js

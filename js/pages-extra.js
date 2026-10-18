@@ -25,9 +25,20 @@
   }
 
   /* ================= 动态可视化 ================= */
-  const VIEWS = [['rank', 'tl.view.rank', 'timeline'], ['race', 'tl.view.race', 'speed'], ['lane', 'tl.view.lane', 'record']];
+  /* 视图：分数竞速图 / 纪录持有图（名次变迁图已移除） */
+  const VIEWS = [['race', 'tl.view.race', 'speed'], ['lane', 'tl.view.lane', 'record']];
   let TL_MS = M.milestones; /* 当前单项筛选下的里程碑集合（供图表标线使用） */
   P.tlIdxToInfo = tlIdxToInfo; P.tlSlider = tlSlider; /* 供 app.js 滑块 / 播放使用 */
+
+  /* 动画速率：可自定义「时间跳跃 / 动画时长 / 刷新间隔」，持久化到 localStorage */
+  const RATE_KEY = 'goat-tlrate-v1';
+  const RATE_DEF = { jump: 1, anim: 800, fps: 900 };
+  function loadRate() {
+    try { const o = JSON.parse(localStorage.getItem(RATE_KEY)); if (o) return Object.assign({}, RATE_DEF, o); } catch (e) { }
+    return Object.assign({}, RATE_DEF);
+  }
+  function saveRate(o) { try { localStorage.setItem(RATE_KEY, JSON.stringify(o)); } catch (e) { } }
+  P.tlRate = function () { return loadRate(); };
 
   /* 自定义重大事件：localStorage 持久化 + 与内置合并 */
   const MS_KEY = 'goat-milestones-custom';
@@ -45,22 +56,18 @@
   P.msSample = msSample;
 
   P.timeline = function (state) {
-    const view = state.tlView || 'rank';
-    const mode = state.tlMode || 'active';
-    const step = state.tlStep || 'year';
-    const metric = state.tlMetric || 'overall';
+    const view = (state.tlView === 'rank') ? 'race' : (state.tlView || 'race');
+    const mode = 'cumulative';
+    const step = 'year';
+    const metric = 'overall';
     const fy = state.tlFy || 2025;
     const sl = tlSlider(step, fy);
+    const rate = loadRate();
 
     let h = '<div class="page-head reveal"><h1>' + esc(t('tl.title')) + '</h1><p class="sub">' + esc(t('tl.sub')) + '</p></div>';
 
     h += '<div class="card reveal">';
     h += '<div class="row tl-top">';
-    h += '<div class="fgroup"><span class="flabel">' + esc(t('tl.mode.tip')) + '</span><div class="seg" id="tlModeSeg">';
-    ['active', 'cumulative'].forEach(function (m) {
-      h += '<button data-tlmode="' + m + '" class="' + (mode === m ? 'on' : '') + '">' + esc(t('tl.mode.' + m)) + '</button>';
-    });
-    h += '</div></div>';
     h += '<div class="fgroup"><span class="flabel">' + esc(t('tl.viewTip')) + '</span><div class="seg" id="tlViewSeg">';
     VIEWS.forEach(function (v) {
       h += '<button data-tlview="' + v[0] + '" class="' + (view === v[0] ? 'on' : '') + '">' + Ic.glyph(v[2]) + ' ' + esc(t(v[1])) + '</button>';
@@ -70,34 +77,26 @@
     h += '<label class="tiny muted row" style="gap:5px"><input type="checkbox" id="tlSmooth"' + (state.tlSmooth ? ' checked' : '') + '> ' + esc(t('tl.smooth')) + '</label>';
     h += '</div>';
 
-    /* 步进 / 指标 / 单均 控制条 */
-    h += '<div class="row tl-top" style="margin-top:10px">';
-    h += '<div class="fgroup"><span class="flabel">' + esc(t('tl.step')) + '</span><div class="seg" id="tlStepSeg">';
-    [['year', 'tl.step.year'], ['month', 'tl.step.month'], ['week', 'tl.step.week']].forEach(function (s) {
-      h += '<button data-tlstep="' + s[0] + '" class="' + (step === s[0] ? 'on' : '') + '">' + esc(t(s[1])) + '</button>';
-    });
-    h += '</div></div>';
-    if (view !== 'lane') {
-      h += '<div class="fgroup"><span class="flabel">' + esc(t('tl.metric')) + '</span><div class="seg" id="tlMetricSeg">';
-      [['overall', 'tl.metric.overall'], ['m1', 'col.m1'], ['m3', 'col.m3']].forEach(function (s) {
-        h += '<button data-tlmetric="' + s[0] + '" class="' + (metric === s[0] ? 'on' : '') + '">' + esc(t(s[1])) + '</button>';
-      });
-      h += '</div></div>';
-    } else {
-      h += '<div class="fgroup"><span class="flabel">' + esc(t('tl.lane')) + '</span><div class="seg" id="tlLaneSeg">';
-      [['single', 'rec.single'], ['avg', 'rec.average']].forEach(function (s) {
-        h += '<button data-tllane="' + s[0] + '" class="' + (state.tlLane === s[0] ? 'on' : '') + '">' + esc(t(s[1])) + '</button>';
-      });
-      h += '</div></div>';
+    /* 动画速率自定义（仅分数竞速图需要） */
+    if (view === 'race') {
+      h += '<div class="row tl-top tl-rate" style="margin-top:10px">';
+      h += '<span class="flabel">' + esc(t('tl.rate')) + '</span>';
+      h += '<label class="rate-item"><span>' + esc(t('tl.rate.jump')) + '</span>' +
+        '<input type="range" id="tlRateJump" min="0.25" max="4" step="0.25" value="' + rate.jump + '">' +
+        '<b id="tlRateJumpV">' + rate.jump + '×</b></label>';
+      h += '<label class="rate-item"><span>' + esc(t('tl.rate.anim')) + '</span>' +
+        '<input type="range" id="tlRateAnim" min="0" max="2500" step="100" value="' + rate.anim + '">' +
+        '<b id="tlRateAnimV">' + rate.anim + 'ms</b></label>';
+      h += '<label class="rate-item"><span>' + esc(t('tl.rate.fps')) + '</span>' +
+        '<input type="range" id="tlRateFps" min="200" max="3000" step="100" value="' + rate.fps + '">' +
+        '<b id="tlRateFpsV">' + rate.fps + 'ms</b></label>';
+      h += '<button class="btn btn-ghost" id="tlRateReset">' + esc(t('tl.rate.reset')) + '</button>';
+      h += '</div>';
     }
-    h += '</div>';
-
-    /* 地区 / 国家筛选改由顶部合并下拉（fgGeo）统一处理；此处不再单独呈现 */
 
     h += '<div class="tl-desc"><span class="tl-desc-ic">' + Ic.glyph('info') + '</span>' +
-      '<div><b>' + esc(t('tl.mode.' + mode)) + '</b>：' + esc(t('tl.mode.' + mode + '.d')) +
-      '　<b>' + esc(t(view === 'lane' ? 'tl.view.lane' : (view === 'race' ? 'tl.view.race' : 'tl.view.rank'))) + '</b>：' +
-      esc(t(view === 'lane' ? 'tl.view.lane.d' : (view === 'race' ? 'tl.view.race.d' : 'tl.view.rank.d'))) + '</div></div>';
+      '<div><b>' + esc(t(view === 'lane' ? 'tl.view.lane' : 'tl.view.race')) + '</b>：' +
+      esc(t(view === 'lane' ? 'tl.view.lane.d' : 'tl.view.race.d')) + '</div></div>';
 
     if (view !== 'lane') {
       h += '<div class="tl-ctl">';
@@ -107,7 +106,7 @@
       h += '</div>';
     }
 
-    const chH = view === 'rank' ? 540 : (view === 'race' ? 470 : 380);
+    const chH = view === 'race' ? 520 : Math.max(560, (M.events.length * 46 + 90));
     const geoRegion = (state.geo && state.geo.indexOf('cont:') === 0) ? state.geo.slice(5) : '';
     const geoCountry = (state.geo && state.geo.indexOf('cont:') !== 0 && state.geo) ? state.geo : '';
     h += '<div class="chart-box" id="tlChart" style="height:' + chH + 'px" data-view="' + view + '" data-mode="' + mode +
@@ -125,22 +124,29 @@
       (singleEv ? ' · ' + esc(evName(M.EV[singleEv])) : '') + '</h2>' +
       (custom.length ? '<span class="tiny muted">+' + custom.length + ' ' + esc(t('tl.msCustom')) + '</span>' : '') + '</div>';
     h += '<div class="milestone-list">';
-    ms.forEach(function (m) {
+    ms.forEach(function (m, mi) {
       const isC = !!m.custom;
       h += '<span class="ms-item' + (isC ? ' ms-custom' : '') + '"><b>' + m.year + '</b> ' + esc(t.isEn() ? (m.en || m.zh) : m.zh);
-      if (isC) h += ' <span class="ms-tag">' + esc(t('tl.msCustom')) + '</span>';
+      if (isC) h += ' <span class="ms-tag">' + esc(t('tl.msCustom')) + '</span>' +
+        ' <button class="ms-del" data-msdel="' + mi + '" aria-label="' + esc(t('tl.msDel')) + '">×</button>';
       h += '</span>';
     });
     h += '</div></div>';
 
-    /* 自定义重大事件编辑 / 导入 */
+    /* 自定义重大事件：三个输入框（项目 / 时间 / 事件内容） */
     h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('tl.msEdit')) + '</h2></div>';
     h += '<p class="tiny muted" style="margin-bottom:8px">' + esc(t('tl.msGuide')) + '</p>';
-    h += '<textarea id="msInput" class="ms-input" rows="6" spellcheck="false" placeholder="[{&quot;year&quot;:2015,&quot;zh&quot;:&quot;...&quot;,&quot;en&quot;:&quot;...&quot;}]">' + esc(JSON.stringify(custom.length ? custom : msSample())) + '</textarea>';
+    h += '<div class="ms-form">';
+    h += '<label class="ms-field"><span>' + esc(t('tl.msEv')) + '</span><select id="msEv">' +
+      '<option value="">' + esc(t('tl.msEvAll')) + '</option>' +
+      M.events.map(function (e) { return '<option value="' + e.id + '">' + esc(evName(e)) + '</option>'; }).join('') +
+      '</select></label>';
+    h += '<label class="ms-field"><span>' + esc(t('tl.msTime')) + '</span><input type="text" id="msYear" inputmode="numeric" placeholder="2019" maxlength="10"></label>';
+    h += '<label class="ms-field ms-grow"><span>' + esc(t('tl.msText')) + '</span><input type="text" id="msText" placeholder="' + esc(t('tl.msText')) + '" maxlength="120"></label>';
+    h += '<button class="btn btn-primary" data-msimport>' + esc(t('tl.msAdd')) + '</button>';
+    h += '</div>';
     h += '<div class="row" style="margin-top:8px;gap:8px;flex-wrap:wrap">';
-    h += '<button class="btn btn-primary" data-msimport>' + esc(t('tl.msImport')) + '</button>';
     h += '<button class="btn" data-msreset>' + esc(t('tl.msReset')) + '</button>';
-    h += '<button class="btn" data-mssample>' + esc(t('tl.msSample')) + '</button>';
     h += '</div></div>';
     return h;
   };
@@ -247,33 +253,19 @@
   }
 
   function tlOption(view, mode, fy, smooth, metric, region, country, lane) {
+    if (window.Charts.setLaneI18n) window.Charts.setLaneI18n({ mo: (t.isEn() ? 'mo' : '个月'), y: (t.isEn() ? 'y' : '年') });
     if (view === 'lane') {
       const lanes = (lane === 'avg' ? M.lanesAvg : M.lanes).map(function (L) {
-        return { label: evName(M.EV[L.ev]), segs: L.segs };
+        return { label: evName(M.EV[L.ev] || { zh: L.zh, en: L.en }), segs: L.segs };
       });
-      return window.Charts.lanes(lanes, { y0: 2004, y1: 2026 });
+      return window.Charts.lanes(lanes, { y0: 2004, y1: 2026, laneH: 34 });
     }
     const TOP = 15;
-    if (view === 'race') {
-      const snap = snapshot(mode, fy, smooth, metric, region, country).slice(0, TOP).map(function (d) {
-        return { name: d.name, value: d.value, color: d.color };
-      });
-      return window.Charts.barRace(snap, { top: TOP, duration: 800 });
-    }
-    const lastY = Math.max(2003, Math.floor(fy));
-    const years = [];
-    for (let y = 2003; y <= lastY; y++) years.push(y);
-    const rowsMap = {};
-    years.forEach(function (y) {
-      snapshot(mode, y, smooth, metric, region, country).slice(0, TOP).forEach(function (d, i) {
-        if (!rowsMap[d.id]) rowsMap[d.id] = { name: d.name, color: d.color, pts: {} };
-        rowsMap[d.id].pts[y] = i + 1;
-      });
+    const rate = loadRate();
+    const snap = snapshot(mode, fy, smooth, 'overall', region, country).slice(0, TOP).map(function (d) {
+      return { name: d.name, value: d.value, color: d.color };
     });
-    const rows = Object.keys(rowsMap).map(function (k) { return rowsMap[k]; });
-    const o = window.Charts.bump(rows, years.map(String), { top: TOP, right: 110 });
-    o.series.push(Object.assign({ type: 'line', data: [], markLine: markLines() }, { name: '__marks' }));
-    return o;
+    return window.Charts.barRace(snap, { top: TOP, duration: rate.anim });
   }
 
   /* ================= 另类统计 ================= */
@@ -379,13 +371,13 @@
       const key = metric === 'per' ? 'perCapita' : (metric === 'top' ? 'best' : 'total');
       const items = M.nations.slice().sort(function (a, b) { return b[key] - a[key]; }).slice(0, 14);
       h += '<div class="card reveal">' + ecBox('groupBars', items.map(function (n) {
-        return { label: n.iso, value: n[key], color: countryColor(n.iso) };
+        return { label: (countryName(n.iso) || n.iso), value: n[key], color: countryColor(n.iso) };
       }), { top: 14 }, 320) + '</div>';
       h += '<div class="table-wrap reveal"><table class="data mini"><thead><tr><th class="tl">' + esc(t('f.region')) +
         '</th><th class="tl">' + esc(t('f.continent')) + '</th><th>' + esc(t('top.nation.total')) + '</th><th>' +
         esc(t('top.nation.per')) + '</th><th>' + esc(t('top.nation.top')) + '</th><th class="tl">' + esc(t('col.player')) + '</th></tr></thead><tbody>';
       M.nations.slice(0, 24).forEach(function (n) {
-        h += '<tr><td class="tl">' + flag(n.iso) + ' ' + esc(n.name) + '</td><td class="tl tiny muted">' + esc(contName(n.continent)) + '</td>' +
+        h += '<tr><td class="tl">' + flag(n.iso) + ' ' + esc(countryName(n.iso) || n.name || n.iso) + '</td><td class="tl tiny muted">' + esc(contName(n.continent)) + '</td>' +
           '<td class="num">' + U.num(n.total) + '</td><td class="num">' + U.fmt(n.perCapita, 1) + '</td><td class="num">' + U.fmt(n.best, 1) + '</td>' +
           '<td class="tl tiny">' + esc(n.bestName) + '</td></tr>';
       });
@@ -648,6 +640,18 @@
       '</select>';
     h += '<button class="btn" id="pReset">' + esc(t('md.resetDefault')) + '</button>';
     h += '<span class="tiny muted">' + esc(t('md.paramsHint')) + '</span></div></div>';
+
+    /* 模块配色：七个模块的主色可在评分系统里自定义，实时生效并本地保存 */
+    const C = Pm.colors();
+    h += '<div class="card reveal md-colors"><div class="md-params-title">' + Ic.glyph('sliders') + ' ' +
+      esc(t('md.colors')) + '</div>' +
+      '<p class="tiny muted" style="margin:6px 0 10px">' + esc(t('md.colorsHint')) + '</p><div class="md-colors-body">';
+    MOD.forEach(function (k) {
+      h += '<label class="crow"><input type="color" data-modcolor="' + k + '" value="' + esc(C[k]) + '">' +
+        '<span class="cr-name">' + esc(modName(k)) + '</span><code>' + esc(C[k]) + '</code></label>';
+    });
+    h += '<button class="btn btn-ghost" id="mColorReset">' + esc(t('md.resetDefault')) + '</button>';
+    h += '</div></div>';
 
     /* 两栏：左目录 + 右详情（一次只展示一个章节） */
     h += '<div class="md-layout">';

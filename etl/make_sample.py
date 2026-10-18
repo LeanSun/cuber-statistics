@@ -56,12 +56,12 @@ write('persons', 'wca_id\tsub_id\tname\tcountry_id\tgender',
        ['2007HABA01', 1, 'Tim Habermaas', 'DEU', 'm']])
 
 # ---- competitions ----
-write('competitions', 'id\tname\tcountry_id\tyear\tmonth\tday',
-      [['WC2023', 'World Championship 2023', 'USA', 2023, 8, 13],
-       ['CC2022', 'Asian Championship 2022', 'CHN', 2022, 5, 1],
-       ['NAC2021', 'US Nationals 2021', 'USA', 2021, 7, 1],
-       ['OP2020', 'Open Holland 2020', 'NLD', 2020, 10, 1],
-       ['GO2008', 'German Open 2008', 'DEU', 2008, 4, 19]])
+write('competitions', 'id\tname\tcountry_id\tyear\tmonth\tday\tcityName',
+      [['WC2023', 'World Championship 2023', 'USA', 2023, 8, 13, 'Incheon'],
+       ['CC2022', 'Asian Championship 2022', 'CHN', 2022, 5, 1, 'Beijing'],
+       ['NAC2021', 'US Nationals 2021', 'USA', 2021, 7, 1, 'Chicago'],
+       ['OP2020', 'Open Holland 2020', 'NLD', 2020, 10, 1, 'Amsterdam'],
+       ['GO2008', 'German Open 2008', 'DEU', 2008, 4, 19, 'Munich']])
 
 # ---- championships ----
 write('championships', 'competition_id\tchampionship_type',
@@ -110,11 +110,15 @@ write('ranks_average', 'person_id\tevent_id\tbest\tworld_rank\tcontinent_rank\tc
 # columns: competition_id event_id person_id round_type_id pos best average
 #          regional_single_record regional_average_record
 R = []
-def res(c, e, p, rt, pos, best, avg, rsr, rar):
-    R.append([c, e, p, rt, pos, best, avg, rsr, rar])
+def res(c, e, p, rt, pos, best, avg, rsr, rar, vals=''):
+    # vals: 5 次尝试的编码值，逗号分隔（0=空, -1=DNF, -2=DNS），缺省用 best 补一次
+    if not vals:
+        vals = str(best) if best else ''
+    v = (vals.split(',') + ['0', '0', '0', '0', '0'])[:5]
+    R.append([c, e, p, rt, pos, best, avg, rsr, rar] + v)
 
 # WC2023 (world champ) — finals (round_type_id 'f')
-res('WC2023', '333', '2008FELI01', 'f', 1, 350, 400, 'WR', 'WR')
+res('WC2023', '333', '2008FELI01', 'f', 1, 350, 400, 'WR', 'WR', '350,400,420,-1,380')
 res('WC2023', '333', '2013PARK01', 'f', 2, 360, 410, 'CR', 'CR')
 res('WC2023', '333', '2008DENI01', 'f', 3, 380, 430, 'NR', 'NR')
 res('WC2023', '222', '2013PARK01', 'f', 1, 120, 150, 'WR', 'WR')
@@ -154,6 +158,6 @@ res('GO2008', '333mbo', '2008DENI01', 'f', 3, 1940803789, 0, 'NR', '')   # 5/8 1
 # a non-final round row (should be excluded from podiums)
 res('WC2023', '333', '2008FELI01', 's', 1, 360, 0, '', '')
 
-write('results', 'competition_id\tevent_id\tperson_id\tround_type_id\tpos\tbest\taverage\tregional_single_record\tregional_average_record', R)
+write('results', 'competition_id\tevent_id\tperson_id\tround_type_id\tpos\tbest\taverage\tregional_single_record\tregional_average_record\tvalue1\tvalue2\tvalue3\tvalue4\tvalue5', R)
 
 print('done')

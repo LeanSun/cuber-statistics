@@ -766,3 +766,100 @@ tr:hover .rank-no{transform:scale(1.08)}
 .set-val{font-size:12px;font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums;min-width:38px;display:inline-block;text-align:right}
 .set-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
 .set-actions .btn{padding:7px 16px}
+
+/* ============================================================
+   2026-10-19 需求批次：国旗 / 地区列 / 名字动效 / 多项目图例 /
+   动画速率 / 自定义事件表单 / 模块配色 / 展开详情重构
+   ============================================================ */
+
+/* 国旗：本地 css/flags.css 提供 .fi / .fi-xx；此处只做上下文尺寸与间距 */
+.pname{position:relative}
+.region-cell{display:inline-flex;align-items:center;gap:6px;min-width:0}
+.region-cell .rname{font-size:12px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:9.5em}
+.rank-table td.tl .fi{flex:none}
+td.tl:hover .fi{transform:scale(1.22)}
+.fi{transition:transform .18s ease}
+td.tl:hover .fi, .region-cell:hover .fi{transform:scale(1.22)}
+
+/* 选手名：鼠标划过时放大并轻微跳动 */
+.pname .linkish{
+  display:inline-block;transform-origin:left center;
+  transition:transform .22s cubic-bezier(.34,1.56,.5,1),color .2s ease;font-weight:600
+}
+tr[data-prow]:hover .pname .linkish,.pname:hover .linkish{
+  transform:scale(1.14);color:var(--accent);
+  animation:nameJump .5s cubic-bezier(.34,1.56,.5,1)
+}
+@keyframes nameJump{
+  0%{transform:scale(1.14) translateY(0)}
+  35%{transform:scale(1.2) translateY(-2px)}
+  60%{transform:scale(1.13) translateY(0)}
+  80%{transform:scale(1.16) translateY(-1px)}
+  100%{transform:scale(1.14) translateY(0)}
+}
+@media (prefers-reduced-motion:reduce){
+  tr[data-prow]:hover .pname .linkish,.pname:hover .linkish{animation:none}
+}
+
+/* 多项目模式：项目图例 + 堆叠条 */
+.ev-legend{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 10px}
+.ev-lg{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--text-2)}
+.ev-lg i{width:11px;height:11px;border-radius:3px;display:inline-block}
+.ministack.evstack{height:100%;border-radius:0;background:transparent}
+.ministack.evstack span{min-width:2px}
+.bar-row.evmode .ministack{height:18px;border-radius:4px;background:rgba(127,127,127,.14)}
+
+/* 动画速率控制条 */
+.tl-rate{flex-wrap:wrap;gap:14px;align-items:center}
+.rate-item{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--text-2)}
+.rate-item input[type=range]{width:110px}
+.rate-item b{font-size:11.5px;color:var(--text);min-width:52px;font-variant-numeric:tabular-nums}
+
+/* 自定义重大事件：三输入框表单 */
+.ms-form{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+.ms-field{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--text-2);min-width:120px}
+.ms-field.ms-grow{flex:1;min-width:220px}
+.ms-field input,.ms-field select{
+  height:36px;padding:0 10px;border-radius:9px;border:1px solid var(--border);
+  background:var(--bg-soft);color:var(--text);font-size:13px
+}
+.ms-form .btn{height:36px}
+.ms-del{
+  border:0;background:transparent;color:var(--text-3);cursor:pointer;font-size:13px;
+  line-height:1;padding:0 2px;margin-left:2px
+}
+.ms-del:hover{color:#ff5c6c}
+
+/* 模块配色自定义 */
+.md-colors{margin-bottom:14px}
+.md-colors-body{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+.crow{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--text-2);
+  background:var(--bg-soft);border:1px solid var(--border);border-radius:10px;padding:5px 10px}
+.crow input[type=color]{width:26px;height:26px;padding:0;border:0;background:none;cursor:pointer}
+.crow code{font-size:11px;color:var(--text-3)}
+
+/* 展开详情 v2：左身份卡 + 右模块表 */
+.exp-inner.exp-v2{display:grid;grid-template-columns:minmax(220px,280px) 1fr;gap:16px;align-items:start}
+.exp-v2-side{display:flex;flex-direction:column;gap:12px;padding:14px;border-radius:14px;
+  background:var(--bg-soft);border:1px solid var(--border)}
+.exp-v2-who{display:flex;gap:10px;align-items:center}
+.exp-v2-who b{font-size:15px;display:block;margin-bottom:2px}
+.exp-v2-flag .fi{width:30px;height:22px}
+.exp-v2-scores{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.exp-v2-score{display:flex;flex-direction:column;gap:2px;padding:8px;border-radius:10px;background:var(--bg-soft-2)}
+.exp-v2-score .k{font-size:11px;color:var(--text-3)}
+.exp-v2-score .v{font-size:17px;font-weight:700;font-variant-numeric:tabular-nums}
+.exp-v2-facts{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
+.exp-v2-fact{display:flex;justify-content:space-between;font-size:12px;color:var(--text-3);
+  border-bottom:1px dashed var(--border);padding-bottom:3px}
+.exp-v2-fact b{color:var(--text);font-variant-numeric:tabular-nums}
+.exp-v2-main{display:flex;flex-direction:column;gap:10px;min-width:0}
+.exp-v2-chips{display:flex;gap:7px;flex-wrap:wrap}
+.rec-chip{font-size:11.5px;padding:3px 9px;border-radius:999px;background:var(--bg-soft);
+  border:1px solid var(--border);color:var(--text-2)}
+.rec-chip.lv-WR{background:color-mix(in srgb,#ffd84d 20%,transparent);border-color:#ffd84d;color:#b8860b}
+.rec-chip.lv-CR{background:color-mix(in srgb,#38bdf8 18%,transparent);border-color:#38bdf8}
+.rec-chip.lv-NR{background:color-mix(in srgb,#4ade80 18%,transparent);border-color:#4ade80}
+@media (max-width:760px){
+  .exp-inner.exp-v2{grid-template-columns:1fr}
+}

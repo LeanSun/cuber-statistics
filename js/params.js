@@ -192,7 +192,38 @@
     return s * 10;
   }
 
+  /* ---------------- 七模块配色（可在评分原理页自定义） ---------------- */
+  const CKEY = 'goat-modcolors-v1';
+  const CDEF = {
+    m1: '#ff5c8a', m2: '#ffa23e', m3: '#ffd84d', m4: '#4ade80',
+    m5: '#38bdf8', m6: '#a78bfa', m7: '#f472b6'
+  };
+  let ccur = null;
+  function loadColors() {
+    ccur = {};
+    Object.keys(CDEF).forEach(function (k) { ccur[k] = CDEF[k]; });
+    try {
+      const s = localStorage.getItem(CKEY);
+      if (s) { const o = JSON.parse(s); Object.keys(CDEF).forEach(function (k) { if (typeof o[k] === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(o[k])) ccur[k] = o[k]; }); }
+    } catch (e) { }
+    return ccur;
+  }
+  function colors() { return ccur || loadColors(); }
+  function setColor(k, v) {
+    if (!CDEF[k] || !/^#[0-9a-fA-F]{3,8}$/.test(v)) return;
+    colors(); ccur[k] = v;
+    try { localStorage.setItem(CKEY, JSON.stringify(ccur)); } catch (e) { }
+    applyColors();
+  }
+  function resetColors() { ccur = null; loadColors(); try { localStorage.removeItem(CKEY); } catch (e) { } applyColors(); }
+  function applyColors() {
+    if (typeof document === 'undefined' || !document.documentElement) return;
+    const c = colors();
+    Object.keys(c).forEach(function (k) { document.documentElement.style.setProperty('--' + k, c[k]); });
+  }
+
   load();
+  loadColors();
 
   window.Params = {
     get: function (k) { return cur[k]; },
@@ -200,6 +231,8 @@
     set: set, reset: reset, save: save,
     defaults: DEFAULTS, meta: META, range: RANGE, label: LABEL,
     groupTitle: GROUP_TITLE, presets: PRESETS, applyPreset: applyPreset,
-    weights: weights, weighted: weighted, overall: overall, normalize: normalize
+    weights: weights, weighted: weighted, overall: overall, normalize: normalize,
+    colors: colors, setColor: setColor, resetColors: resetColors, applyColors: applyColors, colorDefaults: CDEF,
+    hasCustomColors: function () { try { return !!localStorage.getItem(CKEY); } catch (e) { return false; } }
   };
 })();
