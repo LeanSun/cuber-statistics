@@ -367,8 +367,13 @@ tr:hover .pname .linkish,tr:hover .pname .pname-txt{
 .bars-full .ministack{height:18px}
 .ministack span{height:100%;transition:width .4s ease}
 .ministack span:hover{filter:brightness(1.08)}
+/* 条形放进一条弹性轨道里：轨道吃掉剩余宽度并可收缩（min-width:0），
+   条形按轨道宽度的百分比伸缩。此前条形直接以 .bar-row 的 100% 为基准，
+   第一名 100% 时会把 gap 与右侧数字一起推出单元格、导致后面的字看不见。 */
 .bar-row{display:flex;align-items:center;gap:9px;height:100%}
-.bar-grow{flex:0 0 auto;height:100%;transform-origin:left center;animation:barGrow calc(.8s / var(--anim-rate,1)) cubic-bezier(.2,.75,.25,1) both}
+.bar-track{flex:1 1 auto;min-width:0;height:100%;display:flex;align-items:center}
+.bar-grow{flex:0 0 auto;height:100%;max-width:100%;min-width:0;
+  transform-origin:left center;animation:barGrow calc(.8s / var(--anim-rate,1)) cubic-bezier(.2,.75,.25,1) both}
 .bar-total{flex:none;min-width:36px;text-align:right;font-size:12.5px;font-weight:700;color:var(--text-2);font-variant-numeric:tabular-nums}
 /* 单项目模式：色条 + 最佳成绩 + 该项目世界排名 */
 .bar-row.evmode{gap:10px}
@@ -377,14 +382,11 @@ tr:hover .pname .linkish,tr:hover .pname .pname-txt{
 .ev-res{flex:none;font-size:12.5px;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums;white-space:nowrap}
 .ev-res i{font-style:normal;color:var(--text-3);margin:0 1px}
 .ev-res.muted{font-weight:400;color:var(--text-3)}
-.bar-total.ev-rank{min-width:44px;color:var(--accent)}
-/* 多项目：各所选项目上的世界名次徽章（与单项目模式一样能直接看到名次） */
-.ev-badges{display:inline-flex;gap:3px;flex:none;flex-wrap:nowrap;max-width:190px;overflow:hidden}
-.ev-badge{display:inline-flex;align-items:center;justify-content:center;
-  min-width:30px;padding:1px 5px;border-radius:999px;color:#fff;
-  font-size:10.5px;font-weight:700;font-style:normal;
-  font-variant-numeric:tabular-nums;white-space:nowrap;opacity:.92}
-.ev-badge:hover{opacity:1;filter:brightness(1.08)}
+.bar-total.ev-rank{min-width:52px;color:var(--accent);font-variant-numeric:tabular-nums}
+/* 多项目：命中的项目数「3/5」（按需求不再罗列名次徽章与「已覆盖 x/y」字样） */
+.ev-hitnote{flex:none;font-size:11px;font-weight:600;color:var(--text-3);
+  font-variant-numeric:tabular-nums;white-space:nowrap;
+  background:var(--bg-soft);border:1px solid var(--border);border-radius:999px;padding:1px 7px}
 .ev-tag{white-space:nowrap}
 @keyframes barGrow{from{transform:scaleX(0);opacity:.35}to{transform:scaleX(1);opacity:1}}
 .gcol{width:1%;white-space:nowrap}
@@ -495,11 +497,28 @@ tr:hover .pname .linkish,tr:hover .pname .pname-txt{
   background:var(--accent-soft);color:var(--accent)}
 .pid-rank .pr-ic .ic,.pid-rank .pr-ic svg{width:14px;height:14px}
 .pid-rank .pr-label{font-size:12px;color:var(--text-2);white-space:nowrap}
-.pid-rank .pr-val{margin-left:auto;display:flex;align-items:baseline;gap:1px;
+.pid-rank .pr-val{margin-left:auto;display:flex;align-items:baseline;gap:2px;
   font-variant-numeric:tabular-nums;white-space:nowrap}
-.pid-rank .pr-val b{font-size:16px;font-weight:800;color:var(--text)}
-.pid-rank .pr-val i{font-style:normal;font-size:11px;color:var(--text-3)}
+/* 排名数字：需求要求「加大 + 彩色动态渐变」。
+   用 background-clip:text 上渐变，并让渐变背景缓慢流动（rankFlow 动画），
+   形成持续的彩色流动效果；prefers-reduced-motion 下退化为静态渐变。 */
+.pid-rank .pr-val b{
+  font-size:26px;line-height:1;font-weight:900;letter-spacing:-.01em;
+  background-image:linear-gradient(92deg,var(--m1),var(--m3),var(--m5),var(--m7),var(--m1));
+  background-size:320% 100%;background-position:0% 50%;
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  animation:rankFlow 7s linear infinite;
+  filter:drop-shadow(0 1px 0 rgba(0,0,0,.06))}
+.pid-rank:hover .pr-val b{animation-duration:2.6s}
+@keyframes rankFlow{
+  0%{background-position:0% 50%}
+  100%{background-position:320% 50%}
+}
+.pid-rank .pr-val i{font-style:normal;font-size:12px;color:var(--text-3);font-weight:600}
 .pid-rank .pr-sub{font-size:10.5px;color:var(--text-3);white-space:nowrap}
+@media (prefers-reduced-motion:reduce){
+  .pid-rank .pr-val b{animation:none;background-position:35% 50%}
+}
 .rank4{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:16px}
 .rank-card{
   background:var(--bg-soft);border-radius:var(--r-md);padding:12px 14px;position:relative;overflow:hidden;
@@ -895,6 +914,12 @@ tr[data-prow]:hover .pname .linkish,.pname:hover .linkish{
   background:var(--bg-soft);border:1px solid var(--border);border-radius:10px;padding:5px 10px}
 .crow input[type=color]{width:26px;height:26px;padding:0;border:0;background:none;cursor:pointer}
 .crow code{font-size:11px;color:var(--text-3)}
+/* 16 进制颜色输入框：与取色器并列，可直接输入 / 粘贴 #RRGGBB */
+.hex-in{width:78px;padding:3px 6px;border-radius:7px;
+  border:1px solid var(--border-2);background:var(--bg-elev);color:var(--text);
+  font-size:11.5px;letter-spacing:.02em;text-transform:lowercase}
+.hex-in:focus{outline:none;border-color:var(--accent);
+  box-shadow:0 0 0 2px var(--accent-soft)}
 /* 国家配色：国旗 + 国名 + 取色器 */
 .md-colors-body.cc-body{gap:10px}
 .crow.cc-row{padding:4px 9px}
@@ -957,6 +982,14 @@ tr[data-prow]:hover .pname .linkish,.pname:hover .linkish{
 .exp-v3-mod .track{height:9px;border-radius:999px;background:var(--bg-soft-2);overflow:hidden}
 .exp-v3-mod .track i{display:block;height:100%;border-radius:999px;
   transition:width .4s cubic-bezier(.4,0,.2,1)}
+/* 列头：与数据行同网格，让「原始分 / 权重 / 加权贡献 / 占比」四列有名字 */
+.exp-v3-mod.exp-v3-mod-head{font-size:10.5px;font-weight:700;color:var(--text-3);
+  letter-spacing:.02em;padding:0 0 5px;border-bottom:1px solid var(--border)}
+.exp-v3-mod.exp-v3-mod-head .nm{color:var(--text-3);text-transform:none}
+.exp-v3-mod.exp-v3-mod-head .raw,.exp-v3-mod.exp-v3-mod-head .w,
+.exp-v3-mod.exp-v3-mod-head .v,.exp-v3-mod.exp-v3-mod-head .pc{
+  color:var(--text-3);opacity:1;font-weight:700;cursor:help;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .exp-v3-mod .raw,.exp-v3-mod .w,.exp-v3-mod .v,.exp-v3-mod .pc{
   text-align:right;font-variant-numeric:tabular-nums;color:var(--text-3)}
 .exp-v3-mod .w{opacity:.75}
@@ -1145,21 +1178,33 @@ tr[data-prow]:hover .pname .linkish,.pname:hover .linkish{
 .ms-pop-list{display:flex;gap:6px;flex-wrap:wrap}
 .ms-pop-list .ms-rail-item{margin-top:0}
 
-/* ============ 纪录持有图：泳道清单（悬停 → 图上高亮 + 姓名国旗浮标） ============ */
-.lane-list{display:flex;flex-direction:column;gap:9px;margin-top:12px}
-.lane-row{border:1px solid var(--border);border-radius:12px;background:var(--bg-soft);padding:9px 11px}
-.lane-row-h{display:flex;align-items:center;gap:8px;margin-bottom:7px}
-.lane-ev{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--text)}
-.lane-retired{font-size:10.5px;padding:1px 7px;border-radius:999px;
-  background:var(--bg-soft-2);border:1px dashed var(--border-2);color:var(--text-3)}
-.lane-segs{display:flex;flex-wrap:wrap;gap:6px}
-.lane-seg{display:inline-flex;align-items:center;gap:8px;cursor:pointer;
-  padding:4px 10px;border-radius:999px;font-size:11.5px;
-  background:var(--bg-elev);border:1px solid var(--border);color:var(--text-2);
-  transition:border-color .16s,background .16s,transform .16s}
-.lane-seg:hover,.lane-seg.on{border-color:var(--accent);background:var(--accent-soft);color:var(--text)}
-.lane-seg.on{transform:translateY(-1px);box-shadow:0 2px 8px color-mix(in srgb,var(--accent) 22%,transparent)}
-.lane-flag{width:18px;height:13px;border-radius:2px;flex:none;background-size:cover}
-.lane-holder{font-weight:600;color:var(--text);white-space:nowrap}
-.lane-dates{font-size:10.5px;color:var(--text-3);white-space:nowrap}
-.lane-days{font-size:10.5px;color:var(--accent);font-weight:600;white-space:nowrap}
+/* 时间轴推进到某个事件的日期时，在右下角弹出的提示卡 */
+.ms-toast{position:absolute;right:0;bottom:38px;z-index:7;
+  display:flex;flex-direction:column;align-items:flex-end;gap:7px;pointer-events:none}
+.ms-toast-card{display:flex;align-items:flex-start;gap:9px;max-width:320px;
+  padding:9px 13px 9px 11px;border-radius:13px;
+  background:linear-gradient(135deg,var(--bg-elev),var(--bg-soft-2));
+  border:1px solid var(--border-2);
+  box-shadow:0 12px 34px rgba(0,0,0,.24);
+  animation:msToastIn .34s cubic-bezier(.34,1.35,.64,1) both;
+  transition:opacity .5s ease,transform .5s ease}
+.ms-toast-card.ms-custom{border-style:dashed;border-color:var(--accent)}
+.ms-toast-card.out{opacity:0;transform:translateY(-8px) scale(.97)}
+.ms-toast-ic{display:inline-flex;flex:none;margin-top:1px;color:var(--accent)}
+.ms-toast-ic svg,.ms-toast-ic .ic{width:15px;height:15px}
+.ms-toast-b{display:flex;flex-direction:column;gap:2px;min-width:0}
+.ms-toast-b b{font-size:11px;font-weight:700;color:var(--accent);
+  font-variant-numeric:tabular-nums;letter-spacing:.02em}
+.ms-toast-b span{font-size:12.5px;font-weight:600;color:var(--text);line-height:1.35}
+@keyframes msToastIn{
+  from{opacity:0;transform:translateX(22px) scale(.94)}
+  to{opacity:1;transform:none}
+}
+@media (prefers-reduced-motion:reduce){
+  .ms-toast-card{animation:none}
+}
+
+/* ============ 纪录持有图 ============
+   下方不再罗列持有者清单（需求：删掉冗杂的「纪录内容」）；
+   姓名 / 国旗 / 起止日期改由鼠标移到色块上时跟随光标的 tooltip 显示。 */
+

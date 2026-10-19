@@ -169,6 +169,8 @@
     }
   }
   let tlTimer = null;
+  /* 播放用的动画帧句柄（rAF 驱动，逐帧推进时间轴） */
+  let tlRaf = 0;
   let lastRoute = '';
   let lastScroll = 0;
 
@@ -549,51 +551,85 @@
     if (route === 'timeline') {
       const range = document.getElementById('tlRange');
       const play = document.getElementById('tlPlay');
-      const sm = document.getElementById('tlSmooth');
       const box = document.getElementById('tlChart');
       const lab = document.getElementById('tlYear');
+      /* 重大事件到达提示：跨过某事件的日期时，在竞速图右下角弹出一张卡片。
+         用「上一步日期 → 当前日期」的区间判断，拖到哪都会只提示一次。 */
+      let lastMsDate = null;
+      function msToastFor(prevDate, curDate) {
+        const wrap = document.getElementById('msToast');
+        if (!wrap || !P.tlMsCrossed || !curDate) return;
+        const hits = P.tlMsCrossed(prevDate, curDate);
+        if (!hits.length) return;
+        hits.slice(0, 3).forEach(function (m, i) {
+          const label = t.isEn() ? (m.en || m.zh) : m.zh;
+          const card = document.createElement('div');
+          card.className = 'ms-toast-card' + (m.custom ? ' ms-custom' : '');
+          card.style.animationDelay = (i * 90) + 'ms';
+          card.innerHTML = '<span class="ms-toast-ic">' + (window.Icons ? window.Icons.glyph('star') : '') + '</span>' +
+            '<div class="ms-toast-b"><b>' + esc(m.date || m.year) + '</b><span>' + esc(String(label)) + '</span></div>';
+          wrap.appendChild(card);
+          setTimeout(function () { card.classList.add('out'); }, 4200);
+          setTimeout(function () { if (card.parentNode) card.parentNode.removeChild(card); }, 4900);
+        });
+      }
       function setFyFromRange(rg) {
         const idx = +rg.value;
         const info = P.tlIdxToInfo(idx, state.tlStep);
+        const curDate = P.tlDateAt ? P.tlDateAt(idx, state.tlStep) : null;
+        if (lastMsDate && curDate && curDate !== lastMsDate) msToastFor(lastMsDate, curDate);
+        if (curDate) lastMsDate = curDate;
         state.tlFy = info.fy;
         if (lab) lab.textContent = info.label;
         if (box) { box.setAttribute('data-fy', state.tlFy); P.drawTimeline(box); }
         if (P.tlHighlightRail) P.tlHighlightRail(info.fy);
       }
       if (range) range.addEventListener('input', function () { setFyFromRange(range); });
-      if (sm) sm.addEventListener('change', function () {
-        state.tlSmooth = sm.checked;
-        if (box) { box.setAttribute('data-smooth', state.tlSmooth ? '1' : '0'); P.drawTimeline(box); }
-      });
       if (play) play.addEventListener('click', function () {
         if (state.tlPlaying) { stopPlay(); return; }
         if (!range) return;
         state.tlPlaying = true; play.textContent = t('tl.pause');
-        /* 步进固定为「每次 1 天」：定时器每次只把滑块推进 1 格（1 格 = 1 天），
-           tick 间隔由「天/秒」换算得出（30 天/秒 → 每 33ms 走 1 天），
-           因此速度与步进解耦：再快也不会一帧跳过好几天。
-           fps 退化为重绘节流上限，避免高倍速下重复重画。 */
+        /* 播放改用 requestAnimationFrame 逐帧推进：
+           每帧按真实经过的时间算出「应该走到第几天」的小数位置，
+           · 日期标签每天变一次（整数天跨过去才更新）；
+           · 图表拿小数天去算分数，因此条形长度是连续变化的，不再一格一格跳；
+           · 名次换位时图表自己用很短的过渡补间，不会拖慢整体速度。
+           此前用 setInterval + 200ms 节流重绘，日期每 200ms 跳 6 天、条形靠 800ms
+           动画追赶，既跳又卡，参数怎么调都不顺。 */
         const rate = (P.tlRate ? P.tlRate() : { jump: 30, anim: 800, fps: 200 });
         const daysPerSec = Math.max(0.5, rate.jump || 30);
-        const dtMs = Math.max(16, Math.min(2000, Math.round(1000 / daysPerSec)));
-        const minDrawGap = Math.max(16, rate.fps || 200);
-        let lastDraw = 0;
-        tlTimer = setInterval(function () {
+        const startIdx = +range.value;
+        const startMs = (window.performance && performance.now) ? performance.now() : Date.now();
+        let lastIdx = startIdx;
+        function frame(nowMs) {
+          const elapsed = (nowMs - startMs) / 1000;
+          const pos = startIdx + elapsed * daysPerSec;
           const sl = P.tlSlider(state.tlStep, state.tlFy);
-          let idx = +range.value;
-          if (idx >= sl.max) { stopPlay(); return; }
-          idx = Math.min(sl.max, idx + 1);   /* 每次 1 天 */
-          range.value = idx;
-          const now = Date.now();
-          if (now - lastDraw >= minDrawGap || idx >= sl.max) {
-            lastDraw = now;
-            setFyFromRange(range);
+          const idx = Math.min(sl.max, Math.floor(pos));
+          const frac = Math.max(0, Math.min(0.999, pos - idx));
+          if (idx !== lastIdx) {
+            lastIdx = idx;
+            range.value = idx;
+            const info = P.tlIdxToInfo(idx, state.tlStep);
+            if (lab) lab.textContent = info.label;
+            const curDate = P.tlDateAt ? P.tlDateAt(idx, state.tlStep) : null;
+            if (lastMsDate && curDate && curDate !== lastMsDate) msToastFor(lastMsDate, curDate);
+            if (curDate) lastMsDate = curDate;
+            if (P.tlHighlightRail) P.tlHighlightRail(info.fy);
           }
-          if (idx >= sl.max) stopPlay();
-        }, dtMs);
+          /* 小数天：让分数在两天之间连续插值 */
+          const fy = P.tlFyAt ? P.tlFyAt(idx, frac, state.tlStep) : (P.tlIdxToInfo(idx, state.tlStep).fy);
+          state.tlFy = fy;
+          if (box) { box.setAttribute('data-fy', fy); P.drawTimeline(box); }
+          if (pos >= sl.max) { stopPlay(); return; }
+          tlRaf = requestAnimationFrame(frame);
+        }
+        tlRaf = requestAnimationFrame(frame);
       });
       function stopPlay() {
-        state.tlPlaying = false; clearInterval(tlTimer);
+        state.tlPlaying = false;
+        clearInterval(tlTimer);
+        if (tlRaf) { cancelAnimationFrame(tlRaf); tlRaf = 0; }
         const pb = document.getElementById('tlPlay'); if (pb) pb.textContent = t('tl.play');
       }
       /* 动画速率自定义：时间跳跃（天/秒）/ 动画时长 / 刷新间隔。
@@ -667,69 +703,6 @@
         state.tlCountry = cSel.value; render(true);
       });
 
-      /* 纪录持有图：悬停下方清单项 → 在图上高亮该色块，并在图上标出该选手姓名与国旗 */
-      const laneList = document.getElementById('laneList');
-      if (laneList && box) {
-        const clearLaneHi = function () {
-          laneList.querySelectorAll('.lane-seg.on').forEach((n) => n.classList.remove('on'));
-          try {
-            const ins = window.echarts.getInstanceByDom(box);
-            if (ins) {
-              ins.dispatchAction({ type: 'downplay', seriesIndex: 0 });
-              if (ins.__laneHiLabel) { ins.removeGraphic(ins.__laneHiLabel); ins.__laneHiLabel = null; }
-            }
-          } catch (e) { }
-        };
-        const highlightLane = function (btn) {
-          clearLaneHi();
-          btn.classList.add('on');
-          const ix = parseInt(btn.getAttribute('data-laneix'), 10);
-            const holderEl = btn.querySelector('.lane-holder');
-            const flagEl = btn.querySelector('.lane-flag');
-            const label = (holderEl ? holderEl.textContent : '');
-            try {
-              const ins = window.echarts.getInstanceByDom(box);
-              if (!ins) return;
-              if (!isNaN(ix)) ins.dispatchAction({ type: 'highlight', seriesIndex: 0, dataIndex: ix });
-            /* 在图上追加一个「姓名 + 国旗」浮标，位置跟随该色块 */
-            if (ins.__laneHiLabel) ins.removeGraphic(ins.__laneHiLabel);
-            const g = {
-              type: 'group', id: 'laneHiLabel',
-              position: ['10%', '4%'],
-              children: [{
-                type: 'rect', shape: { x: 0, y: 0, width: 22 + label.length * 11, height: 30, r: 9 },
-                style: { fill: 'rgba(20,22,28,.86)', stroke: 'rgba(255,255,255,.18)', lineWidth: 1 }
-              }].concat(flagEl ? [{
-                type: 'image',
-                style: {
-                  image: (function () {
-                    const m = getComputedStyle(flagEl).backgroundImage || '';
-                    const r = m.match(/url\((['"]?)(.*?)\1\)/);
-                    return r ? r[2] : '';
-                  })(), x: 9, y: 9, width: 24, height: 12
-                }
-              }] : []).concat([{
-                type: 'text',
-                style: {
-                  text: label, x: (flagEl ? 40 : 12), y: 15,
-                  fill: '#fff', font: '600 14px "Segoe UI",system-ui,sans-serif',
-                  textVerticalAlign: 'middle', textBaseline: 'middle'
-                }
-              }])
-            };
-            ins.__laneHiLabel = ins.addGraphic ? ins.addGraphic(g) : null;
-          } catch (e) { }
-        };
-        laneList.addEventListener('mouseover', function (e) {
-          const btn = e.target.closest ? e.target.closest('.lane-seg') : null;
-          if (btn) highlightLane(btn);
-        });
-        laneList.addEventListener('mouseout', function (e) {
-          const btn = e.target.closest ? e.target.closest('.lane-seg') : null;
-          if (btn && !laneList.contains(e.relatedTarget)) clearLaneHi();
-        });
-        laneList.addEventListener('mouseleave', clearLaneHi);
-      }
       /* 竞速图点击选手条 / 姓名 → 跳转本站选手主页 */
       if (box) {
         let inst = null;
@@ -765,20 +738,54 @@
       const mcr = document.getElementById('mColorReset');
       if (mcr) mcr.addEventListener('click', function () { Pm.resetColors(); render(true); toast(t('ui.ok')); });
       document.querySelectorAll('input[data-modcolor]').forEach(function (c) {
-        c.addEventListener('input', function () { if (Pm.setColor) { Pm.setColor(c.getAttribute('data-modcolor'), c.value); } });
+        c.addEventListener('input', function () {
+          if (Pm.setColor) { Pm.setColor(c.getAttribute('data-modcolor'), c.value); }
+          /* 同步同一行的 16 进制输入框 */
+          const hex = c.parentNode.querySelector('input[data-modhex]');
+          if (hex && document.activeElement !== hex) hex.value = c.value;
+        });
         c.addEventListener('change', function () { render(true); toast(t('md.colorsOk')); });
       });
-      /* 国家配色：改色即时写入localStorage 并同步旁边的色值文本，
+      /* 模块配色的 16 进制输入框：可直接粘贴 #RRGGBB（也接受 #RGB 与不带 # 的写法） */
+      document.querySelectorAll('input[data-modhex]').forEach(function (hex) {
+        function commit() {
+          const k = hex.getAttribute('data-modhex');
+          const v = hexVal(hex.value);
+          if (!v || !Pm.setColor) { hex.value = Pm.colors()[k] || ''; return; }
+          Pm.setColor(k, v);
+          hex.value = v;
+          const picker = hex.parentNode.querySelector('input[data-modcolor]');
+          if (picker) picker.value = v;
+        }
+        hex.addEventListener('change', commit);
+        hex.addEventListener('blur', commit);
+        hex.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); commit(); hex.blur(); } });
+      });
+      /* 国家配色：改色即时写入localStorage 并同步旁边的 16 进制输入框，
          图表在下一次渲染/重绘时生效（避免每拖一次就重算全部图表）。 */
       document.querySelectorAll('input[data-ccolor]').forEach(function (c) {
         c.addEventListener('input', function () {
           const iso = c.getAttribute('data-ccolor');
           if (!P.setCountryColor) return;
           P.setCountryColor(iso, c.value);
-          const code = c.parentNode.querySelector('code');
-          if (code) code.textContent = c.value;
+          const hex = c.parentNode.querySelector('input[data-cchex]');
+          if (hex && document.activeElement !== hex) hex.value = c.value;
         });
         c.addEventListener('change', function () { render(true); toast(t('md.countryColorsOk')); });
+      });
+      document.querySelectorAll('input[data-cchex]').forEach(function (hex) {
+        function commit() {
+          const iso = hex.getAttribute('data-cchex');
+          const v = hexVal(hex.value);
+          if (!v || !P.setCountryColor) { hex.value = P.countryColor(iso); return; }
+          P.setCountryColor(iso, v);
+          hex.value = v;
+          const picker = hex.parentNode.querySelector('input[data-ccolor]');
+          if (picker) picker.value = v;
+        }
+        hex.addEventListener('change', commit);
+        hex.addEventListener('blur', commit);
+        hex.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); commit(); hex.blur(); } });
       });
       const ccR = document.getElementById('ccReset');
       if (ccR) ccR.addEventListener('click', function () {
@@ -870,6 +877,19 @@
     render(true);
   }
   function msReset() { try { localStorage.removeItem(MS_KEY); } catch (e) { } toast(t('tl.msReset')); render(true); }
+  /* 内置事件的隐藏列表（让默认事件也能删除 / 恢复） */
+  const MS_HIDE_KEY = 'goat-milestones-hidden';
+  function msHidden() { try { const a = JSON.parse(localStorage.getItem(MS_HIDE_KEY)); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+  function msSaveHidden(a) { try { localStorage.setItem(MS_HIDE_KEY, JSON.stringify(a)); } catch (e) { } }
+  /* 16 进制颜色输入：接受 #RGB / #RRGGBB / 不带 # 的写法，统一补成 #rrggbb */
+  function hexVal(raw) {
+    let s = String(raw || '').trim();
+    if (!s) return '';
+    if (s.charAt(0) !== '#') s = '#' + s;
+    if (/^#[0-9a-fA-F]{3}$/.test(s)) s = '#' + s[1] + s[1] + s[2] + s[2] + s[3] + s[3];
+    if (!/^#[0-9a-fA-F]{6}$/.test(s)) return '';
+    return s.toLowerCase();
+  }
   function msSampleFill() { }
 
   /* ---------- 自定义设置（速率 / 宽度 / 颜色） ---------- */
@@ -968,15 +988,26 @@
     }
     if (el.hasAttribute('data-msimport')) { msImport(); return; }
     if (el.hasAttribute('data-msreset')) { msReset(); return; }
+    if (el.hasAttribute('data-msunhide')) {
+      if (P.msUnhideAll) P.msUnhideAll();
+      toast(t('tl.msRestored')); render(true); return;
+    }
     if (el.hasAttribute('data-msdel')) {
       const i = parseInt(el.getAttribute('data-msdel'), 10);
+      /* 索引是「内置（已过滤隐藏项） + 自定义」合并后的序号：
+         落在内置区间就是删除一个内置事件（记进隐藏列表），否则删自定义项。 */
+      const evSel = state.evSel || [];
+      const singleEv = evSel.length === 1 ? evSel[0] : (state.group && M.EV[state.group] ? state.group : '');
+      const baseAll = singleEv ? M.eventMilestones(singleEv) : M.milestones;
+      const hidden = msHidden();
+      const baseShown = baseAll.filter(function (m) { return hidden.indexOf(P.msKeyOf(m)) < 0; });
+      if (i >= 0 && i < baseShown.length) {
+        hidden.push(P.msKeyOf(baseShown[i]));
+        msSaveHidden(hidden);
+        toast(t('tl.msDelOk')); render(true); return;
+      }
+      const customIdx = i - baseShown.length;
       const list = msList();
-      /* 索引是「内置 + 自定义」合并后的序号，换算回自定义列表下标 */
-      const customIdx = i - ((function () {
-        const evSel = state.evSel || [];
-        const singleEv = evSel.length === 1 ? evSel[0] : (state.group && M.EV[state.group] ? state.group : '');
-        return singleEv ? M.eventMilestones(singleEv).length : M.milestones.length;
-      })());
       if (customIdx >= 0 && customIdx < list.length) { list.splice(customIdx, 1); try { localStorage.setItem(MS_KEY, JSON.stringify(list)); } catch (e) { } render(true); }
       return;
     }

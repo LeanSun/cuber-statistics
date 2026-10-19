@@ -303,9 +303,8 @@
         const hit = p.events.filter(function (e) { return pool.indexOf(e) >= 0; }).length;
         score = score * (0.45 + 0.55 * (hit / pool.length));
       }
-      const row = { p: p, score: score, sc: sc, ev: sev || '', be: bd ? (bd.idx[p.id] || null) : null, bdLen: bd ? bd.len : 0, evs: null, evHit: 0, evSum: 0 };
-      /* 多项目：额外算出每个所选项目上的世界名次，仅用于「色块 + 名次徽章」展示，
-         不参与排序（排序始终是上面的历史地位分）。 */
+      const row = { p: p, score: score, sc: sc, ev: sev || '', be: bd ? (bd.idx[p.id] || null) : null, bdLen: bd ? bd.len : 0, evs: null, evHit: 0, evSum: 0, orderVal: score };
+      /* 多项目：额外算出每个所选项目上的世界名次，用于「色块」展示与排序。 */
       if (bdM) {
         let sw = 0, sv = 0, hit = 0;
         const cells = bdM.map(function (o) {
@@ -317,6 +316,17 @@
         row.evs = cells;
         row.evHit = hit;
         row.evSum = sw > 0 ? sv / sw : 0;
+      }
+      /* 排序键：选中项目时按该项目（们）的真实世界名次排，而不是历史地位分 ——
+         否则单项目排名靠后的选手仍会凭着其他项目的积累排在前面。
+         orderVal 一律「越大越靠前」，交给 sortRows 统一处理升降序。 */
+      if (sev) {
+        /* 单项目：直接取该项目的世界名次（1 = 第一） */
+        const be = row.be;
+        row.orderVal = be ? -be.r : -1e9;
+      } else if (bdM) {
+        /* 多项目：各所选项目名次的加权综合（evSum 越大＝整体名次越靠前） */
+        row.orderVal = row.evHit ? row.evSum : -1e9;
       }
       return row;
     });
@@ -332,8 +342,9 @@
       switch (k) {
       case 'score':
       case 'total':
-        /* 单项目模式同样按历史地位分排序（该项目世界名次仅作条尾参考列） */
-        return row.score;
+        /* 选中项目时按该项目（们）的世界名次排序（orderVal 已是「越大越靠前」），
+           未选项目时按历史地位分排序。 */
+        return row.orderVal != null ? row.orderVal : row.score;
       case 'player': return p.name;
       case 'country': return p.country;
       case 'gender': return p.gender;
@@ -441,27 +452,25 @@
           segs += '<span style="width:' + Math.max(1.5, Math.min(100, rel)).toFixed(1) + '%;background:' + evColor(ci) + '" title="' +
             esc(evName(M.EV[c.ev] || { zh: c.ev, en: c.ev })) + ' #' + c.e.r + '"></span>';
         });
-        /* 各项目名次徽章：让「多项目」与「单项目」一样能直接看到世界名次 */
-        let badges = '';
-        row.evs.forEach(function (c, ci) {
-          badges += '<i class="ev-badge" style="background:' + evColor(ci) + '" title="' +
-            esc(evName(M.EV[c.ev] || { zh: c.ev, en: c.ev })) + '">' + (c.e ? '#' + c.e.r : '—') + '</i>';
-        });
-        h += '<td class="barcell bars-full"><div class="bar-row evmode">' +
-          '<div class="bar-grow" style="width:' + bw.toFixed(1) + '%"><div class="ministack evstack">' + segs + '</div></div>' +
+        /* 各项目名次只以堆叠色块呈现（越满＝该项目名次越靠前），
+           按需求不再在后面罗列「#265」这类名次徽章，也不再显示「已覆盖 x/y」。 */
+        h += '<td class="barcell bars-full"><div class="bar-row evmode"><div class="bar-track">' +
+          '<div class="bar-grow" style="width:' + bw.toFixed(1) + '%"><div class="ministack evstack">' + segs + '</div></div></div>' +
           '<span class="bar-total">' + U.fmt(score, 1) + '</span>' +
-          '<span class="ev-badges">' + badges + '</span>' +
-          '<span class="bar-total ev-rank">' + esc(t('rank.evMulti')) + ' ' + row.evHit + '/' + evsShown.length + '</span></div></td>';
+          '<span class="ev-hitnote">' + row.evHit + '/' + evsShown.length + '</span></div></td>';
       } else if (evMode) {
-        /* 单项目：保留七模块堆叠条（说明分值构成），并显示该项目成绩与世界名次 */
+        /* 单项目：按该项目的世界名次排序，条长＝名次越靠前条越长；
+           条尾依次给出该项目的成绩（单次 / 平均）与「No.名次」。 */
         const be = row.be;
         const w = be ? evBarPct(be.r, row.bdLen) : 6;
-        h += '<td class="barcell bars-full"><div class="bar-row evmode">' +
-          '<div class="bar-grow" style="width:' + w.toFixed(1) + '%">' + miniStack(p, modTab, rt) + '</div>' +
+        h += '<td class="barcell bars-full"><div class="bar-row evmode"><div class="bar-track">' +
+          '<div class="bar-grow" style="width:' + w.toFixed(1) + '%">' + miniStack(p, modTab, rt) + '</div></div>' +
           '<span class="ev-res">' + (be ? esc(be.s) + (be.af ? ' <i>/</i> ' + esc(be.af) : '') : '<span class="muted">—</span>') + '</span>' +
-          '<span class="bar-total ev-rank"' + (be ? ' title="' + esc(t('player.rankWorld')) + '">#' + be.r : ' class="bar-total muted">—') + '</span></div></td>';
+          '<span class="bar-total ev-rank"' + (be ? ' title="' + esc(t('player.rankWorld')) + '">No.' + be.r : ' class="bar-total muted">—') + '</span></div></td>';
       } else {
-        h += '<td class="barcell bars-full"><div class="bar-row"><div class="bar-grow" style="width:' + bw.toFixed(1) + '%">' + miniStack(p, modTab, rt) + '</div><span class="bar-total">' + U.fmt(score, 1) + '</span></div></td>';
+        h += '<td class="barcell bars-full"><div class="bar-row"><div class="bar-track">' +
+          '<div class="bar-grow" style="width:' + bw.toFixed(1) + '%">' + miniStack(p, modTab, rt) + '</div></div>' +
+          '<span class="bar-total">' + U.fmt(score, 1) + '</span></div></td>';
       }
       h += '<td class="tl exp-col"><button class="expand-btn" data-expand="' + p.id + '" aria-label="' + esc(t('ui.more')) + '">›</button></td>';
       h += '</tr>';
@@ -531,6 +540,15 @@
     h += '<div class="exp-v3-mods">';
     h += '<div class="exp-v3-mods-h"><span>' + esc(t('rank.module')) + '</span>' +
       '<span class="tiny muted">' + esc(t('player.contrib')) + ' · Σ = ' + U.fmt(tot, 2) + '</span></div>';
+    /* 列头：让右侧四列数字（原始分 / 权重 / 加权贡献 / 占比）各自有名字，
+       否则展开后只剩一串「100.0 51% 50.78 67.0%」看不出含义。 */
+    h += '<div class="exp-v3-mod exp-v3-mod-head">' +
+      '<span class="nm">' + esc(t('m1.name') ? t('rank.module') : '') + '</span>' +
+      '<span class="track"></span>' +
+      '<span class="raw" title="' + esc(t('expCol.rawD')) + '">' + esc(t('player.raw')) + '</span>' +
+      '<span class="w" title="' + esc(t('expCol.wD')) + '">' + esc(t('player.weight')) + '</span>' +
+      '<span class="v" title="' + esc(t('expCol.vD')) + '">' + esc(t('player.contrib')) + '</span>' +
+      '<span class="pc" title="' + esc(t('expCol.pcD')) + '">' + esc(t('player.pct')) + '</span></div>';
     csDesc.forEach(function (c) {
       const pct = c.v / tot * 100;
       h += '<div class="exp-v3-mod">' +

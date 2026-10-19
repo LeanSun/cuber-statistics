@@ -465,14 +465,19 @@ function buildEventIndex() {
   return m;
 }
 
-function trackMilestone(eid, best, year) {
+/* 重大事件精确到日：记录「首次达成该门槛」的具体比赛日期（YYYYMMDD），
+   而不是只记年份。results 表不保证按日期有序，因此要取最小值。 */
+function trackMilestone(eid, best, year, dn) {
   const bars = Calc.EV_BARRIERS[eid]; if (!bars) return;
   const fmt = (events.get(eid) || {}).format || 'time';
   const v = toInt(best); if (v <= 0) return;
   if (!msGlobal[eid]) msGlobal[eid] = {};
   const mp = msGlobal[eid];
+  const dayNum = dn > 0 ? dn : (year || 2003) * 10000 + 101;
   bars.forEach((b) => {
-    if (mp[b[0]] != null) return;
+    const cur = mp[b[0]];
+    /* 已记录过且已有更早（或同为精确日期）的成绩时不必再看 */
+    if (cur != null && cur <= dayNum) return;
     const thr = parseFloat(b[0]);
     let ok = false;
     if (fmt === 'time') ok = v < thr * 100;
@@ -483,7 +488,7 @@ function trackMilestone(eid, best, year) {
       const solved = s[0] === '1' ? (99 - toInt(s.slice(1, 3))) : ((99 - toInt(s.slice(1, 3))) + toInt(s.slice(8, 10)));
       ok = solved >= thr;
     }
-    if (ok) mp[b[0]] = year;
+    if (ok) mp[b[0]] = dayNum;
   });
 }
 
@@ -647,7 +652,8 @@ async function processResults() {
     if (rsr === 'WR') (wrSingleG[eid] = wrSingleG[eid] || []).push({ dn: wrDn, fy: wrFy, name: p.name, country: p.country, pid: pid, iso: Calc.isoNorm(p.country) });
     if (rar === 'WR') (wrAvgG[eid] = wrAvgG[eid] || []).push({ dn: wrDn, fy: wrFy, name: p.name, country: p.country, pid: pid, iso: Calc.isoNorm(p.country) });
 
-    trackMilestone(eid, r.best, year);
+    /* 传比赛日期（YYYYMMDD），让「首次突破」精确到日 */
+    trackMilestone(eid, r.best, year, wrDn);
 
     /* 年度排名候选：单次与平均取更优者（与 WCA 官方 ranks_single/ranks_average 同口径） */
     {
@@ -962,12 +968,15 @@ function buildEventMilestones() {
     const bars = Calc.EV_BARRIERS[eid]; if (!bars) return;
     const e = Calc.EV[eid]; if (!e) return;
     const arr = bars.filter((b) => msGlobal[eid][b[0]] != null).map((b) => {
-      const y = msGlobal[eid][b[0]];
+      const dn = msGlobal[eid][b[0]];
+      const y = Math.floor(dn / 10000);
+      const ds = String(dn);
+      const date = ds.length === 8 ? (ds.slice(0, 4) + '-' + ds.slice(4, 6) + '-' + ds.slice(6, 8)) : '';
       let zh, en;
       if (eid === '333fm') { zh = e.zh + ' 最少步单次首次 ≤' + b[0] + ' 步'; en = e.en + ' FMC single first ≤' + b[0] + ' moves'; }
       else if (eid === '333mbf') { zh = e.zh + ' 多盲单次首次 ≥' + b[0] + ' 个'; en = e.en + ' MBLD single first ≥' + b[0]; }
       else { zh = e.zh + ' 单次首次 sub ' + b[0] + ' 秒'; en = e.en + ' single first sub-' + b[0]; }
-      return { year: y, zh: zh, en: en };
+      return { year: y, date: date, zh: zh, en: en };
     });
     if (arr.length) map[eid] = arr;
   });
@@ -1100,12 +1109,14 @@ function buildEventMilestones() {
       nums.push(b.cityN || 0);
       nums.push((b.years || []).length);
       nums.push((b.years || []).join('.'));
-      /* goldPerYear / recPerYear 供「最佳年份」类指标使用 */
+      /* goldPerYear / recPerYear 供「最佳年份」类指标使用，
+         也用于单项目模式下把竞速图切换成该项目的排名演进。 */
       const gy = b.goldPerYear || {};
       nums.push(Object.keys(gy).map((y) => y + '_' + gy[y]).join('.'));
       const ry = b.recPerYear || {};
       let rb = 0; Object.keys(ry).forEach((y) => { if (ry[y] > rb) rb = ry[y]; });
       nums.push(rb);
+      nums.push(Object.keys(ry).map((y) => y + '_' + ry[y]).join('.'));
       return eid + ':' + nums.join(',');
     });
     return parts.join(';');

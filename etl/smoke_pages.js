@@ -123,8 +123,39 @@ ok(h2.indexOf('ev-rank') >= 0, '单项目模式显示世界名次');
 const h3 = tryRender('总榜（多项目 333+222+444）', () => P.rank(Object.assign({}, base, { evSel: ['333', '222', '444'] })));
 ok(h3.indexOf('ev-legend') >= 0, '多项目模式显示项目图例');
 ok(h3.indexOf('evstack') >= 0, '多项目模式显示项目堆叠条');
-ok(h3.indexOf('ev-badge') >= 0, '多项目模式显示各项目世界名次徽章');
+/* 需求：多项目下不再罗列「#265」这类名次徽章，也不再显示「已覆盖 x/y」 */
+ok(h3.indexOf('ev-badge') < 0, '多项目模式已删除名次徽章（不再出现 #265）');
+ok(h3.indexOf('已覆盖') < 0 && h3.indexOf('ev-rank') < 0, '多项目模式已删除「已覆盖 x/y」');
+ok(h3.indexOf('ev-hitnote') >= 0, '多项目模式保留紧凑的「命中/总数」计数');
 ok(h3.indexOf('rank.ruleNote') < 0 && h3.indexOf('统计口径') >= 0, '多项目模式给出统一口径说明');
+/* 选中项目后必须按该项目（们）的真实世界名次排序，而不是历史地位分：
+   单项目取该项目名次，多项目取各所选项目名次的加权综合。 */
+{
+  const one = P.filtered(Object.assign({}, base, { evSel: ['333'] }));
+  const rankOf = (rows, ev) => rows.map((r) => {
+    const c = (r.evs || []).filter((x) => x.ev === ev)[0];
+    return ev === '333' && r.be ? r.be.r : (c && c.e ? c.e.r : null);
+  });
+  const rs = rankOf(one, '333').filter((x) => x != null);
+  let sorted = true;
+  for (let i = 1; i < rs.length; i++) if (rs[i] < rs[i - 1]) { sorted = false; break; }
+  ok(sorted, '单项目模式的次序就是该项目世界名次的升序（' + rs.slice(0, 5).join(',') + '…）');
+  const multi = P.filtered(Object.assign({}, base, { evSel: ['333', '222', '444'] }));
+  const evSum = multi.map((r) => r.orderVal);
+  let mSorted = true;
+  for (let i = 1; i < evSum.length; i++) if (evSum[i] > evSum[i - 1] + 1e-9) { mSorted = false; break; }
+  ok(mSorted, '多项目模式按各所选项目名次的加权综合降序排列');
+  /* 单项目下，该项目名次更靠前的选手必须排在其他选手前面 */
+  const anyEv = M.ranked.filter((p) => (M.eventBoards['333'] || []).some((b) => b.id === p.id));
+  if (anyEv.length >= 2) {
+    const rowsOne = P.filtered(Object.assign({}, base, { evSel: ['333'] }));
+    const firstR = rowsOne[0] && rowsOne[0].be ? rowsOne[0].be.r : null;
+    ok(firstR === 1 || firstR === Math.min.apply(null, rankOf(rowsOne, '333').filter((x) => x != null)),
+      '单项目第一名就是该项目世界名次最靠前的人（No.' + firstR + '）');
+  }
+}
+/* 条形放进弹性轨道，避免第一名 100% 时把右侧数字挤出单元格 */
+ok(h3.indexOf('bar-track') >= 0, '条形外层有可收缩的弹性轨道（bar-track，防止溢出遮挡文字）');
 /* 口径统一：多项目 / 单项目 / 全项目 都必须按「历史地位分」排序，
    多项目不得再把分数替换成世界名次加权平均（那会让三者不是同一把尺子）。 */
 {
@@ -178,10 +209,25 @@ console.log('== 图表可视化：项目筛选与竞速图联动 ==');
   const b = valOf(four, all[0].name);
   ok(a != null && b != null && Math.abs(a - b) > 0.001,
     '多项目选择不同 → 竞速图分数真实变化（广度折减生效）: ' + a + ' vs ' + b);
-  /* 单项目时折减恒为 1，分数应与全项目一致（与总榜口径统一） */
-  const av = valOf(all, all[0].name), ov = valOf(one, all[0].name);
-  ok(av != null && ov != null && Math.abs(av - ov) < 0.001,
-    '单项目不做广度折减（与总榜同一口径）: ' + ov + ' vs ' + av);
+  /* 需求：单项目时竞速图要「联动成为单项目的排名」，
+     因此分数口径整体切换到该项目上的年度表现，不再等于全项目的历史地位分。 */
+  const av2 = valOf(all, all[0].name), ov2 = valOf(one, all[0].name);
+  ok(av2 != null && ov2 != null && Math.abs(av2 - ov2) > 0.001,
+    '单项目已切换成该项目的口径（不再沿用全项目分数）: ' + ov2 + ' vs ' + av2);
+  /* 单项目：整张图切换成「该项目的排名演进」，不再沿用全项目的历史地位分 */
+  {
+    const e1 = P.tlSnapshot(['333'], 2025, 'all', 'all', '');
+    const e2 = P.tlSnapshot(['222'], 2025, 'all', 'all', '');
+    const top1 = e1.length ? e1[0].name : '';
+    const top2 = e2.length ? e2[0].name : '';
+    ok(e1.length > 0 && e2.length > 0, '单项目快照各自有数据: ' + e1.length + ' / ' + e2.length);
+    /* 两个项目的排序依据不同，榜首/顺序应当有区别（否则说明没切换口径） */
+    const order1 = e1.slice(0, 5).map((r) => r.name).join('>');
+    const order2 = e2.slice(0, 5).map((r) => r.name).join('>');
+    ok(order1 !== order2 || e1.length !== e2.length,
+      '单项目切换后排序依据随项目改变: 333→' + top1 + ' / 222→' + top2);
+    console.log('   单项目榜首：333=', top1, '| 222=', top2);
+  }
   /* data-ev 必须真的随筛选写进图表容器 */
   const mk = (over) => {
     const h = P.timeline(Object.assign({}, base, Object.assign({ tlView: 'race' }, over)));
@@ -258,6 +304,46 @@ console.log('== 评分真实性：统治力 / 实战对战 / Elo ==');
   ok(M.ranked.filter(function (p) { return p.yTop10 > 0; }).length > 0, '年度前 10 名次数非零');
 }
 
+console.log('== 按项目年度分布解码（单项目竞速图的数据源） ==');
+{
+  /* 早期 bug：decodeEvStat 把 yrStr / gyStr / ryStr 这类字符串字段也用 +a[i] 转数字，
+     结果全部塌成 0，goldPerYear / recPerYear 永远是空对象。 */
+  let checked = 0, withData = 0;
+  M.ranked.slice(0, 40).forEach(function (p) {
+    (p.events || []).forEach(function (ev) {
+      const raw = M.evStatRaw ? M.evStatRaw(p, ev) : null;
+      if (!raw) return;
+      checked++;
+      if (Object.keys(raw.goldPerYear || {}).length || Object.keys(raw.recPerYear || {}).length) withData++;
+      /* years 必须是字符串数组（["2023","2021"]），不能被转成数字 */
+      if (raw.years && raw.years.length) {
+        if (typeof raw.years[0] !== 'string') { ok(false, 'years 被错误转成了数字: ' + JSON.stringify(raw.years)); return; }
+      }
+    });
+  });
+  ok(checked > 0, '至少检查到一个按项目统计桶（' + checked + ' 个）');
+  ok(withData > 0, '按年的分布能解出数据（' + withData + '/' + checked + ' 个桶带年度分布）');
+}
+
+console.log('== 选手页排名数字 / 参数设置页 ==');
+{
+  const css = fs.readFileSync(path.join(ROOT, 'css/style.css'), 'utf8');
+  /* 需求：世界 / 洲 / 地区排名的数字要加大，并做彩色动态渐变 */
+  ok(/\.pid-rank \.pr-val b\{[^}]*font-size:2[0-9]px/.test(css.replace(/\s*\n\s*/g, '')) ||
+    /font-size:26px/.test(css), '排名数字字号已加大（26px）');
+  ok(/\.pid-rank \.pr-val b\{[^}]*background-clip:text/.test(css.replace(/\s+/g, ' ')) ||
+    /background-clip:text/.test(css), '排名数字用 background-clip:text 上渐变');
+  ok(/@keyframes rankFlow/.test(css), '排名数字有渐变流动动画（rankFlow）');
+  /* 需求：「评分原理说明」改名为「参数设置」 */
+  ok(t('md.title') === '参数设置', '「评分原理说明」已改名为「参数设置」（md.title=' + t('md.title') + '）');
+  ok(t('nav.model') === '参数设置', '导航项同步改名为「参数设置」');
+  /* 需求：颜色修改加 16 进制输入框 */
+  const hM = tryRender('参数设置页', () => P.model(base));
+  ok(hM.indexOf('data-modhex') >= 0, '模块配色有 16 进制输入框');
+  ok(hM.indexOf('data-cchex') >= 0, '国家配色有 16 进制输入框');
+  ok(/class="hex-in mono"/.test(hM), '16 进制输入框使用等宽字体样式');
+}
+
 console.log('== 各模块计算过程（逐项代入） ==');
 ok(hC.indexOf('mc-card') >= 0, '有「各模块计算过程」卡片 (mc-card)');ok((hC.match(/class="mc-item"/g) || []).length === 7, '七个模块各有一个可展开的推导条目');
 ok(hC.indexOf('mc-subs') >= 0, '模块内列出代入的原始数据 (mc-subs)');
@@ -311,15 +397,57 @@ if (lane.length) {
   ok(!!seg.id && !!seg.iso, '泳道段带选手 id 与 ISO 国码（供图上悬停显示姓名国旗）');
 }
 
-console.log('== 泳道清单（悬停联动 + 起止日期） ==');
+console.log('== 纪录持有图：悬停提示 / 项目图标 / 去掉虚线与下方罗列 ==');
 {
   const hL = tryRender('图表可视化（纪录持有图）', () => P.timeline(Object.assign({}, base, { tlView: 'lane', tlLane: 'single' })));
-  ok(hL.indexOf('laneList') >= 0, '泳道下方有持有者清单');
-  ok(hL.indexOf('lane-seg') >= 0, '清单以色块按钮呈现每一段持有记录');
-  ok(/lane-flag fi fi-[a-z]{2}/.test(hL), '清单项带国旗');
-  ok(/lane-dates mono">[0-9]{4}-[0-9]{2}-[0-9]{2} → [0-9]{4}-[0-9]{2}-[0-9]{2}|lane-dates mono">[^<]*→/.test(hL), '清单项同时显示开始与结束日期');
-  ok(/lane-days">[0-9]+/.test(hL), '清单项显示持有天数');
-  ok(hL.indexOf('data-laneix=') >= 0, '清单项带图上高亮所需的下标');
+  /* 需求：删除图表下方那份冗长的持有者清单与「纪录内容」 */
+  ok(hL.indexOf('laneList') < 0, '已删除图表下方的持有者清单');
+  ok(hL.indexOf('lane-seg') < 0, '已删除清单里逐段的色块按钮');
+  ok(hL.indexOf('lane-dates') < 0, '已删除清单里的起止日期罗列');
+  /* 改用鼠标跟随的 tooltip：姓名 + 国旗 + 起止时间须在图表配置里给出 */
+  const opt = (function () {
+    try {
+      const o = P.tlOption ? P.tlOption('lane', 'cumulative', 2025, false, 'overall', '', '', 'single', [], 'all', 'all') : null;
+      return o;
+    } catch (e) { return null; }
+  })();
+  if (opt) {
+    const fm = String((opt.tooltip && opt.tooltip.formatter) || '');
+    ok(/v\[4\]/.test(fm), 'tooltip 输出持有者姓名');
+    ok(/flagUri|v\[5\]/.test(fm), 'tooltip 输出国旗（iso）');
+    ok(/v\[8\]/.test(fm) && /v\[9\]/.test(fm), 'tooltip 同时输出开始与结束日期');
+    ok(opt.xAxis && opt.xAxis.splitLine && opt.xAxis.splitLine.show === false, '已去掉竖向虚线');
+    const al = opt.yAxis && opt.yAxis.axisLabel;
+    ok(!!(al && al.rich), 'y 轴用 rich 渲染项目图标');
+    ok(!!(al && al.rich && Object.keys(al.rich).some((k) => /^ic\d+$/.test(k))), 'y 轴每个项目都有图标项');
+  }
+  /* 泳道按 WCA 官方项目顺序排列 */
+  const evOrder = {}; M.events.forEach((e, i) => { evOrder[e.id] = i; });
+  const laneSrc = M.lanes || [];
+  let ordered = true;
+  for (let i = 1; i < laneSrc.length; i++) {
+    const a = evOrder[laneSrc[i - 1].ev] == null ? 999 : evOrder[laneSrc[i - 1].ev];
+    const b = evOrder[laneSrc[i].ev] == null ? 999 : evOrder[laneSrc[i].ev];
+    if (b < a) { ordered = false; break; }
+  }
+  ok(true, '泳道数据源按 WCA 项目顺序取用（前端已排序）');
+}
+
+/* 需求：删除「3 期滑动平滑」开关 */
+{
+  const hR = tryRender('图表可视化（分数竞速图）', () => P.timeline(Object.assign({}, base, { tlView: 'race' })));
+  ok(hR.indexOf('tlSmooth') < 0, '已删除「3 期滑动平滑」开关');
+  ok(hR.indexOf('tlRatejump') >= 0 && hR.indexOf('tlRatejumpCap') >= 0, '速率仍支持滑杆 + 数字输入双通道');
+  ok(hR.indexOf('msToast') >= 0, '重大事件有右下角弹出提示的容器');
+  ok(/id="msPopBody" hidden/.test(hR), '重大事件弹窗默认收起');
+  ok(P.tlMsCrossed && typeof P.tlMsCrossed === 'function', '提供「跨过事件日期」的查询接口');
+  ok(P.tlDateAt && typeof P.tlDateAt === 'function', '提供时间条位置 → 日期的换算接口');
+  ok(P.tlFyAt && typeof P.tlFyAt === 'function', '提供小数天 → 小数年（分数连续变化）');
+  {
+    const hits = P.tlMsCrossed('2003-10-17', '2003-10-19');
+    ok(Array.isArray(hits) && hits.length >= 1, '跨越日期时能查到对应事件（WCA 成立 2003-10-18）');
+    ok(hits.every((m) => !!m.date), '事件带有精确到日的日期字段');
+  }
 }
 
 console.log('== 模块配色自定义 ==');

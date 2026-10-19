@@ -150,21 +150,23 @@
   };
 
   /* ---------------- 历史大事件里程碑 ---------------- */
+  /* date 为精确日期（YYYY-MM-DD），供时间轴「到达该日就弹出提示」使用；
+     year 仍保留，兼容只按年渲染的场景。 */
   var MILESTONES = [
-    { year: 1982, zh: '首届世界锦标赛（布达佩斯）', en: 'First World Championship (Budapest)' },
-    { year: 2003, zh: 'WCA 成立，官方成绩库启用', en: 'WCA founded; official results database begins' },
-    { year: 2004, zh: '三阶单次首次突破 10 秒', en: '3x3x3 single breaks 10 seconds' },
-    { year: 2007, zh: '首届现代制式世锦赛', en: 'First modern-format World Championship' },
-    { year: 2009, zh: '三阶单次首次突破 7 秒', en: '3x3x3 single breaks 7 seconds' },
-    { year: 2011, zh: '多盲旧规则停用，改用 0DDTTTTTMM 编码', en: 'Old MBLD format retired, new encoding adopted' },
-    { year: 2013, zh: '三阶平均首次突破 7 秒', en: '3x3x3 average breaks 7 seconds' },
-    { year: 2015, zh: '三阶单次首次突破 5 秒', en: '3x3x3 single breaks 5 seconds' },
-    { year: 2017, zh: '脚拧 / 八板 / 十二板项目停办', en: 'Feet, Magic and Master Magic discontinued' },
-    { year: 2019, zh: '三阶单次首次突破 4 秒', en: '3x3x3 single breaks 4 seconds' },
-    { year: 2020, zh: '疫情期间赛事停摆', en: 'Competitions suspended during the pandemic' },
-    { year: 2023, zh: '三阶平均首次突破 4 秒', en: '3x3x3 average breaks 4 seconds' },
-    { year: 2024, zh: '导出格式升级至 v2', en: 'Export format upgraded to v2' },
-    { year: 2025, zh: '年赛事数量首次突破 2000 场', en: 'More than 2,000 competitions in a single year' }
+    { year: 1982, date: '1982-06-05', zh: '首届世界锦标赛（布达佩斯）', en: 'First World Championship (Budapest)' },
+    { year: 2003, date: '2003-10-18', zh: 'WCA 成立，官方成绩库启用', en: 'WCA founded; official results database begins' },
+    { year: 2004, date: '2004-01-01', zh: '三阶单次首次突破 10 秒', en: '3x3x3 single breaks 10 seconds' },
+    { year: 2007, date: '2007-09-21', zh: '首届现代制式世锦赛', en: 'First modern-format World Championship' },
+    { year: 2009, date: '2009-01-01', zh: '三阶单次首次突破 7 秒', en: '3x3x3 single breaks 7 seconds' },
+    { year: 2011, date: '2011-01-01', zh: '多盲旧规则停用，改用 0DDTTTTTMM 编码', en: 'Old MBLD format retired, new encoding adopted' },
+    { year: 2013, date: '2013-01-01', zh: '三阶平均首次突破 7 秒', en: '3x3x3 average breaks 7 seconds' },
+    { year: 2015, date: '2015-01-01', zh: '三阶单次首次突破 5 秒', en: '3x3x3 single breaks 5 seconds' },
+    { year: 2017, date: '2017-01-01', zh: '脚拧 / 八板 / 十二板项目停办', en: 'Feet, Magic and Master Magic discontinued' },
+    { year: 2019, date: '2019-01-01', zh: '三阶单次首次突破 4 秒', en: '3x3x3 single breaks 4 seconds' },
+    { year: 2020, date: '2020-03-01', zh: '疫情期间赛事停摆', en: 'Competitions suspended during the pandemic' },
+    { year: 2023, date: '2023-01-01', zh: '三阶平均首次突破 4 秒', en: '3x3x3 average breaks 4 seconds' },
+    { year: 2024, date: '2024-01-01', zh: '导出格式升级至 v2', en: 'Export format upgraded to v2' },
+    { year: 2025, date: '2025-01-01', zh: '年赛事数量首次突破 2000 场', en: 'More than 2,000 competitions in a single year' }
   ];
 
   /* ---------------- 单项目里程碑（项 9）：真实数据下由 ETL 传入 ---------------- */
@@ -613,7 +615,7 @@
     /* ETL 输出的按项目统计为紧凑字符串，这里按需解码（用完即弃，不常驻内存） */
     var EVK = ['rows', 'att', 'sol', 'dnf', 'pod', 'gold', 'sil', 'bro', 'wr', 'cr', 'nr',
       'comps', 'wc', 'cc', 'nc', 'lo', 'op', 'held', 'heldLong', 'heldNow',
-      'cityN', 'yrCnt', 'yrStr', 'gyStr', 'recBest'];
+      'cityN', 'yrCnt', 'yrStr', 'gyStr', 'recBest', 'ryStr'];
     function decodeEvStat(p, ev) {
       var s = p.evS;
       if (!s || !ev) return null;
@@ -632,12 +634,17 @@
       if (!a) return null;
       var b = { cities: {}, recPerYear: {}, goldPerYear: {} };
       for (var i = 0; i < EVK.length; i++) {
-        var v = +a[i] || 0, k = EVK[i];
+        /* yrStr / gyStr / ryStr 是「年_数」形式的字符串，不能用 +a[i] 转数字 ——
+           早期版本统一 toNumber，这三个字段全部塌成 0，导致按年的分布（goldPerYear 等）
+           永远是空对象，单项目竞速图也就无从算起。 */
+        var raw = a[i], k = EVK[i], v = +raw || 0;
         if (k === 'cities') b.cityN = v;
         else if (k === 'yrCnt') b.yrCnt = v;
-        else if (k === 'yrStr') b.years = v ? String(v).split('.') : [];
+        else if (k === 'yrStr') b.years = raw ? String(raw).split('.') : [];
         else if (k === 'gyStr') {
-          if (v) String(v).split('.').forEach(function (g) { var t = g.split('_'); b.goldPerYear[t[0]] = +t[1]; });
+          if (raw) String(raw).split('.').forEach(function (g) { var t = g.split('_'); if (t.length === 2) b.goldPerYear[t[0]] = +t[1] || 0; });
+        } else if (k === 'ryStr') {
+          if (raw) String(raw).split('.').forEach(function (g) { var t = g.split('_'); if (t.length === 2) b.recPerYear[t[0]] = +t[1] || 0; });
         } else if (k === 'recBest') b.recBest = v;
         else b[k] = v;
       }
@@ -659,6 +666,9 @@
       milestones: milestones, eventMilestones: eventMilestonesFn,
       boards: boards, board: function (k, key, n, e, pool) { return board(k, key, n, e, ctx, pool); },
       evStatOf: function (p, ev) { return evStatOf(p, ev); },
+      /* 原始按项目统计桶（含 recPerYear / goldPerYear 这类按年分布），
+         单项目竞速图要靠它算出「该项目上的年度表现」。 */
+      evStatRaw: function (p, ev) { return evStatCtx ? evStatCtx(p, ev) : (p.evStat && ev ? p.evStat[ev] : null); },
       decodeEvStat: function (p, ev) { return decodeEvStat(p, ev); },
       eventBoards: cfg.eventBoards || {},
       meta: meta, years: years,

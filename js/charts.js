@@ -240,7 +240,8 @@
       return s.length === 8 ? (s.slice(0, 4) + '-' + s.slice(4, 6) + '-' + s.slice(6, 8)) : '';
     }
     return Object.assign(base({ stagger: 0, duration: opts.duration == null ? 720 : opts.duration }), {
-      grid: { left: 6, right: 78, top: 6, bottom: 6, containLabel: true },
+      /* 左侧留出固定空位放排名序号：序号画在条形外侧，条形再短也不会盖住它 */
+      grid: { left: 30, right: 78, top: 6, bottom: 6, containLabel: false },
       xAxis: Object.assign({ type: 'value', max: function (v) { return Math.max(v.max, 1) * 1.05; } }, axisCommon()),
       yAxis: Object.assign({ type: 'category', inverse: true, data: data.map(function (d) { return d.name; }) }, axisCommon(), { splitLine: { show: false }, axisLabel: { show: false } }),
       tooltip: Object.assign({ trigger: 'axis', axisPointer: { type: 'shadow' } }, base().tooltip),
@@ -261,15 +262,14 @@
             style: { fill: it.color || T.m[0], stroke: T.elev, lineWidth: 1 }
           }];
           let tx = x0 + 6;
-          /* 排名序号 1–15：画在条形左端内侧的固定位置，条形再短也不会被挤掉 */
+          /* 排名序号 1–15：画在条形左端「外侧」，条形再长也压不到它 */
           kids.push({
             type: 'text', style: {
-              text: it.no ? String(it.no) : '', x: tx, y: y0,
-              fill: 'rgba(255,255,255,.92)', font: '800 11px "Segoe UI",system-ui,sans-serif',
-              textVerticalAlign: 'middle', textBaseline: 'middle', align: 'left'
+              text: it.no ? String(it.no) : '', x: x0 - 10, y: y0,
+              fill: T.text2 || '#888', font: '800 12px "Segoe UI",system-ui,sans-serif',
+              textVerticalAlign: 'middle', textBaseline: 'middle', align: 'right'
             }
           });
-          tx += 20;
           const uri = it.flag || flagUri(it.iso);
           if (uri) {
             kids.push({ type: 'image', style: { image: uri, x: tx, y: y0 - 5, width: 15, height: 11 } });
@@ -311,23 +311,35 @@
   /* 从 css/flags.css 读取国旗的 data URI（首次访问时用一个隐藏节点探测，结果缓存） */
   const _flagUri = {};
   let _flagProbe = null;
-  function flagUri(iso) {
-    const code = String(iso || '').toUpperCase();
-    if (!code || code === 'UNKNOWN') return '';
-    if (_flagUri[code] !== undefined) return _flagUri[code];
-    let url = '';
+  function probeUri(cls) {
     try {
       if (!_flagProbe) {
         _flagProbe = document.createElement('span');
         _flagProbe.style.cssText = 'position:absolute;left:-9999px;top:0;width:10px;height:10px';
         document.body.appendChild(_flagProbe);
       }
-      _flagProbe.className = 'fi fi-' + code.toLowerCase();
+      _flagProbe.className = cls;
       const bg = getComputedStyle(_flagProbe).backgroundImage || '';
       const m = bg.match(/url\((['"]?)(.*?)\1\)/);
-      if (m) url = m[2];
-    } catch (e) { url = ''; }
+      if (m) return m[2];
+    } catch (e) { /* ignore */ }
+    return '';
+  }
+  function flagUri(iso) {
+    const code = String(iso || '').toUpperCase();
+    if (!code || code === 'UNKNOWN') return '';
+    if (_flagUri[code] !== undefined) return _flagUri[code];
+    const url = probeUri('fi fi-' + code.toLowerCase());
     _flagUri[code] = url;
+    return url;
+  }
+  /* 项目图标的 data URI（cubing_icons.css 里的 .cubing-icon.event-xxx） */
+  const _evUri = {};
+  function eventIconUri(ev) {
+    if (!ev) return '';
+    if (_evUri[ev] !== undefined) return _evUri[ev];
+    const url = probeUri('cubing-icon event-' + ev);
+    _evUri[ev] = url;
     return url;
   }
 
@@ -388,23 +400,45 @@
       }
       return { type: 'group', children: kids };
     }
+    /* y 轴项目名：图标 + 名称（图标来自 cubing_icons.css，探测成 data URI 后用 rich 渲染） */
+    const rich = {
+      nm: { color: T.text2, fontSize: 11.5, padding: [0, 0, 0, 2] }
+    };
+    laneData.forEach(function (L, li) {
+      const uri = eventIconUri(L.ev);
+      if (uri) rich['ic' + li] = { height: 15, width: 15, backgroundColor: { image: uri } };
+    });
+
     return Object.assign(base({ stagger: 8 }), {
       grid: { left: 6, right: 16, top: 22, bottom: 6, containLabel: true },
       xAxis: Object.assign({ type: 'value', min: y0, max: y1, interval: 2 }, axisCommon(), {
-        axisLabel: { color: T.text3, fontSize: 10.5, formatter: function (v) { return v; } }, splitLine: { show: true, lineStyle: { color: T.border, type: 'dashed' } }
+        /* 需求：竖向虚线（每年一条的分割线）不好看，去掉 */
+        axisLabel: { color: T.text3, fontSize: 10.5, formatter: function (v) { return v; } },
+        splitLine: { show: false }
       }),
-      yAxis: Object.assign({ type: 'category', data: cats, inverse: true }, axisCommon(), { splitLine: { show: false }, axisLabel: { color: T.text2, fontSize: 11.5 } }),
+      yAxis: Object.assign({ type: 'category', data: cats, inverse: true }, axisCommon(), {
+        splitLine: { show: false },
+        axisLabel: {
+          color: T.text2, fontSize: 11.5,
+          formatter: function (v, i) { return rich['ic' + i] ? '{ic' + i + '|}{nm|' + v + '}' : '{nm|' + v + '}'; },
+          rich: rich
+        }
+      }),
       tooltip: {
         confine: true, backgroundColor: T.elev, borderColor: T.border, borderWidth: 1,
         textStyle: { color: T.text, fontSize: 12 },
+        /* 跟随鼠标：把姓名 + 国旗 + 起止时间 + 持有天数直接显示在光标旁，
+           取代原先图表下方那份冗长的持有者清单 */
         extraCssText: 'box-shadow:0 6px 20px rgba(0,0,0,.14);border-radius:10px;',
         formatter: function (p) {
           const v = p.data.value;
           const days = v[6] || 0;
-          function fd(dn) { const s = String(dn || ''); return s.length === 8 ? s.slice(0, 4) + '-' + s.slice(4, 6) + '-' + s.slice(6, 8) : '—'; }
-          /* 开始 / 结束 / 持有天数三者齐备（泳道清单里也用同一套文案） */
-          return '<b>' + v[4] + '</b> · ' + v[5] + '<br/>' +
-            fd(v[8]) + ' → ' + fd(v[9]) + '<br/><b>' + days + '</b> ' + (LANE_I18N.day || 'days');
+          const iso = String(v[5] || '').toUpperCase();
+          function fd(dn) { const s = String(dn || ''); return s.length === 8 ? s.slice(0, 4) + '-' + s.slice(4, 6) + '-' + s.slice(6, 8) : (LANE_I18N.now || '至今'); }
+          const flagTag = iso ? '<img src="' + flagUri(iso) + '" style="width:15px;height:11px;vertical-align:-1px;margin-right:4px" alt="">' : '';
+          return '<div style="display:flex;align-items:center;gap:2px">' + flagTag + '<b>' + v[4] + '</b></div>' +
+            '<div style="margin-top:3px;font-size:11.5px;opacity:.85">' + fd(v[8]) + ' → ' + fd(v[9]) + '</div>' +
+            '<div style="margin-top:2px;font-size:11.5px"><b>' + days + '</b> ' + (LANE_I18N.day || '天') + '</div>';
         }
       },
       series: [{

@@ -73,10 +73,12 @@
   /* 动画速率：可自定义「时间跳跃（天/秒）/ 动画时长 / 刷新间隔」，持久化到 localStorage
      每项同时提供滑杆与数字输入框：滑杆用于快速手调，数字框用于精确输入（如 45 天/秒）。 */
   const RATE_KEY = 'goat-tlrate-v1';
-  const RATE_DEF = { jump: 30, anim: 800, fps: 200 };
+  /* 默认值按「看得清又不拖沓」来定：60 天/秒约 4 分钟走完 23 年，
+     换位补间 260ms 短于大部分相邻帧的累积位移，跟得上播放速度。 */
+  const RATE_DEF = { jump: 60, anim: 260, fps: 200 };
   const RATE_META = {
     jump: { min: 1, max: 365, step: 1, unit: () => (t.isEn() ? 'days/s' : ' 天/秒') },
-    anim: { min: 0, max: 2500, step: 100, unit: () => 'ms' },
+    anim: { min: 0, max: 2500, step: 20, unit: () => 'ms' },
     fps: { min: 60, max: 1000, step: 20, unit: () => 'ms' }
   };
   function clampRate(k, v) {
@@ -103,6 +105,18 @@
     try { var a = JSON.parse(localStorage.getItem(MS_KEY)); return Array.isArray(a) ? a : []; }
     catch (e) { return []; }
   }
+  /* 内置事件也可删除：把被删掉的内置事件键（日期|标题）记在这里，
+     「恢复内置事件」时清空即可。此前只能删除自己新增的事件。 */
+  const MS_HIDE_KEY = 'goat-milestones-hidden';
+  function msKeyOf(m) { return String(m.date || m.year) + '|' + String(m.zh || m.en || ''); }
+  function loadHiddenMs() {
+    try { var a = JSON.parse(localStorage.getItem(MS_HIDE_KEY)); return Array.isArray(a) ? a : []; }
+    catch (e) { return []; }
+  }
+  function saveHiddenMs(a) { try { localStorage.setItem(MS_HIDE_KEY, JSON.stringify(a)); } catch (e) { } }
+  P.msHiddenCount = function () { return loadHiddenMs().length; };
+  P.msUnhideAll = function () { saveHiddenMs([]); };
+  P.msKeyOf = msKeyOf;
   function saveCustomMs(a) { try { localStorage.setItem(MS_KEY, JSON.stringify(a)); } catch (e) { } }
   function msSample() {
     return [
@@ -145,11 +159,7 @@
     });
     h += '</div></div>';
     h += '<span class="spacer"></span>';
-    /* 「3 期滑动平滑」：勾选后每一帧的分数取「当天 / 前 1 天 / 前 2 天」三期的平均值，
-       用于压掉某一天集中刷出大量纪录造成的尖峰，让名次变化曲线更平滑；
-       它只影响中间帧的抖动，不改变末帧（末帧仍是完整历史地位分）。 */
-    h += '<span class="tiny muted row" style="gap:5px"><input type="checkbox" id="tlSmooth"' + (state.tlSmooth ? ' checked' : '') + '> ' +
-      esc(t('tl.smooth')) + infoTip(t('tl.smooth.d')) + '</span>';
+    /* 「3 期滑动平滑」已按需求移除：它只在中间帧起作用，用户感知不到差别反而多一个开关。 */
     h += '</div>';
 
     /* 动画速率自定义（仅分数竞速图需要）：默认 30 天/秒，滑杆 + 数字输入框双通道 */
@@ -196,8 +206,10 @@
     }
     const singleEv = evSel0.length === 1 ? evSel0[0] : (state.group && M.EV[state.group] ? state.group : '');
     const msBase = singleEv ? M.eventMilestones(singleEv) : M.milestones;
+    const hidden = loadHiddenMs();
     const custom = loadCustomMs().map(function (m) { return Object.assign({ custom: true }, m); });
-    const ms = msBase.concat(custom).sort(function (a, b) { return (a.year || 0) - (b.year || 0); });
+    const ms = msBase.filter(function (m) { return hidden.indexOf(msKeyOf(m)) < 0; })
+      .concat(custom).sort(function (a, b) { return String(a.date || a.year).localeCompare(String(b.date || b.year)); });
     TL_MS = ms;
     h += '<div class="tl-stage">';
     h += '<div class="chart-box tl-chart-link" id="tlChart" style="height:' + chH + 'px" data-view="' + view + '" data-mode="' + mode +
@@ -205,39 +217,19 @@
       '" data-region="' + geoRegion + '" data-country="' + geoCountry + '" data-ev="' + evsBox.join(',') +
       '" data-gender="' + (state.gender || 'all') + '" data-type="' + (state.recType || 'all') + '"></div>';
 
-    /* 纪录持有图：泳道下方的持有者清单。
-       悬停清单项时在图上高亮对应色块并显示该选手的国旗与姓名（data-laneseg 联动）；
-       每项同时给出「开始 → 结束」日期与真实持有天数。 */
-    if (view === 'lane') {
-      const lanesSrc = (state.tlLane === 'avg' ? M.lanesAvg : M.lanes) || [];
-      h += '<div class="lane-list" id="laneList">';
-      let flatIx = 0;   /* 泳道图 series.data 是把所有泳道的段拍平的数组，下标需连续累加 */
-      lanesSrc.forEach(function (L, li) {
-        h += '<div class="lane-row">';
-        h += '<div class="lane-row-h"><span class="lane-ev">' + Ic.event(L.ev, 'ev-mini') + ' ' +
-          esc(evName(M.EV[L.ev] || { zh: L.zh, en: L.en })) + '</span>' +
-          (L.retired ? '<span class="lane-retired">' + esc(t('f.retired')) + '</span>' : '') + '</div>';
-        h += '<div class="lane-segs">';
-        L.segs.forEach(function (sg, si) {
-          /* 国旗用 CSS class（.fi.fi-xx）渲染即可，无需探测 data URI */
-          h += '<button type="button" class="lane-seg" data-laneseg="' + li + '-' + si + '" data-laneix="' + (flatIx++) + '">' +
-            (sg.iso ? '<span class="lane-flag fi fi-' + String(sg.iso).toLowerCase() + '"></span>' : '') +
-            '<span class="lane-holder">' + esc(sg.holder) + '</span>' +
-            '<span class="lane-dates mono">' + laneDate(sg.fromDn) + ' → ' + laneDate(sg.toDn) + '</span>' +
-            '<span class="lane-days">' + sg.days + ' ' + (t.isEn() ? 'days' : '天') + '</span>' +
-            '</button>';
-        });
-        h += '</div></div>';
-      });
-      h += '</div>';
-    }
+    /* 纪录持有图：按需求不再在图表下方罗列持有者清单（原 laneList /「纪录内容」），
+       姓名 / 国旗 / 起止时间改为鼠标移到色块上时跟随光标显示（见 Charts.lanes 的 tooltip）。 */
 
-    /* 重大事件：竞速图横轴是分数，里程碑竖线无处安放；
-       按需求改为「浮在分数竞速图右下角的可折叠弹窗」，点击条目可跳转到对应时间。
-       泳道图横轴就是年份，仍用markLine 直接画在图上，无需弹窗。 */
+    /* 重大事件：竞速图横轴是分数，里程碑竖线无处安放。
+       按需求做成「浮在分数竞速图右下角」的一块：
+         · 折叠标签 —— 点开可看到全部事件，点条目跳到对应时间；
+         · 到达提示 —— 播放/拖动时一旦跨过某个事件的日期，就在右下角弹出一张提示卡。 */
+    /* 重大事件到达提示：播放 / 拖动时间条时，一旦跨过某个事件的日期就弹出一张卡片。
+       只提示「上一步还没到、这一步已经过了」的那一条，避免每帧重复弹。 */
     if (view !== 'lane') {
       const recent = ms.slice().reverse().slice(0, 40);
       h += '<div class="ms-pop" id="msPop">';
+      h += '<div class="ms-toast" id="msToast" aria-live="polite"></div>';
       h += '<button type="button" class="ms-pop-tab" id="msPopTab" aria-expanded="false">' +
         Ic.glyph('star') + '<span>' + esc(t('tl.events')) + '</span><b>' + ms.length + '</b>' +
         '<i class="ms-pop-caret">▾</i></button>';
@@ -261,12 +253,19 @@
     h += '<div class="milestone-list">';
     ms.forEach(function (m, mi) {
       const isC = !!m.custom;
-      h += '<span class="ms-item' + (isC ? ' ms-custom' : '') + '"><b>' + m.year + '</b> ' + esc(t.isEn() ? (m.en || m.zh) : m.zh);
-      if (isC) h += ' <span class="ms-tag">' + esc(t('tl.msCustom')) + '</span>' +
-        ' <button class="ms-del" data-msdel="' + mi + '" aria-label="' + esc(t('tl.msDel')) + '">×</button>';
+      h += '<span class="ms-item' + (isC ? ' ms-custom' : '') + '"><b>' + (m.date || m.year) + '</b> ' + esc(t.isEn() ? (m.en || m.zh) : m.zh);
+      if (isC) h += ' <span class="ms-tag">' + esc(t('tl.msCustom')) + '</span>';
+      /* 内置事件同样可以删除（删除＝加入隐藏列表，「恢复内置事件」可还原） */
+      h += ' <button class="ms-del" data-msdel="' + mi + '" aria-label="' + esc(t('tl.msDel')) + '">×</button>';
       h += '</span>';
     });
-    h += '</div></div>';
+    h += '</div>';
+    if (hidden.length) {
+      h += '<div class="row" style="margin-top:8px"><span class="tiny muted">' +
+        esc(t('tl.msHidden', { n: hidden.length })) + '</span>' +
+        '<button class="btn btn-ghost" data-msunhide>' + esc(t('tl.msRestore')) + '</button></div>';
+    }
+    h += '</div>';
 
     /* 自定义重大事件：三个输入框（项目 / 时间 / 事件内容） */
     h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('tl.msEdit')) + '</h2></div>';
@@ -367,9 +366,12 @@
       /* 结构（视图 / 模式 / 维度 / 单均 / 项目 / 性别）不变时做增量合并，名次与分数丝滑过渡 */
       const sig = view + '|' + mode + '|' + metric + '|' + lane + '|' + evs.join('+') + '|' + gender + '|' + rtype;
       const sameStruct = box.__tlSig === sig;
+      /* 播放时每帧都在重画，换位过渡必须短于帧间隔的几倍，否则名次变化会「追不上」
+         当前帧、看起来一顿一顿。动画时长滑杆直接决定这段补间的快慢。 */
+      const animMs = Math.max(0, Math.min(2500, (P.tlRate ? P.tlRate().anim : 800)));
       if (sameStruct) {
         opt.animationDuration = 0;
-        opt.animationDurationUpdate = 480;
+        opt.animationDurationUpdate = Math.round(animMs * 0.35);
         opt.animationEasingUpdate = 'cubicInOut';
       }
       let inst = null;
@@ -403,7 +405,24 @@
      项目筛选与总榜用同一套规则：先按项目裁剪选手池，再按「命中比例」做广度折减
      （0.45~1.00，单项目时恒为 1）。此前这里只裁选手池、不重新计分，
      导致上方筛选项目后下方竞速图几乎不变，已修复。 */
+  /* 单项目模式：该项目上的「年度表现」= 当年纪录数 × 3 + 当年金牌数 × 5。
+     取的是 evStat 里已有的 recPerYear / goldPerYear（按项目按年统计），
+     没有它的话筛选单个项目后竞速图仍会按全项目分数排，等于没联动。 */
+  function evYearlyOf(p, ev) {
+    const st = M.evStatRaw ? M.evStatRaw(p, ev) : null;
+    if (!st) return null;
+    const ry = st.recPerYear || {}, gy = st.goldPerYear || {};
+    if (!Object.keys(ry).length && !Object.keys(gy).length) return null;
+    const y = {};
+    Object.keys(ry).forEach(function (k) { y[k] = (y[k] || 0) + (ry[k] || 0) * 3; });
+    Object.keys(gy).forEach(function (k) { y[k] = (y[k] || 0) + (gy[k] || 0) * 5; });
+    return y;
+  }
+
   function snapshot(mode, fy, smooth, region, country, evs, gender, rtype) {
+    /* 只选中一个项目时，整张图切换成「该项目的排名演进」：
+       分数取该项目上的年度表现累计，而不是全项目的历史地位分。 */
+    const singleEv = (evs && evs.length === 1) ? evs[0] : '';
     const key = rtype === 'single' ? 'yearlyS' : (rtype === 'avg' ? 'yearlyA' : 'yearly');
     function cum(p, y) {
       const yv = p[key] || {}; let s = 0;
@@ -419,8 +438,24 @@
     }
     const END_Y = 2026;
     const rows = [];
+    /* 单项目：分数基准换成该项目上的年度表现累计 */
+    const evY = singleEv ? {} : null;
     M.ranked.forEach(function (p) {
       if (!inScope(p, region, country, gender, evs)) return;
+      if (evY) {
+        const y = evYearlyOf(p, singleEv);
+        if (!y) return;                       /* 该项目上没有可统计的年度表现 */
+        let all = 0, cur = 0;
+        for (const k in y) { const yy = +k; all += y[k]; if (yy <= fy) cur += y[k]; }
+        if (all <= 0) return;
+        const v = cur;
+        if (v <= 0) return;
+        rows.push({
+          name: p.name, country: p.country, hue: p.hue, id: p.id, iso: p.country,
+          value: v, color: countryColor(p.country), flag: window.Charts.flagUri(p.country)
+        });
+        return;
+      }
       const all = cum(p, END_Y);
       if (all <= 0) return;
       let cf = cumF(p, fy);
@@ -442,7 +477,7 @@
       rows.push({ name: p.name, country: p.country, hue: p.hue, id: p.id, iso: p.country, value: v, color: countryColor(p.country), flag: window.Charts.flagUri(p.country) });
     });
     return rows.sort(function (a, b) { return b.value - a.value; })
-      /* 排名序号 1–15（前端 barRace 画在条形左端） */
+      /* 排名序号 1–15（barRace 画在条形左端外侧） */
       .map(function (r, i) { r.no = i + 1; return r; });
   }
 
@@ -450,6 +485,46 @@
   P.tlSnapshot = function (evs, fy, rtype, gender, country) {
     return snapshot('cumulative', fy == null ? 2025 : fy, false, '', country || '', evs || [], gender || 'all', rtype || 'all');
   };
+  /* 暴露给冒烟测试：直接检查泳道 / 竞速图的图表配置 */
+  P.tlOption = function (view, mode, fy, smooth, metric, region, country, lane, evs, gender, rtype) {
+    return tlOption(view || 'race', mode || 'cumulative', fy == null ? 2025 : fy, !!smooth,
+      metric || 'overall', region || '', country || '', lane || 'single', evs || [], gender || 'all', rtype || 'all');
+  };
+
+  /* 重大事件到达提示：给定「上一步 / 当前」两个日期（YYYY-MM-DD），
+     返回这一步刚刚跨过的事件（可能多条）。供 app.js 在时间推进时调用。 */
+  P.tlMsCrossed = function (prevDate, curDate) {
+    if (!TL_MS || !TL_MS.length) return [];
+    if (!prevDate) return [];
+    const out = [];
+    TL_MS.forEach(function (m) {
+      const d = m.date || (m.year ? (m.year + '-01-01') : '');
+      if (!d) return;
+      if (d > prevDate && d <= curDate) out.push(m);
+    });
+    return out;
+  };
+  /* 当前时间条位置对应的日期字符串（YYYY-MM-DD） */
+  P.tlDateAt = function (idx, step) {
+    if (step === 'day' || step == null) {
+      const d = new Date(TL_START.getTime() + Math.max(0, Math.min(TL_DAYS, idx)) * 86400000);
+      return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+    }
+    const info = tlIdxToInfo(idx, step);
+    const y = Math.floor(info.fy);
+    const m = Math.round((info.fy - y) * 12) + 1;
+    return y + '-' + pad2(Math.max(1, Math.min(12, m))) + '-01';
+  };
+  /* 播放时的「小数天 → 小数年」：idx 是整数天，frac 是天内的小数部分。
+     分数按小数年累计，因此条形长度在两天之间连续变化（不再一格一格跳）。 */
+  P.tlFyAt = function (idx, frac, step) {
+    if (step === 'day' || step == null) {
+      const d0 = new Date(TL_START.getTime() + Math.max(0, Math.min(TL_DAYS, idx)) * 86400000);
+      return tlDateToFy(d0) + (frac || 0) / 365.25;
+    }
+    return tlIdxToInfo(idx, step).fy;
+  };
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
 
   function markLines() {
     const T = window.Charts.theme();
@@ -471,9 +546,18 @@
   function tlOption(view, mode, fy, smooth, metric, region, country, lane, evs, gender, rtype) {
     if (window.Charts.setLaneI18n) window.Charts.setLaneI18n({ mo: (t.isEn() ? 'mo' : '个月'), y: (t.isEn() ? 'y' : '年'), day: (t.isEn() ? 'd' : '天') });
     if (view === 'lane') {
-      const lanes = (lane === 'avg' ? M.lanesAvg : M.lanes).map(function (L) {
-        return { label: evName(M.EV[L.ev] || { zh: L.zh, en: L.en }), segs: L.segs };
-      });
+      /* 泳道顺序按 WCA 官方项目顺序（M.events 的顺序），并把 ev 带给图表画项目图标 */
+      const evOrder = {};
+      M.events.forEach(function (e, i) { evOrder[e.id] = i; });
+      const lanes = ((state.tlLane === 'avg' ? M.lanesAvg : M.lanes) || []).slice()
+        .sort(function (a, b) {
+          const ia = evOrder[a.ev] == null ? 999 : evOrder[a.ev];
+          const ib = evOrder[b.ev] == null ? 999 : evOrder[b.ev];
+          return ia - ib;
+        })
+        .map(function (L) {
+          return { ev: L.ev, label: evName(M.EV[L.ev] || { zh: L.zh, en: L.en }), segs: L.segs };
+        });
       const opt = window.Charts.lanes(lanes, { y0: 2004, y1: 2026, laneH: 34 });
       /* 里程碑竖线（横轴为年份，可标注）；挂在一条透明 line series 上 */
       const ml = markLines();
@@ -876,8 +960,11 @@
       esc(t('md.colors')) + '</div>' +
       '<p class="tiny muted" style="margin:6px 0 10px">' + esc(t('md.colorsHint')) + '</p><div class="md-colors-body">';
     MOD.forEach(function (k) {
+      /* 取色器 + 16 进制输入框：滑鼠选色方便，直接贴 #RRGGBB 更精确 */
       h += '<label class="crow"><input type="color" data-modcolor="' + k + '" value="' + esc(C[k]) + '">' +
-        '<span class="cr-name">' + esc(modName(k)) + '</span><code>' + esc(C[k]) + '</code></label>';
+        '<span class="cr-name">' + esc(modName(k)) + '</span>' +
+        '<input type="text" class="hex-in mono" data-modhex="' + k + '" value="' + esc(C[k]) +
+        '" maxlength="7" spellcheck="false" aria-label="' + esc(modName(k)) + ' hex"></label>';
     });
     h += '<button class="btn btn-ghost" id="mColorReset">' + esc(t('md.resetDefault')) + '</button>';
     h += '</div></div>';
@@ -893,7 +980,8 @@
       h += '<label class="crow cc-row"><input type="color" data-ccolor="' + iso + '" value="' + esc(countryColor(iso)) + '">' +
         '<span class="cc-flag fi fi-' + iso.toLowerCase() + '"></span>' +
         '<span class="cr-name">' + esc(countryName(iso) || iso) + '</span>' +
-        '<code>' + esc(countryColor(iso)) + '</code></label>';
+        '<input type="text" class="hex-in mono" data-cchex="' + iso + '" value="' + esc(countryColor(iso)) +
+        '" maxlength="7" spellcheck="false" aria-label="' + esc(countryName(iso) || iso) + ' hex"></label>';
     });
     h += '</div><div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap">' +
       '<button class="btn btn-ghost" id="ccReset">' + esc(t('md.resetDefault')) + '</button></div></div>';
