@@ -419,7 +419,18 @@ console.log('== 纪录持有图：悬停提示 / 项目图标 / 去掉虚线与�
     ok(opt.xAxis && opt.xAxis.splitLine && opt.xAxis.splitLine.show === false, '已去掉竖向虚线');
     const al = opt.yAxis && opt.yAxis.axisLabel;
     ok(!!(al && al.rich), 'y 轴用 rich 渲染项目图标');
-    ok(!!(al && al.rich && Object.keys(al.rich).some((k) => /^ic\d+$/.test(k))), 'y 轴每个项目都有图标项');
+    ok(/\{ic/.test(String(al && al.formatter ? al.formatter : '')), 'y 轴标签模板里预留了图标位');
+  }
+  /* 项目图标是「图标字体」：必须按 :before 的字形栅格化，不能照搬国旗的 background-image 探测 */
+  {
+    const src = fs.readFileSync(path.join(ROOT, 'js/charts.js'), 'utf8');
+    const css = fs.readFileSync(path.join(ROOT, 'vendor/cubing-icons.css'), 'utf8');
+    ok(/\.cubing-icon\.event-[a-z0-9]+:before/.test(css) && !/\.cubing-icon\.event-[a-z0-9]+\s*\{[^}]*background-image/.test(css),
+      '项目图标是字体字形（无背景图），不能按国旗方式探测');
+    ok(/getComputedStyle\(_flagProbe, ':before'\)/.test(src), '按 :before content 取图标字形码点');
+    ok(/toDataURL\(/.test(src), '字形栅格化成 data URI 供 ECharts rich 渲染');
+    ok(!/probeUri\('cubing-icon/.test(src), '不再用 background-image 方式探测项目图标');
+    ok(/document\.fonts\.load/.test(src), '首次绘制时预加载图标字体');
   }
   /* 泳道按 WCA 官方项目顺序排列 */
   const evOrder = {}; M.events.forEach((e, i) => { evOrder[e.id] = i; });

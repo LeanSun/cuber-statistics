@@ -333,14 +333,70 @@
     _flagUri[code] = url;
     return url;
   }
-  /* 项目图标的 data URI（cubing_icons.css 里的 .cubing-icon.event-xxx） */
+  /* 项目图标：cubing-icons 是「图标字体」而不是背景图
+     （.cubing-icon.event-333:before { content:"\f106" }），
+     所以不能像国旗那样去读 background-image。
+     这里先从 :before 的 content 里拿到字形码点，再用 canvas 把字形栅格化成
+     data URI，才能交给 ECharts 的 rich backgroundColor.image 渲染。 */
   const _evUri = {};
-  function eventIconUri(ev) {
+  function glyphOf(cls) {
+    try {
+      if (!_flagProbe) {
+        _flagProbe = document.createElement('span');
+        _flagProbe.style.cssText = 'position:absolute;left:-9999px;top:0;width:10px;height:10px';
+        document.body.appendChild(_flagProbe);
+      }
+      _flagProbe.className = cls;
+      const st = getComputedStyle(_flagProbe, ':before');
+      let c = (st && st.content) || '';
+      if (!c || c === 'none' || c === 'normal') return '';
+      c = c.trim().replace(/^["']+/, '').replace(/["']+$/, '');
+      if (c.length === 1) return c;
+      const m = c.match(/\\([0-9a-fA-F]{1,6})/);
+      if (m) return String.fromCharCode(parseInt(m[1], 16));
+      return c.charAt(0) || '';
+    } catch (e) { /* ignore */ }
+    return '';
+  }
+  function glyphUri(ch, color, size) {
+    try {
+      const s = size || 20;
+      const cv = document.createElement('canvas');
+      cv.width = s; cv.height = s;
+      const g = cv.getContext('2d');
+      if (!g) return '';
+      g.clearRect(0, 0, s, s);
+      g.font = Math.round(s * 0.84) + 'px "cubing-icons",cubing-icons';
+      g.fillStyle = color || '#8a8f9c';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.fillText(ch, s / 2, s / 2 + 1);
+      return cv.toDataURL('image/png');
+    } catch (e) { /* ignore */ }
+    return '';
+  }
+  /* 图标字体是异步加载的：首次画泳道时它可能还没就绪，画出来会是「豆腐块」。
+     这里显式触发一次字体加载，就绪后派发 resize 让 ECharts 重绘一次补上图标。 */
+  let _iconFontWarm = false;
+  function warmIconFont() {
+    if (_iconFontWarm) return;
+    _iconFontWarm = true;
+    try {
+      if (typeof document !== 'undefined' && document.fonts && document.fonts.load) {
+        document.fonts.load('20px "cubing-icons"').then(function () {
+          try { window.dispatchEvent(new Event('resize')); } catch (e) { /* ignore */ }
+        }).catch(function () { /* ignore */ });
+      }
+    } catch (e) { /* ignore */ }
+  }
+  function eventIconUri(ev, color) {
     if (!ev) return '';
-    if (_evUri[ev] !== undefined) return _evUri[ev];
-    const url = probeUri('cubing-icon event-' + ev);
-    _evUri[ev] = url;
-    return url;
+    const ck = ev + '|' + (color || '');
+    if (_evUri[ck] !== undefined) return _evUri[ck];
+    warmIconFont();
+    const ch = glyphOf('cubing-icon event-' + ev);
+    _evUri[ck] = ch ? glyphUri(ch, color) : '';
+    return _evUri[ck];
   }
 
   function lanes(laneData, opts) {
@@ -405,7 +461,7 @@
       nm: { color: T.text2, fontSize: 11.5, padding: [0, 0, 0, 2] }
     };
     laneData.forEach(function (L, li) {
-      const uri = eventIconUri(L.ev);
+      const uri = eventIconUri(L.ev, T.text);
       if (uri) rich['ic' + li] = { height: 15, width: 15, backgroundColor: { image: uri } };
     });
 
