@@ -100,7 +100,7 @@
     group: 'all', customIds: [], evSel: [], country: '', continent: '', region: '',
     gender: 'all', y0: null, y1: null, retired: false, recType: 'all',
     scope: 'country', geo: '',
-    pk: [], tlView: 'race', tlMode: 'cumulative', tlFy: 2025, tlStep: 'day', tlMetric: 'overall', tlLane: 'single', tlSmooth: false, tlPlaying: false, tlRegion: '', tlCountry: '',
+    pk: [], tlView: 'race', tlMode: 'cumulative', tlFy: 2025, tlStep: 'day', tlMetric: 'overall', tlLane: 'single', tlSmooth: false, tlPlaying: false, tlRegion: '', tlCountry: '', msPopOpen: false,
     topicTab: 'rec', topicStat: '', otherTab: 'king', nationMetric: 'total', counterZero: 'wr', topicBoard: ''
   };
 
@@ -219,6 +219,21 @@
   }
 
   /* ---------- 路由 ---------- */
+  /* URL 查询参数只在「地址栏真的变了」时套用一次。
+     此前 render() 每次都重新读取 ?country=xx，于是用户在筛选条里换地区后，
+     state.geo 刚改完就被 URL 里的旧值覆盖回去，表现为页面被「定格」在原筛选上。 */
+  let hashConsumed = null;
+  function applyRouteQuery(route, q, rawHash) {
+    const fresh = rawHash !== hashConsumed;
+    hashConsumed = rawHash;
+    if (!fresh) return;
+    if (route === 'rank') {
+      if (q.g) state.group = q.g;
+      if (q.country) state.geo = q.country;
+    }
+    if (route === 'topics' && q.tab) state.topicTab = q.tab;
+  }
+
   function parseHash() {
     const raw = (location.hash || '').replace(/^#/, '') || '/home';
     const anchor = (raw.indexOf('#') >= 0) ? raw.split('#').pop() : '';
@@ -419,12 +434,7 @@
     const route = r.seg[0] || 'home';
     const prev = lastRoute;
     if (route === 'model' && r.anchor) state.mdSection = r.anchor;
-
-    if (route === 'rank') {
-      if (r.q.g) state.group = r.q.g;
-      if (r.q.country) state.geo = r.q.country;
-    }
-    if (route === 'topics' && r.q.tab) state.topicTab = r.q.tab;
+    applyRouteQuery(route, r.q, location.hash || '');
 
     const sy = window.scrollY;
     applyStaticI18n();
@@ -559,22 +569,26 @@
         if (state.tlPlaying) { stopPlay(); return; }
         if (!range) return;
         state.tlPlaying = true; play.textContent = t('tl.pause');
-        /* 时间步进速率：jump＝天/秒（默认 30），fps＝刷新间隔 */
+        /* 步进固定为「每次 1 天」：定时器每次只把滑块推进 1 格（1 格 = 1 天），
+           tick 间隔由「天/秒」换算得出（30 天/秒 → 每 33ms 走 1 天），
+           因此速度与步进解耦：再快也不会一帧跳过好几天。
+           fps 退化为重绘节流上限，避免高倍速下重复重画。 */
         const rate = (P.tlRate ? P.tlRate() : { jump: 30, anim: 800, fps: 200 });
-        const dtMs = Math.max(50, Math.min(2000, rate.fps || 200));
         const daysPerSec = Math.max(0.5, rate.jump || 30);
-        let acc = 0;
+        const dtMs = Math.max(16, Math.min(2000, Math.round(1000 / daysPerSec)));
+        const minDrawGap = Math.max(16, rate.fps || 200);
+        let lastDraw = 0;
         tlTimer = setInterval(function () {
           const sl = P.tlSlider(state.tlStep, state.tlFy);
           let idx = +range.value;
           if (idx >= sl.max) { stopPlay(); return; }
-          acc += daysPerSec * dtMs / 1000;
-          const step = Math.floor(acc);
-          acc -= step;
-          if (step < 1) return;
-          idx = Math.min(sl.max, idx + step);
+          idx = Math.min(sl.max, idx + 1);   /* 每次 1 天 */
           range.value = idx;
-          setFyFromRange(range);
+          const now = Date.now();
+          if (now - lastDraw >= minDrawGap || idx >= sl.max) {
+            lastDraw = now;
+            setFyFromRange(range);
+          }
           if (idx >= sl.max) stopPlay();
         }, dtMs);
       });
@@ -582,25 +596,67 @@
         state.tlPlaying = false; clearInterval(tlTimer);
         const pb = document.getElementById('tlPlay'); if (pb) pb.textContent = t('tl.play');
       }
-      /* 动画速率自定义：时间跳跃（天/秒）/ 动画时长 / 刷新间隔 */
-      ['Jump', 'Anim', 'Fps'].forEach(function (k) {
-        const el = document.getElementById('tlRate' + k);
-        if (!el) return;
-        el.addEventListener('input', function () {
-          const r = (P.tlRate ? P.tlRate() : { jump: 30, anim: 800, fps: 200 });
-          const key = k === 'Jump' ? 'jump' : (k === 'Anim' ? 'anim' : 'fps');
-          r[key] = parseFloat(el.value);
-          try { localStorage.setItem('goat-tlrate-v1', JSON.stringify(r)); } catch (e) { }
-          const lab = document.getElementById('tlRate' + k + 'V');
-          if (lab) lab.textContent = (key === 'jump' ? r.jump + ' 天/秒' : r[key] + 'ms');
-          if (key === 'anim' && box) P.drawTimeline(box);
-        });
+      /* 动画速率自定义：时间跳跃（天/秒）/ 动画时长 / 刷新间隔。
+         滑杆（…Cap）与数字输入框共用同一份状态，互相同步；
+         数字框失焦或按回车时按 min/max 夹紧并回写，避免出现 0 天/秒这类无效值。 */
+      function syncRateUI(key, val) {
+        const cap = document.getElementById('tlRate' + key + 'Cap');
+        const num = document.getElementById('tlRate' + key);
+        if (cap) cap.value = val;
+        if (num && document.activeElement !== num) num.value = val;
+        const lab = cap ? cap.parentNode.querySelector('b') : null;
+        if (lab) {
+          const mt = (P.tlRateMeta && P.tlRateMeta[key]) || null;
+          lab.textContent = val + (mt ? mt.unit() : 'ms');
+        }
+      }
+      function applyRate(key, raw, fromNumber) {
+        const r = (P.tlRate ? P.tlRate() : { jump: 30, anim: 800, fps: 200 });
+        const val = (P.tlClampRate ? P.tlClampRate(key, raw) : parseInt(raw, 10));
+        if (isNaN(val)) return;
+        r[key] = val;
+        try { localStorage.setItem('goat-tlrate-v1', JSON.stringify(r)); } catch (e) { }
+        syncRateUI(key, val);
+        if (fromNumber) {
+          const num = document.getElementById('tlRate' + key);
+          if (num && document.activeElement === num) num.value = val;
+        }
+        /* 动画时长变化需要立即重画；跳跃/刷新间隔在下次点播放时生效即可 */
+        if (key === 'anim' && box) P.drawTimeline(box);
+      }
+      ['jump', 'anim', 'fps'].forEach(function (key) {
+        const cap = document.getElementById('tlRate' + key + 'Cap');
+        if (cap) cap.addEventListener('input', function () { applyRate(key, cap.value, false); });
+        const num = document.getElementById('tlRate' + key);
+        if (num) {
+          num.addEventListener('input', function () { applyRate(key, num.value, true); });
+          num.addEventListener('change', function () { applyRate(key, num.value, true); });
+          num.addEventListener('blur', function () { applyRate(key, num.value, true); });
+          num.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); num.blur(); } });
+        }
       });
       const rateReset = document.getElementById('tlRateReset');
       if (rateReset) rateReset.addEventListener('click', function () {
         try { localStorage.removeItem('goat-tlrate-v1'); } catch (e) { }
         render(true);
       });
+      /* 重大事件弹窗：默认收起，点右下角标签展开/收起（状态跨渲染保持） */
+      const msTab = document.getElementById('msPopTab');
+      const msBody = document.getElementById('msPopBody');
+      if (msTab && msBody) {
+        const open = !!state.msPopOpen;
+        msBody.hidden = !open;
+        msTab.setAttribute('aria-expanded', open ? 'true' : 'false');
+        msTab.classList.toggle('on', open);
+        msTab.addEventListener('click', function (e) {
+          e.stopPropagation();
+          state.msPopOpen = msBody.hidden;
+          msBody.hidden = !state.msPopOpen;
+          msTab.setAttribute('aria-expanded', state.msPopOpen ? 'true' : 'false');
+          msTab.classList.toggle('on', state.msPopOpen);
+          if (window.Charts && box) { try { window.Charts.render; P.drawTimeline(box); } catch (err) { } }
+        });
+      }
       const regSel = document.getElementById('tlRegion');
       if (regSel) regSel.addEventListener('change', function () {
         state.tlRegion = regSel.value; state.tlCountry = '';
@@ -610,6 +666,70 @@
       if (cSel) cSel.addEventListener('change', function () {
         state.tlCountry = cSel.value; render(true);
       });
+
+      /* 纪录持有图：悬停下方清单项 → 在图上高亮该色块，并在图上标出该选手姓名与国旗 */
+      const laneList = document.getElementById('laneList');
+      if (laneList && box) {
+        const clearLaneHi = function () {
+          laneList.querySelectorAll('.lane-seg.on').forEach((n) => n.classList.remove('on'));
+          try {
+            const ins = window.echarts.getInstanceByDom(box);
+            if (ins) {
+              ins.dispatchAction({ type: 'downplay', seriesIndex: 0 });
+              if (ins.__laneHiLabel) { ins.removeGraphic(ins.__laneHiLabel); ins.__laneHiLabel = null; }
+            }
+          } catch (e) { }
+        };
+        const highlightLane = function (btn) {
+          clearLaneHi();
+          btn.classList.add('on');
+          const ix = parseInt(btn.getAttribute('data-laneix'), 10);
+            const holderEl = btn.querySelector('.lane-holder');
+            const flagEl = btn.querySelector('.lane-flag');
+            const label = (holderEl ? holderEl.textContent : '');
+            try {
+              const ins = window.echarts.getInstanceByDom(box);
+              if (!ins) return;
+              if (!isNaN(ix)) ins.dispatchAction({ type: 'highlight', seriesIndex: 0, dataIndex: ix });
+            /* 在图上追加一个「姓名 + 国旗」浮标，位置跟随该色块 */
+            if (ins.__laneHiLabel) ins.removeGraphic(ins.__laneHiLabel);
+            const g = {
+              type: 'group', id: 'laneHiLabel',
+              position: ['10%', '4%'],
+              children: [{
+                type: 'rect', shape: { x: 0, y: 0, width: 22 + label.length * 11, height: 30, r: 9 },
+                style: { fill: 'rgba(20,22,28,.86)', stroke: 'rgba(255,255,255,.18)', lineWidth: 1 }
+              }].concat(flagEl ? [{
+                type: 'image',
+                style: {
+                  image: (function () {
+                    const m = getComputedStyle(flagEl).backgroundImage || '';
+                    const r = m.match(/url\((['"]?)(.*?)\1\)/);
+                    return r ? r[2] : '';
+                  })(), x: 9, y: 9, width: 24, height: 12
+                }
+              }] : []).concat([{
+                type: 'text',
+                style: {
+                  text: label, x: (flagEl ? 40 : 12), y: 15,
+                  fill: '#fff', font: '600 14px "Segoe UI",system-ui,sans-serif',
+                  textVerticalAlign: 'middle', textBaseline: 'middle'
+                }
+              }])
+            };
+            ins.__laneHiLabel = ins.addGraphic ? ins.addGraphic(g) : null;
+          } catch (e) { }
+        };
+        laneList.addEventListener('mouseover', function (e) {
+          const btn = e.target.closest ? e.target.closest('.lane-seg') : null;
+          if (btn) highlightLane(btn);
+        });
+        laneList.addEventListener('mouseout', function (e) {
+          const btn = e.target.closest ? e.target.closest('.lane-seg') : null;
+          if (btn && !laneList.contains(e.relatedTarget)) clearLaneHi();
+        });
+        laneList.addEventListener('mouseleave', clearLaneHi);
+      }
       /* 竞速图点击选手条 / 姓名 → 跳转本站选手主页 */
       if (box) {
         let inst = null;
@@ -647,6 +767,23 @@
       document.querySelectorAll('input[data-modcolor]').forEach(function (c) {
         c.addEventListener('input', function () { if (Pm.setColor) { Pm.setColor(c.getAttribute('data-modcolor'), c.value); } });
         c.addEventListener('change', function () { render(true); toast(t('md.colorsOk')); });
+      });
+      /* 国家配色：改色即时写入localStorage 并同步旁边的色值文本，
+         图表在下一次渲染/重绘时生效（避免每拖一次就重算全部图表）。 */
+      document.querySelectorAll('input[data-ccolor]').forEach(function (c) {
+        c.addEventListener('input', function () {
+          const iso = c.getAttribute('data-ccolor');
+          if (!P.setCountryColor) return;
+          P.setCountryColor(iso, c.value);
+          const code = c.parentNode.querySelector('code');
+          if (code) code.textContent = c.value;
+        });
+        c.addEventListener('change', function () { render(true); toast(t('md.countryColorsOk')); });
+      });
+      const ccR = document.getElementById('ccReset');
+      if (ccR) ccR.addEventListener('click', function () {
+        if (P.resetCountryColors) P.resetCountryColors();
+        render(true); toast(t('ui.ok'));
       });
       document.querySelectorAll('.md-tgl').forEach(function (b) {
         b.addEventListener('click', function () {
@@ -926,7 +1063,7 @@
     if (el.hasAttribute('data-group')) {
       state.group = el.getAttribute('data-group');
       state.evSel = []; state.page = 1;
-      syncFilterUrl(); return;
+      syncFilterUrl(true); return;
     }
     if (el.hasAttribute('data-evtab')) {
       const id = el.getAttribute('data-evtab');
@@ -1022,7 +1159,8 @@
       const v = el.value || '';
       if (v.indexOf('reg:') === 0) { state.region = v.slice(4); state.geo = ''; }
       else { state.geo = v; state.region = ''; }
-      state.country = ''; state.continent = ''; state.page = 1; render(true);
+      state.country = ''; state.continent = ''; state.page = 1;
+      syncFilterUrl(true);
     }
     if (el.id === 'fgCountry') { state.country = el.value; state.page = 1; render(true); }
     if (el.id === 'fgRegion') { state.region = el.value; state.page = 1; render(true); }
@@ -1065,18 +1203,25 @@
       state.country = ''; state.continent = ''; state.region = '';
       state.gender = 'all'; state.y0 = null; state.y1 = null; state.recType = 'all'; state.page = 1;
       state.topicBoard = ''; state.topicEvent = '';
-      location.hash = (location.hash.split('?')[0] || '#/rank');
+      const base = location.hash.split('?')[0] || '#/rank';
+      hashConsumed = base;
+      location.hash = base;
       render();
     });
   }
 
-  function syncFilterUrl() {
+  /* 把当前筛选写回地址栏（可分享 / 可刷新保持）。
+     keepScroll=true 时保留滚动位置；hash 未变化时不重复写，避免触发多余 hashchange。 */
+  function syncFilterUrl(keepScroll) {
     const q = [];
     if (state.group && state.group !== 'all' && !state.group.match(/^u[0-9a-z]+$/)) q.push('g=' + state.group);
     if (state.geo) q.push('country=' + state.geo);
     const base = location.hash.split('?')[0] || '#/rank';
-    location.hash = base + (q.length ? '?' + q.join('&') : '');
-    render();
+    const next = base + (q.length ? '?' + q.join('&') : '');
+    if (next === location.hash) { render(!!keepScroll); return; }
+    hashConsumed = next;
+    location.hash = next;
+    render(!!keepScroll);
   }
 
   document.getElementById('themeBtn').addEventListener('click', toggleTheme);
@@ -1096,7 +1241,6 @@
   window.addEventListener('hashchange', function () {
     const r = parseHash();
     const route = r.seg[0] || 'home';
-    if (route === 'rank') { state.group = r.q.g || state.group; if (r.q.country) state.geo = r.q.country; }
     if (route !== 'timeline') { state.tlPlaying = false; clearInterval(tlTimer); }
     render();
   });

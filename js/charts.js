@@ -260,7 +260,16 @@
             type: 'rect', transition: ['shape'], shape: { x: x0, y: y0 - h / 2, width: w, height: h, r: 5 },
             style: { fill: it.color || T.m[0], stroke: T.elev, lineWidth: 1 }
           }];
-          let tx = x0 + 8;
+          let tx = x0 + 6;
+          /* 排名序号 1–15：画在条形左端内侧的固定位置，条形再短也不会被挤掉 */
+          kids.push({
+            type: 'text', style: {
+              text: it.no ? String(it.no) : '', x: tx, y: y0,
+              fill: 'rgba(255,255,255,.92)', font: '800 11px "Segoe UI",system-ui,sans-serif',
+              textVerticalAlign: 'middle', textBaseline: 'middle', align: 'left'
+            }
+          });
+          tx += 20;
           const uri = it.flag || flagUri(it.iso);
           if (uri) {
             kids.push({ type: 'image', style: { image: uri, x: tx, y: y0 - 5, width: 15, height: 11 } });
@@ -291,7 +300,7 @@
           return { type: 'group', children: kids };
         },
         encode: { x: 0, y: 1 },
-        data: data.map(function (d, i) { return { value: [round(d.value), i], id: d.id, iso: d.iso, name: d.name }; }),
+        data: data.map(function (d, i) { return { value: [round(d.value), i], id: d.id, iso: d.iso, name: d.name, no: d.no || i + 1 }; }),
         itemStyle: { opacity: 0.96 },
         emphasis: { itemStyle: { opacity: 1 } }
       }]
@@ -393,7 +402,9 @@
           const v = p.data.value;
           const days = v[6] || 0;
           function fd(dn) { const s = String(dn || ''); return s.length === 8 ? s.slice(0, 4) + '-' + s.slice(4, 6) + '-' + s.slice(6, 8) : '—'; }
-          return '<b>' + v[4] + '</b> · ' + v[5] + '<br/>' + fd(v[8]) + ' → ' + fd(v[9]) + ' · <b>' + days + '</b> ' + (LANE_I18N.day || '天');
+          /* 开始 / 结束 / 持有天数三者齐备（泳道清单里也用同一套文案） */
+          return '<b>' + v[4] + '</b> · ' + v[5] + '<br/>' +
+            fd(v[8]) + ' → ' + fd(v[9]) + '<br/><b>' + days + '</b> ' + (LANE_I18N.day || 'days');
         }
       },
       series: [{

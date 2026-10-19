@@ -274,14 +274,19 @@
     var bestYearGold = 0;
     Object.keys(goldYears).forEach(function (y) { bestYearGold = Math.max(bestYearGold, goldYears[y]); });
 
-    /* 真实年度名次：统计「进入年度前 10 / 前 100」的年数 */
-    var yr = p.yearRank || {}, yrTop = { t10: 0, t100: 0 };
-    Object.keys(yr).forEach(function (y) {
-      var r = (yr[y] || {})[p.id];
-      if (!r) return;
-      if (r <= 10) yrTop.t10++;
-      if (r <= 100) yrTop.t100++;
-    });
+    /* 真实年度名次：统计「进入年度前 10 / 前 100」的次数。
+       ETL 已按 (年,项目) 取前 200 名后直接计数写入 yTop10 / yTop100；
+       旧数据没有这两个字段时，才回退到 yearRank 表（若存在）。 */
+    var yrTop = { t10: p.yTop10 || 0, t100: p.yTop100 || 0 };
+    if (!yrTop.t10 && !yrTop.t100) {
+      var yr = p.yearRank || {};
+      Object.keys(yr).forEach(function (y) {
+        var r = (yr[y] || {})[p.id];
+        if (!r) return;
+        if (r <= 10) yrTop.t10++;
+        if (r <= 100) yrTop.t100++;
+      });
+    }
 
     /* 以下全部取自 ETL 真实统计；仅在旧数据缺字段时回退为 0（不再用估算公式） */
     var totalPod = pods.length;
@@ -407,7 +412,7 @@
       podiumRate: round(pod / Math.max(1, b.comps || b.rows || 1), 4),
       goldRate: round(gold / Math.max(1, pod), 4),
       champConvert: round(((b.wc || 0) + (b.cc || 0) + (b.nc || 0)) / Math.max(1, pod), 4),
-      yearsTop10: 0, yearsTop100: 0,
+      yearsTop10: (p.yTop10 || 0), yearsTop100: (p.yTop100 || 0),
       coverage: 1, dominance: round((p.eloPeak - 1400) / 900, 3),
       lowCompHighAch: round((p.overall || 0) / Math.max(1, b.comps), 4),
       compDensity: round((b.comps || 0) / Math.max(1, ys.length), 2),

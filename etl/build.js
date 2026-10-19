@@ -239,6 +239,24 @@ const recSeq = {};
 let recSeqCount = 0;
 const REC_SEQ_MAX = 2500000;   /* 纪录序列条目上限（约 20MB 内存），超出后不再计算保持天数 */
 
+/* 年度排名：'year|eventId' -> 该年度该项目成绩最好的前 ANNUAL_TOP 名（按单次成绩升序）。
+   只保留前 N 名而非全部选手 —— 全量结果行上千万条，全留会再次把 ETL 打到OOM；
+   而「年度前10/前100」这类指标本来就只需要头部名次。 */
+const ANNUAL_TOP = 200;
+const annualTop = {};
+function annualOffer(year, eid, pid, best) {
+  if (!(best > 0)) return;
+  const key = year + '|' + eid;
+  let arr = annualTop[key];
+  if (!arr) { arr = annualTop[key] = []; }
+  const n = arr.length;
+  if (n >= ANNUAL_TOP && best >= arr[n - 1].best) return;
+  /* 插入排序：多数行会在上面的门槛被拒掉，真正插入的次数很少 */
+  let i = n < ANNUAL_TOP ? n - 1 : ANNUAL_TOP - 2;
+  while (i >= 0 && arr[i].best > best) { arr[i + 1] = arr[i]; i--; }
+  arr[i + 1] = { pid: pid, best: best };
+}
+
 async function loadDimensions() {
   log('加载 persons …');
   await streamTsv('persons', (r) => {
@@ -622,10 +640,20 @@ async function processResults() {
     if (rsr) addRecord(p, eid, 'single', rsr, r.best, comp, year, r.regional_single_record);
     if (rar) addRecord(p, eid, 'avg', rar, r.average, comp, year, r.regional_average_record);
 
-    if (rsr === 'WR') (wrSingleG[eid] = wrSingleG[eid] || []).push({ dn: dateNum(comp ? comp.date : year + '-01-01'), fy: fyOfDn(dateNum(comp ? comp.date : year + '-01-01')), name: p.name, country: p.country });
-    if (rar === 'WR') (wrAvgG[eid] = wrAvgG[eid] || []).push({ dn: dateNum(comp ? comp.date : year + '-01-01'), fy: fyOfDn(dateNum(comp ? comp.date : year + '-01-01')), name: p.name, country: p.country });
+    /* 纪录持有者：带上 pid 与 ISO2 国码，前端才能在泳道图上做
+       「列表悬停 → 高亮该选手的色块 + 显示国旗姓名」的联动。 */
+    const wrDn = dateNum(comp ? comp.date : year + '-01-01');
+    const wrFy = fyOfDn(wrDn);
+    if (rsr === 'WR') (wrSingleG[eid] = wrSingleG[eid] || []).push({ dn: wrDn, fy: wrFy, name: p.name, country: p.country, pid: pid, iso: Calc.isoNorm(p.country) });
+    if (rar === 'WR') (wrAvgG[eid] = wrAvgG[eid] || []).push({ dn: wrDn, fy: wrFy, name: p.name, country: p.country, pid: pid, iso: Calc.isoNorm(p.country) });
 
     trackMilestone(eid, r.best, year);
+
+    /* 年度排名候选：单次与平均取更优者（与 WCA 官方 ranks_single/ranks_average 同口径） */
+    {
+      const bs = toInt(r.best), ba = toInt(r.average);
+      annualOffer(year, eid, pid, bs > 0 && ba > 0 ? Math.min(bs, ba) : (bs || ba));
+    }
 
     if (isFinal && pos >= 1 && pos <= 3) {
       const tier = champWC.has(compId) ? 'WC' : (champCC.has(compId) ? 'CC' : 'OP');
@@ -653,6 +681,10 @@ function domScore(r) {
 }
 function placeW(pos) { return pos === 1 ? 1 : (pos === 2 ? 0.6 : 0.4); }
 
+/* 各模块的全局最大值（归一化分母）。随 meta 下发，前端据此把
+   「原始分 ÷ 全局最大值 × 100」这条归一化过程原样写给用户看。 */
+let MOD_MAX = null;
+
 function computeModules() {
   log('计算七模块评分…');
   const raw = {};
@@ -667,26 +699,56 @@ function computeModules() {
     const m1a = (p.wrA || 0) * 3 + (p.crA || 0) * 1.5 + (p.nrWA || 0) * 0.8;
     const m1 = m1s + m1a;
     let m2 = 0, m3 = 0;
+    /* 领奖台名次分布（按赛级 × 名次分桶），供前端逐项展开 M2 / M3 的计算过程 */
+    const podMix = { wcg: 0, wcs: 0, wcb: 0, ccg: 0, ccs: 0, ccb: 0, ncg: 0, ncs: 0, ncb: 0, otg: 0, ots: 0, otb: 0 };
     p.podiums.forEach((pod) => {
       const tw = pod.tier === 'WC' ? 1 : (pod.tier === 'CC' ? 0.7 : 0.4);
       if (pod.tier === 'WC' || pod.tier === 'CC') m2 += placeW(pod.place) * tw;
       else m3 += placeW(pod.place) * tw;
+      const sfx = pod.place === 1 ? 'g' : (pod.place === 2 ? 's' : 'b');
+      const pre = pod.tier === 'WC' ? 'wc' : (pod.tier === 'CC' ? 'cc' : (pod.tier === 'NC' ? 'nc' : 'ot'));
+      podMix[pre + sfx]++;
     });
-    let m4 = 0, m7sum = 0, m7n = 0;
+    /* M4 统治力：各项目世界名次的时间积分（domScore），按项目权重加权。
+       M7 实战对战：各项目名次在该项目参赛人数中的相对位次（越靠前越接近 1），取跨项目平均。
+       注意 worldRank 的值是对象 {r,b,a}，必须取 .r —— 早期版本直接把对象当名次传给
+       domScore()，导致 NaN 传播、M4/M7 的全局最大值恒为 0，所有选手这两个模块全部归零。 */
+    let m4 = 0, m4w = 0, m7sum = 0, m7n = 0;
     const wr = worldRank.get(id) || {};
+    /* 逐项目明细（供前端把 M4 / M7 的加权和完整写出来） */
+    const rkDetail = [];
     Object.keys(wr).forEach((eid) => {
-      const rk = wr[eid];
+      const o = wr[eid];
+      const rk = o && o.r ? o.r : 0;
+      if (rk <= 0) return;
       const w = (events.get(eid) || { w: 0.8 }).w;
-      m4 += domScore(rk) * w;
+      const ds = domScore(rk);
+      m4 += ds * w;
+      m4w += w;
       const cnt = eventCounts[eid] || 1;
-      m7sum += (cnt - rk) / cnt; m7n++;
+      const rel = Math.max(0, Math.min(1, (cnt - rk) / cnt));
+      m7sum += rel; m7n++;
+      rkDetail.push([eid, rk, Math.round(ds * 1000) / 1000, w, cnt, Math.round(rel * 1000) / 1000]);
     });
+    /* 统治力取「按权重平均」而非累加，避免「项目多」本身被当成统治力 */
+    if (m4w > 0) m4 /= m4w;
     const m7 = m7n ? m7sum / m7n : 0;
     const evCount = p.eventsSet.size;
     const m5 = (evCount / 21) * 0.7 + Math.min(evCount / 17, 1) * 0.3;
     const span = Math.max(1, p.end - p.start + 1);
     const m6 = (span / 22) * 0.5 + (Math.min(p.compsSet.size, 300) / 300) * 0.3 + (p.activeStreak || 1) / 15 * 0.2;
     raw[id] = { m1, m1s, m1a, m2, m3, m4, m5, m6, m7 };
+    /* 各模块的「计算过程」明细：只随明细档选手（DETAIL_MAX 名内）下发，
+       前端选手页据此把每个模块的代入过程逐项写出来（需求：总分过程要写出各个分数的计算过程）。 */
+    p.mCalc = {
+      rec: [p.wrS || 0, p.crS || 0, Math.round((p.nrWS || 0) * 100) / 100,
+        p.wrA || 0, p.crA || 0, Math.round((p.nrWA || 0) * 100) / 100],
+      pod: [podMix.wcg, podMix.wcs, podMix.wcb, podMix.ccg, podMix.ccs, podMix.ccb,
+        podMix.ncg, podMix.ncs, podMix.ncb, podMix.otg, podMix.ots, podMix.otb],
+      rk: rkDetail,
+      ev: evCount,
+      span: span, comps: p.compsSet.size, streak: p.activeStreak || 1
+    };
     MODALL.forEach((k) => { if (raw[id][k] > MAXMOD[k]) MAXMOD[k] = raw[id][k]; });
     list.push(p);
   });
@@ -717,7 +779,9 @@ function computeModules() {
     MODALL.forEach((k) => { pk[k] = Math.round(Math.min(100, m[k] * peakFactor) * 100) / 100; });
 
     p.m = m; p.pk = pk;
-    p.eloPeak = Math.round(1400 + m.m7 * 900);
+    /* Elo 峰值：M7（实战对战，已归一化到 0–100）映射回 1400–2300 的强度区间。
+       注意 m.m7 是归一化后的百分制，需除以 100，否则会算出 8 位数的假分数。 */
+    p.eloPeak = Math.round(1400 + (m.m7 / 100) * 900);
     p.career = Math.round(Calc.weighted(m) * 10) / 10;
     p.peak = Math.round(Calc.weighted(pk) * 10) / 10;
     p.overall = Math.round(Calc.overall(p.career, p.peak) * 10) / 10;
@@ -789,6 +853,12 @@ function computeModules() {
     if (EVENT_BOARDS[eid].length > EVENT_BOARD_MAX) EVENT_BOARDS[eid] = EVENT_BOARDS[eid].slice(0, EVENT_BOARD_MAX);
   });
   log('每项目榜单:', Object.keys(EVENT_BOARDS).length, '个项目, 最大深度', EVENT_BOARD_MAX);
+
+  /* 归一化分母下发前端（选手页展示各模块归一化过程用）。
+     保留 6 位小数：M5 / M6 这类本身在 0.1~0.4 量级，截断到 3 位会让
+     前端复算的归一化结果与p.m 差出 0.05 左右的可见误差。 */
+  MOD_MAX = {};
+  MODALL.forEach((k) => { MOD_MAX[k] = Math.round(MAXMOD[k] * 1e6) / 1e6; });
 
   /* 释放中间结构：榜单已独立持有所需数据，worldRank/finalCounts 不再需要 */
   worldRank.clear(); finalCounts.clear();
@@ -865,11 +935,12 @@ function buildLanes(store, asOf) {
     const stopFy = retired ? fyOfDn(stopDn) : endFy;
     let cur = null;
     arr.forEach((e) => {
-      if (!cur || cur.holder !== e.name) {
+      /* 同一人连续持有则合并成一段；换人时才切段（用 pid 判定，避开同名不同人） */
+      if (!cur || cur.pid !== e.pid || cur.holder !== e.name) {
         if (cur) { cur.to = e.fy; cur.toDn = e.dn; cur.days = daysBetween(cur.fromDn, e.dn); }
         cur = {
           from: e.fy, to: stopFy, fromDn: e.dn, toDn: stopDn, holder: e.name, country: e.country,
-          id: null, days: 0, color: 'hsl(' + Calc.U.hue(e.name) + ',58%,52%)'
+          id: e.pid || null, iso: e.iso || '', days: 0, color: 'hsl(' + Calc.U.hue(e.name) + ',58%,52%)'
         };
         segs.push(cur);
       }
@@ -940,6 +1011,26 @@ function buildEventMilestones() {
     if (p.overall > n.best) { n.best = p.overall; n.bestName = p.name; }
   });
 
+  /* 年度前10 / 前100 名次数：annualTop 里每个 (年,项目) 只留前 200 名，
+     因此名次≤100 的选手必然在榜内，可直接计数（无需为每位选手存完整年度名次表）。 */
+  const yTop10 = {}, yTop100 = {};
+  Object.keys(annualTop).forEach((k) => {
+    const arr = annualTop[k];
+    const year = k.slice(0, k.indexOf('|'));
+    arr.forEach((e, i) => {
+      const r = i + 1;
+      if (r > 100) return;
+      yTop100[e.pid] = (yTop100[e.pid] || 0) + 1;
+      if (r <= 10) yTop10[e.pid] = (yTop10[e.pid] || 0) + 1;
+      void year;
+    });
+  });
+  list.forEach((p) => {
+    p.yTop10 = yTop10[p.wcaId] || 0;
+    p.yTop100 = yTop100[p.wcaId] || 0;
+  });
+  Object.keys(annualTop).forEach((k) => { delete annualTop[k]; });
+
   let totWR = 0, totRec = 0, totPod = 0;
   list.forEach((p) => { totWR += p.wr; totRec += p.records.length; totPod += p.podiums.length; });
   const meta = {
@@ -948,6 +1039,7 @@ function buildEventMilestones() {
     exportVersion: arg('--ver', 'v2.0.2'),
     players: list.length, events: events.size, comps: comps.size,
     wr: totWR, records: totRec, podiums: totPod, nations: Object.keys(NATIONS_RAW).length,
+    modMax: MOD_MAX,
     emitted: emit.length, detailMax: DETAIL_MAX, slimMax: SLIM_MAX
   };
 
@@ -962,6 +1054,8 @@ function buildEventMilestones() {
     months1: 0, months10: 0, months100: 0, eloPeak: p.eloPeak, peakSpan: 0, peakAge: 0,
     resultRows: p.resultRows || 0, attempts: p.attempts || 0, solves: p.solves || 0, dnf: p.dnf || 0,
     cities: p.cities || 0, maxEventsPerComp: p.maxEventsPerComp || 0, multiEventComp: p.multiEventComp || 0,
+    yTop10: p.yTop10 || 0, yTop100: p.yTop100 || 0,
+    mCalc: p.mCalc || null,
     yearly: p.yearly, yearlyS: p.yearlyS || {}, yearlyA: p.yearlyA || {}
   });
   /* 精简档案用「数组 + 列名表」紧凑编码，浏览器端展开为对象后再 assemble。

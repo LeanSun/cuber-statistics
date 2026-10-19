@@ -69,10 +69,18 @@
         ' <a href="https://www.worldcubeassociation.org/persons/' + esc(p.wcaId) + '" target="_blank" rel="noopener">WCA ↗</a></div>';
     }
 
-    /* 信息栏（无头像；国旗 / WCA ID / 性别放大并加外框） */
+    /* 信息栏（无头像；国旗 / WCA ID / 性别放大并加外框）
+       姓名与右侧综合能力分放在同一行并按基线对齐（align-items:baseline），
+       避免大号分数因为行高不同而比姓名高出一截。 */
     h += '<div class="card pcard reveal">';
     h += '<div class="pcard-main">';
-    h += '<div class="pcard-name"><h1><a class="wca-name" href="https://www.worldcubeassociation.org/persons/' + esc(p.wcaId) + '" target="_blank" rel="noopener" title="' + esc(t('player.wca')) + '">' + esc(p.nameZh || p.name) + ' ' + Ic.glyph('external') + '</a></h1>';
+    h += '<div class="pcard-name"><div class="pcard-topline">';
+    h += '<h1><a class="wca-name" href="https://www.worldcubeassociation.org/persons/' + esc(p.wcaId) + '" target="_blank" rel="noopener" title="' + esc(t('player.wca')) + '">' + esc(p.nameZh || p.name) + ' ' + Ic.glyph('external') + '</a></h1>';
+    h += '<div class="pcard-score">';
+    h += '<div class="sc-wrap"><div class="sc-label">' + esc(t('rank.tab.overall')) + '</div>' +
+      '<div class="sc-value grad">' + U.fmt(sc.overall, 1) + '</div></div>';
+    h += '</div>';
+    h += '</div>';
     h += '<div class="pid-box">' +
       '<span class="pid-cell pid-flag">' + flag(p.country, 'f-lg') + '<span class="pid-txt">' + esc(countryName(p.country)) + '</span></span>' +
       '<span class="pid-cell mono" title="' + esc(t('player.wca')) + '">' + esc(p.wcaId) + '</span>' +
@@ -83,36 +91,45 @@
       '<span class="tag acc">' + esc(t('player.mainEvent')) + ' ' + esc(evName(M.EV[p.mainEvent])) + '</span>' +
       '<span class="tip-body">' + esc(t('player.mainEventTip')) + '</span></span>';
     h += '<span class="tag" title="' + esc(tt('首次参赛到最近参赛的年份区间', 'Years from your first to your latest competition')) + '">' + esc(t('player.career')) + ' ' + p.start + '–' + p.end + '</span>';
-    h += '<span class="tag" title="' + esc(tt('你参加过的 WCA 比赛总场数', 'Total WCA competitions you have entered')) + '">' + esc(t('player.comps')) + ' ' + p.comps + '</span>';
+    h += '<span class="tag" title="' + esc(tt('你参加过的 WCA 比赛总场次', 'Total WCA competitions you have entered')) + '">' + esc(t('player.comps')) + ' ' + p.comps + '</span>';
     h += '<span class="tag" title="' + esc(tt('你参加过的 WCA 项目数量', 'Number of distinct WCA events you have entered')) + '">' + esc(t('player.events')) + ' ' + p.events.length + '</span>';
     h += '<span class="tag" title="' + esc(tt('综合得分最高的项目', 'The event contributing most to your score')) + '">' + esc(t('player.mainEvent')) + ' ' + esc(evName(M.EV[p.mainEvent])) + '</span>';
-    h += '</div></div></div>';
-
-    h += '<div class="pcard-score">';
-    h += '<div class="sc-wrap"><div class="sc-label">' + esc(t('rank.tab.overall')) + '</div>' +
-      '<div class="sc-value grad">' + U.fmt(sc.overall, 1) + '</div></div>';
+    h += '</div>';
+    /* 次级分数（生涯/ 巅峰 / 均衡）+ PK 按钮 */
+    h += '<div class="pcard-sub">';
     h += '<div class="sc-row">';
     h += '<div class="sc-mini"><span>' + esc(t('rank.tab.career')) + '</span><b>' + U.fmt(sc.career, 1) + '</b></div>';
     h += '<div class="sc-mini"><span>' + esc(t('rank.tab.peak')) + '</span><b>' + U.fmt(sc.peak, 1) + '</b></div>';
     h += '<div class="sc-mini"><span>' + esc(t('col.balance')) + '</span><b>' + U.fmt(sc.balance, 2) + '</b></div>';
     h += '</div>';
     h += '<button class="btn btn-primary pkadd-btn" data-pkadd="' + p.id + '">' + Ic.glyph('pk') + ' ' + esc(t('player.compare')) + '</button>';
-    h += '</div></div>';
+    h += '</div>';
+    h += '</div>';
 
-    /* 世界 / 洲 / 地区 / 巅峰高度 排名（WCA 地区排名已按需求移除） */
-    h += '<div class="rank4">';
-    h += rankCard(t('player.rankWorld'), rk.world, M.ranked.length, 'globe', '',
-      tt('你在全球所有选手中的综合排名', 'Your overall rank among all players worldwide'));
-    h += rankCard(contName(rk.contName) + t('player.rankSuffix'), rk.continent, rk.continentOf, 'globe', '',
-      tt('你所在大洲（' + contName(rk.contName) + '）内的综合排名', 'Your rank within your continent (' + contName(rk.contName) + ')'));
-    h += rankCard(t('player.rankNation'), rk.nation, rk.nationOf, 'flag', countryName(p.country),
-      tt('你所在国家（' + countryName(p.country) + '）内的综合排名', 'Your rank within your country (' + countryName(p.country) + ')'));
+    /* 世界 / 洲 / 地区 / 巅峰高度 排名：按需求移入「选手信息板块」内部，
+       做成信息栏下方的一排紧凑胶囊，不再单独占据一个区块。 */
     const peakRank = M.ranked.filter(function (x) { return scoreOf(x).peak > sc.peak; }).length + 1;
-    h += rankCard(t('player.rankPeak') + t('player.rankSuffix'), peakRank, M.ranked.length, 'globe', '',
+    h += '<div class="pid-ranks">';
+    h += rankPill(t('player.rankWorld'), rk.world, M.ranked.length, 'globe', '',
+      tt('你在全球所有选手中的综合排名', 'Your overall rank among all players worldwide'));
+    h += rankPill(contName(rk.contName) + t('player.rankSuffix'), rk.continent, rk.continentOf, 'globe', '',
+      tt('你所在大洲（' + contName(rk.contName) + '）内的综合排名', 'Your rank within your continent (' + contName(rk.contName) + ')'));
+    h += rankPill(t('player.rankNation'), rk.nation, rk.nationOf, 'flag', countryName(p.country),
+      tt('你所在国家（' + countryName(p.country) + '）内的综合排名', 'Your rank within your country (' + countryName(p.country) + ')'));
+    h += rankPill(t('player.rankPeak') + t('player.rankSuffix'), peakRank, M.ranked.length, 'globe', '',
       tt('按巅峰高度（最佳连续 12 个月）在世界范围内的排名 —— 与「世界排名」的综合能力口径互为补充：综合能力偏生涯厚度，巅峰高度只看最尖的那一段。',
         'Your rank by peak height (best rolling 12 months) worldwide — a complement to the world rank: combined ability leans on career volume, peak height looks only at the sharpest stretch.'));
     h += '</div>';
     h += '</div>';
+
+    /* 核心数据：按需求上移到「选手信息」下方、「总分构成 · 七模块加权」上方 */
+    h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('player.coreStats')) + '</h2></div><div class="grid grid-4">';
+    [['col.wr', p.wr, ''], ['rec.level.CR', p.cr, t('player.crTip')], ['rec.level.NR', p.nr, ''], ['col.wc', p.wcGold, ''],
+    ['pod.level.CC', p.ccGold, ''], ['pod.level.NC', p.ncGold, ''], ['col.months', p.months1, ''],
+    ['col.elo', p.eloPeak, t('player.eloTip')], ['stat.podiumTotal', st.podiumTotal, ''], ['player.comps', p.comps, '']].forEach(function (s) {
+      h += '<div class="stat"><div class="k">' + esc(t(s[0])) + (s[2] ? ' ' + infoTip(s[2]) : '') + '</div><div class="v">' + U.num(s[1]) + '</div></div>';
+    });
+    h += '</div></div>';
 
     /* 总分构成 */
     h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('player.breakdown')) + '</h2>' +
@@ -132,6 +149,8 @@
       '<p class="tiny muted">' + esc(t('player.calcStep3')) + '</p>' +
       '<div class="calc-eq">Overall ＝ ' + U.fmt(sc.career, 1) + '<sup>0.6</sup> × ' + U.fmt(sc.peak, 1) + '<sup>0.4</sup> ＝ <b class="grad">' + U.fmt(sc.overall, 1) + '</b></div></div></div>';
     h += '</div></div>';
+    /* 各模块计算过程：把每个模块的代入过程完整写出来（需求：总分过程要写出各个分数的计算过程） */
+    h += moduleCalc(p, cs, sc);
     h += '<div class="grid grid-2" style="align-items:start">';
     h += '<div>' + ecBox('donut', cs.map(function (c) { return { name: c.name, value: c.v, color: c.color }; }), { radius: ['48%', '74%'], legend: true }, 260) + '</div>';
     h += '<div>' + ecBox('waterfall', cs.map(function (c) { return { name: c.name, value: c.v, color: c.color }; }), { name: t('player.contrib') }, 260) + '</div>';
@@ -218,15 +237,6 @@
       infoTip(t('player.coverage.d', { n: 5000 })) + '</div>' +
       '<p class="tiny muted" style="margin-bottom:12px">' + esc(t('player.coverage.d', { n: 5000 })) + '</p>' +
       coverage(p) + '</div>';
-
-    /* 原始统计 */
-    h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('player.coreStats')) + '</h2></div><div class="grid grid-4">';
-    [['col.wr', p.wr, ''], ['rec.level.CR', p.cr, t('player.crTip')], ['rec.level.NR', p.nr, ''], ['col.wc', p.wcGold, ''],
-    ['pod.level.CC', p.ccGold, ''], ['pod.level.NC', p.ncGold, ''], ['col.months', p.months1, ''],
-    ['col.elo', p.eloPeak, t('player.eloTip')], ['stat.podiumTotal', st.podiumTotal, ''], ['player.comps', p.comps, '']].forEach(function (s) {
-      h += '<div class="stat"><div class="k">' + esc(t(s[0])) + (s[2] ? ' ' + infoTip(s[2]) : '') + '</div><div class="v">' + U.num(s[1]) + '</div></div>';
-    });
-    h += '</div></div>';
     return h;
   };
 
@@ -263,6 +273,15 @@
       '<div class="rk-label">' + esc(label) + '</div>' +
       '<div class="rk-val"><b>' + rank + '</b><span class="tiny muted"> / ' + U.num(of) + '</span></div>' +
       (sub ? '<div class="tiny muted">' + esc(sub) + '</div>' : '') + '</div>';
+  }
+
+  /* 信息栏内的排名胶囊：世界 / 洲 / 地区 / 巅峰高度 */
+  function rankPill(label, rank, of, icon, sub, explain) {
+    return '<div class="pid-rank" title="' + esc(explain || label) + '">' +
+      '<span class="pr-ic">' + Ic.glyph(icon) + '</span>' +
+      '<span class="pr-label">' + esc(label) + '</span>' +
+      '<span class="pr-val"><b>' + rank + '</b><i>/ ' + U.num(of) + '</i></span>' +
+      (sub ? '<span class="pr-sub">' + esc(sub) + '</span>' : '') + '</div>';
   }
 
   function recRow(p, r, i) {
@@ -365,14 +384,135 @@
       /* 名次越靠前颜色越实（对数缩放，与色条一致） */
       const q = r > 0 ? Math.max(0.08, Math.min(1, 1 - Math.log(r) / Math.log(EVENT_RANK_MAX + 1))) : 0.08;
       const best = ent ? (ent.s || '') + (ent.af ? ' / ' + ent.af : '') : '';
-      h += '<div class="cov-cell" style="--a:' + round(q, 2) + '" title="' + nm + (r ? ' · #' + r + (best ? ' · ' + best : '') : ' · ' + t('player.coverage.noRank')) + '">' +
+      /* 名次格式：按需求由「#56」改为「No.56」 */
+      h += '<div class="cov-cell" style="--a:' + round(q, 2) + '" title="' + nm + (r ? ' · No.' + r + (best ? ' · ' + best : '') : ' · ' + t('player.coverage.noRank')) + '">' +
         Ic.event(e.id, 'ev-mini') + '<span class="cov-name">' + nm + '</span>' +
-        '<span class="cov-rank">' + (r > 0 ? '#' + r : '—') + '</span></div>';
+        '<span class="cov-rank">' + (r > 0 ? 'No.' + r : '—') + '</span></div>';
     });
     h += '</div>';
     return h;
   }
   function round(x, n) { const p = Math.pow(10, n); return Math.round(x * p) / p; }
+  function f2(x) { return U.fmt(x, 2); }
+
+  /* ================= 各模块计算过程（逐项代入） =================
+     需求：「总分过程没有将各个分数计算的过程写出来」。
+     这里对七个模块分别给出：计算式→ 代入你本人的数据 → 原始分 → 除以全站最高值归一化。
+     mCalc 明细由 ETL 随明细档选手下发；缺失时只展示归一化前后两个数并给出说明。 */
+  const MC_W = { m1: 3, m2: 1.5, m3: 1.0, m4: 1.0, m5: 0.7, m6: 0.5, m7: 0.85 };
+  function moduleCalc(p, cs, sc) {
+    const mc = p.mCalc || null;
+    const mx = (M.meta && M.meta.modMax) || {};
+    const byKey = {}; cs.forEach(function (c) { byKey[c.k] = c; });
+
+    /* 一行 = 一个模块：标题 + 计算式 + 代入明细 + 归一化 */
+    function row(key, formula, subs, rawVal) {
+      const c = byKey[key] || { raw: 0, color: '#888', name: key, w: 0 };
+      const mxk = mx[key] || 0;
+      const normV = mxk > 0 ? Math.min(100, rawVal / mxk * 100) : 0;
+      let h = '<details class="mc-item" open><summary class="mc-item-h">' +
+        '<i class="mc-dot" style="background:' + c.color + '"></i>' +
+        '<span class="mc-name">' + esc(c.name) + '</span>' +
+        '<span class="mc-eq">' + esc(formula) + '</span>' +
+        '<span class="mc-res"><b>' + U.fmt(normV, 2) + '</b>' +
+        '<span class="mc-res-w">× ' + U.fmt(c.w * 100, 1) + '% ＝ ' + U.fmt(c.v, 2) + '</span></span>' +
+        '<span class="sum-caret">›</span></summary>';
+      h += '<div class="mc-item-b">';
+      /*代入明细 */
+      if (subs && subs.length) {
+        h += '<div class="mc-subs">' + subs.map(function (s) {
+          return '<span class="mc-sub"><span class="mc-sub-k">' + esc(s[0]) + '</span>' +
+            '<span class="mc-sub-v">' + esc(s[1]) + '</span></span>';
+        }).join('') + '</div>';
+      } else if (!mc) {
+        h += '<p class="tiny muted mc-nod">' + esc(t('player.mcNoData')) + '</p>';
+      }
+      /* 原始分 → 归一化 */
+      h += '<div class="mc-norm">' +
+        '<span class="mc-ns">' + esc(t('player.mcRaw')) + '<b>' + f2(rawVal) + '</b></span>' +
+        '<span class="mc-op">÷</span>' +
+        '<span class="mc-ns">' + esc(t('player.mcMax')) + '<b>' + f2(mxk) + '</b></span>' +
+        '<span class="mc-op">×100＝</span>' +
+        '<span class="mc-ns grad"><span>' + esc(t('player.mcNorm')) + '</span><b>' + U.fmt(normV, 2) + '</b></span>' +
+        '</div>';
+      h += '</div></details>';
+      return h;
+    }
+
+    let h = '<div class="card reveal mc-card"><div class="card-head"><h2>' + esc(t('player.mcTitle')) + '</h2>' +
+      '<span class="tiny muted">M₁ … M₇</span></div>' +
+      '<p class="tiny muted" style="margin-bottom:12px">' + esc(t('player.mcTitle.d')) + '</p>';
+
+    /* M1 纪录分：单次 + 平均，WR×3 / CR×1.5 / NR(加权)×0.8 */
+    const rec = mc ? mc.rec : null;
+    const m1raw = rec ? (rec[0] * 3 + rec[1] * 1.5 + rec[2] * 0.8) + (rec[3] * 3 + rec[4] * 1.5 + rec[5] * 0.8) : (byKey.m1 ? byKey.m1.raw * (mx.m1 || 1) : 0);
+    h += row('m1', 'M₁ = 3·WR + 1.5·CR + 0.8·NR（单次） + 3·WR + 1.5·CR + 0.8·NR（平均）', rec ? [
+      [t('mc.wrS'), rec[0]], [t('mc.crS'), rec[1]], [t('mc.nrS'), f2(rec[2])],
+      [t('mc.wrA'), rec[3]], [t('mc.crA'), rec[4]], [t('mc.nrA'), f2(rec[5])]
+    ] : null, m1raw);
+
+    /* M2 大赛领奖台：金牌 1.0 / 银牌 0.6 / 铜牌 0.4，世锦 ×1.0、洲锦 ×0.7 */
+    const pod = mc ? mc.pod : null;
+    const pw = [1, 0.6, 0.4];
+    const m2raw = pod ? (pod[0] * pw[0] + pod[1] * pw[1] + pod[2] * pw[2]) * 1.0 +
+      (pod[3] * pw[0] + pod[4] * pw[1] + pod[5] * pw[2]) * 0.7 : (byKey.m2 ? byKey.m2.raw * (mx.m2 || 1) : 0);
+    h += row('m2', 'M₂ = Σ(名次权重 × 赛级权重)，名次 金1.0/银0.6/铜0.4，赛级 世锦1.0/洲锦0.7', pod ? [
+      [t('mc.wcG') + '×1.0', pod[0]], [t('mc.wcS') + '×0.6', pod[1]], [t('mc.wcB') + '×0.4', pod[2]],
+      [t('mc.ccG') + '×1.0', pod[3]], [t('mc.ccS') + '×0.6', pod[4]], [t('mc.ccB') + '×0.4', pod[5]]
+    ] : null, m2raw);
+
+    /* M3 公开赛领奖台：国锦 ×0.4、其他 ×0.4 */
+    const m3raw = pod ? (pod[6] * pw[0] + pod[7] * pw[1] + pod[8] * pw[2]) * 0.4 +
+      (pod[9] * pw[0] + pod[10] * pw[1] + pod[11] * pw[2]) * 0.4 : (byKey.m3 ? byKey.m3.raw * (mx.m3 || 1) : 0);
+    h += row('m3', 'M₃ = Σ(名次权重 × 赛级权重)，赛级 国锦0.4 / 其他0.4', pod ? [
+      [t('mc.ncG') + '×1.0', pod[6]], [t('mc.ncS') + '×0.6', pod[7]], [t('mc.ncB') + '×0.4', pod[8]],
+      [t('mc.otG') + '×1.0', pod[9]], [t('mc.otS') + '×0.6', pod[10]], [t('mc.otB') + '×0.4', pod[11]]
+    ] : null, m3raw);
+
+    /* M4 统治力：各项目 domScore(世界名次)× 项目权重，按权重平均 */
+    const rk = mc ? mc.rk : null;
+    const m4raw = rk && rk.length ? rk.reduce(function (a, x) { return a + x[2] * x[3]; }, 0) /
+      rk.reduce(function (a, x) { return a + x[3]; }, 0) : (byKey.m4 ? byKey.m4.raw * (mx.m4 || 1) : 0);
+    h += row('m4', 'M₄ = Σ[名次积分 D(r) × 项目权重 w_e] ÷ Σ w_e（D: 第1=1.00，前3=0.85，前10线性0.70→0.15，前50→0）', rk && rk.length ? rk.slice(0, 8).map(function (x) {
+      return [evName(M.EV[x[0]]) + ' ' + t('mc.rk') + ' No.' + x[1], 'D=' + f2(x[2]) + ' × w=' + f2(x[3])];
+    }) : null, m4raw);
+
+    /* M5 全能广度：项目数 / 21 × 0.7 + min(项目数 / 17, 1) × 0.3 */
+    const evn = mc ? mc.ev : (p.events ? p.events.length : 0);
+    const m5raw = (evn / 21) * 0.7 + Math.min(evn / 17, 1) * 0.3;
+    h += row('m5', 'M₅ = (项目数 ÷ 21) × 0.7 + min(项目数 ÷ 17, 1) × 0.3', [
+      [t('mc.ev'), evn + ' / 21'], ['', f2(evn / 21) + ' × 0.7 + ' + f2(Math.min(evn / 17, 1)) + ' × 0.3']
+    ], m5raw);
+
+    /* M6 生涯长度：年限 / 22 × 0.5 + min(场次, 300) / 300 × 0.3 + 连续年数 / 15 × 0.2 */
+    const span = mc ? mc.span : Math.max(1, (p.end || 0) - (p.start || 0) + 1);
+    const comps = mc ? mc.comps : (p.comps || 0);
+    const streak = mc ? mc.streak : 1;
+    const m6raw = (span / 22) * 0.5 + (Math.min(comps, 300) / 300) * 0.3 + streak / 15 * 0.2;
+    h += row('m6', 'M₆ = (年限 ÷ 22) × 0.5 + min(场次, 300) ÷ 300 × 0.3 + (最长连续年数 ÷ 15) × 0.2', [
+      [t('mc.span'), span + ' 年'], [t('mc.comps'), comps], [t('mc.streak'), streak + ' 年']
+    ], m6raw);
+
+    /* M7 实战对战：各项目 (参赛人数 − 世界名次) ÷ 参赛人数，跨项目平均 */
+    const m7raw = rk && rk.length ? rk.reduce(function (a, x) { return a + x[5]; }, 0) / rk.length
+      : (byKey.m7 ? byKey.m7.raw * (mx.m7 || 1) : 0);
+    h += row('m7', 'M₇ = 平均[ (该项目参赛人数 − 你的世界名次) ÷ 该项目参赛人数 ]', rk && rk.length ? rk.slice(0, 8).map(function (x) {
+      return [evName(M.EV[x[0]]) + ' ' + t('mc.cnt'), '(' + x[4] + ' − ' + x[1] + ') ÷ ' + x[4] + ' = ' + f2(x[5])];
+    }) : null, m7raw);
+
+    /* 收尾：七模块加权求和 */
+    const cSum = cs.reduce(function (a, c) { return a + c.v; }, 0);
+    h += '<div class="mc-total"><div class="mc-total-h">' + Ic.glyph('book') + ' ' + esc(t('player.calcStep2t')) + '</div>' +
+      '<div class="mc-total-eq">' + cs.map(function (c) {
+        return '<span class="mc-t"><i style="background:' + c.color + '"></i>' + U.fmt(c.raw, 1) + ' × ' + U.fmt(c.w * 100, 1) + '%</span>';
+      }).join('<span class="mc-t-op">+</span>') +
+      '<span class="mc-t-op">＝</span><b class="grad">' + U.fmt(cSum, 1) + '</b></div>' +
+      '<div class="mc-total-eq2">Overall ＝ ' + U.fmt(sc.career, 1) + '<sup>0.6</sup> × ' + U.fmt(sc.peak, 1) +
+      '<sup>0.4</sup> ＝ <b class="grad">' + U.fmt(sc.overall, 1) + '</b></div></div>';
+
+    h += '</div>';
+    return h;
+  }
 
   /* ================= 选手 PK ================= */
   P.pk = function (state) {

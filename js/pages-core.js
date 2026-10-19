@@ -112,18 +112,15 @@
     });
   }
 
-  /* ================= 首页 ================= */
+  /* 快速入口：按需求移除「三阶 GOAT / 盲拧 GOAT / 无冕之王 / 选手 PK」，
+     这四项均可由顶部筛选条（项目分组 / 地区）或导航栏直接到达。 */
   P.home = function () {
     const feats = [
       { k: 'rank', href: '#/rank', ic: 'trophy' },
-      { k: 'speed', href: '#/rank?g=speed', ic: 'speed' },
-      { k: 'blind', href: '#/rank?g=blind', ic: 'blind' },
-      { k: 'unknown', href: '#/topics?tab=other', ic: 'king' },
       { k: 'cn', href: '#/rank?country=CN', ic: 'flag' },
       { k: 'timeline', href: '#/timeline', ic: 'timeline' },
       { k: 'topics', href: '#/topics', ic: 'medal' },
-      { k: 'model', href: '#/model', ic: 'book' },
-      { k: 'pk', href: '#/pk', ic: 'pk' }
+      { k: 'model', href: '#/model', ic: 'book' }
     ];
     const hot = M.ranked.slice(0, 5).map(function (p) {
       return '<button class="chip" data-goto="#/player/' + p.id + '">' + esc(p.name) + '</button>';
@@ -170,6 +167,9 @@
   /* ================= 综合总榜 ================= */
   /* 三榜顺序：综合能力 → 生涯累计 → 巅峰高度 */
   const RANK_TABS = ['overall', 'career', 'peak'];
+  /* 榜单只统计前 N 名：300227 名全量逐条渲染没有意义，
+     且成绩口径/项目筛选下真正有竞争力的就是头部。 */
+  const RANK_TOP = 1000;
   const COLS = [
     { k: 'rank', label: 'col.rank', cls: 'tl' },
     { k: 'player', label: 'col.player', cls: 'tl' },
@@ -288,6 +288,13 @@
     const bdM = evs.length >= 2 ? evs.map(function (ev) { return { ev: ev, b: eventBoard(ev), w: evWeight(ev) }; }) : null;
     rows = rows.map(function (p) {
       const sc = scoreOf(p, rt);
+      /* 统一口径：三种选择方式（全部 / 单项目 / 多项目）一律按「历史地位分」排序。
+         项目筛选只做两件事，且两者对三种方式完全一致：
+           1) 选手池：只保留在该选择下有成绩的选手；
+           2) 广度折减：命中所选项目越少，折减越多（0.45~1.00）。
+         单项目时命中必然为 1/1，折减恒等于 1，因此与「只看该项目」的历史地位分完全相同。
+         早前版本在多项目下会把分数整个替换成「各项目世界名次的加权平均」，
+         与单项目/全项目不是同一把尺子，这里已统一。 */
       let score = sc[state.tab] || sc.overall;
       if (state.group === 'custom' && state.customIds && state.customIds.length) {
         const hit = p.events.filter(function (e) { return state.customIds.indexOf(e) >= 0; }).length;
@@ -297,7 +304,8 @@
         score = score * (0.45 + 0.55 * (hit / pool.length));
       }
       const row = { p: p, score: score, sc: sc, ev: sev || '', be: bd ? (bd.idx[p.id] || null) : null, bdLen: bd ? bd.len : 0, evs: null, evHit: 0, evSum: 0 };
-      /* 多项目模式：按选手在「所选各项目世界名次」上的加权表现重新排名 */
+      /* 多项目：额外算出每个所选项目上的世界名次，仅用于「色块 + 名次徽章」展示，
+         不参与排序（排序始终是上面的历史地位分）。 */
       if (bdM) {
         let sw = 0, sv = 0, hit = 0;
         const cells = bdM.map(function (o) {
@@ -309,7 +317,6 @@
         row.evs = cells;
         row.evHit = hit;
         row.evSum = sw > 0 ? sv / sw : 0;
-        if (hit > 0) row.score = row.evSum;
       }
       return row;
     });
@@ -347,7 +354,9 @@
   }
 
   P.rank = function (state) {
-    const rowsAll = P.filtered(state);
+    const allRows = P.filtered(state);
+    /* 仅统计前 1000 名（排序已在 filtered 内完成，这里截断） */
+    const rowsAll = allRows.length > RANK_TOP ? allRows.slice(0, RANK_TOP) : allRows;
     const rt = state.recType || 'all';
     const per = 50;
     const evMode = rowsAll.length ? (rowsAll[0].ev || '') : '';
@@ -375,15 +384,18 @@
       h += '<span class="tiny muted">' + esc(t('rank.tab.' + state.tab + '.d')) + '</span>';
     }
     h += '<span class="spacer"></span>';
-    /* 成绩口径：总计 / 单次 / 平均（只影响 M1 纪录分） */
-    h += '<div class="seg" id="typeSeg" title="' + esc(t('rank.type.d')) + '">';
-    [['all', 'rank.type.all'], ['single', 'rank.type.single'], ['avg', 'rank.type.avg']].forEach(function (x) {
-      h += '<button data-type="' + x[0] + '" class="' + (rt === x[0] ? 'on' : '') + '">' + esc(t(x[1])) + '</button>';
-    });
-    h += '</div>';
+    /* 成绩口径（总计 / 单次 / 平均）已由顶部筛选条统一提供，
+       此处不再重复放一套，避免两处控件看起来互相独立却只有一个生效。 */
+    if (rt !== 'all') {
+      h += '<span class="tag acc">' + esc(t('rank.type')) + ' · ' + esc(t('rank.type.' + rt)) + '</span>';
+    }
     h += '<span class="tiny muted">' + esc(t('rank.perPage')) + '</span>';
     h += '<a class="btn" href="#/model">' + Ic.glyph('sliders') + ' ' + esc(t('rank.params')) + '</a>';
     h += '</div>';
+    if (multiMode || evMode) {
+      /* 口径说明：三种选择方式统一按「历史地位分」排序，项目筛选只影响选手池与广度折减 */
+      h += '<div class="note-box reveal">' + Ic.glyph('info') + '<div>' + esc(t('rank.ruleNote')) + '</div></div>';
+    }
     if (multiMode) {
       h += '<div class="ev-legend reveal">';
       evsShown.forEach(function (ev, i) {
@@ -418,7 +430,8 @@
       h += '<td class="tl gcol">' + genderBadge(p) + '</td>';
       h += '<td class="tl"><span class="region-cell">' + flag(p.country) + '<span class="rname">' + esc(countryName(p.country)) + '</span></span></td>';
       if (multiMode && row.evs) {
-        /* 多项目：堆叠条＝各所选项目的加权贡献（色块即项目，越满＝该项目世界名次越靠前） */
+        /* 多项目：主数字与条宽＝历史地位分（与全项目 / 单项目同一把尺子）；
+           堆叠色块＝各所选项目上的世界名次相对位置（越满＝该项目名次越靠前），仅作参考。 */
         const wSum = evsShown.reduce(function (a, ev) { return a + evWeight(ev); }, 0) || 1;
         let segs = '';
         row.evs.forEach(function (c, ci) {
@@ -428,9 +441,16 @@
           segs += '<span style="width:' + Math.max(1.5, Math.min(100, rel)).toFixed(1) + '%;background:' + evColor(ci) + '" title="' +
             esc(evName(M.EV[c.ev] || { zh: c.ev, en: c.ev })) + ' #' + c.e.r + '"></span>';
         });
+        /* 各项目名次徽章：让「多项目」与「单项目」一样能直接看到世界名次 */
+        let badges = '';
+        row.evs.forEach(function (c, ci) {
+          badges += '<i class="ev-badge" style="background:' + evColor(ci) + '" title="' +
+            esc(evName(M.EV[c.ev] || { zh: c.ev, en: c.ev })) + '">' + (c.e ? '#' + c.e.r : '—') + '</i>';
+        });
         h += '<td class="barcell bars-full"><div class="bar-row evmode">' +
           '<div class="bar-grow" style="width:' + bw.toFixed(1) + '%"><div class="ministack evstack">' + segs + '</div></div>' +
-          '<span class="ev-res">' + U.fmt(row.evSum, 1) + '</span>' +
+          '<span class="bar-total">' + U.fmt(score, 1) + '</span>' +
+          '<span class="ev-badges">' + badges + '</span>' +
           '<span class="bar-total ev-rank">' + esc(t('rank.evMulti')) + ' ' + row.evHit + '/' + evsShown.length + '</span></div></td>';
       } else if (evMode) {
         /* 单项目：保留七模块堆叠条（说明分值构成），并显示该项目成绩与世界名次 */
@@ -460,14 +480,19 @@
     h += '<button data-page="' + pages + '"' + (pg === pages ? ' disabled' : '') + '">»</button>';
     h += '<span class="info">' + esc(t('rank.pager', { a: startNo + 1, b: Math.min(startNo + per, rowsAll.length), n: rowsAll.length })) + '</span>';
     const tot = (M.meta && M.meta.players) || rowsAll.length;
-    if (tot > rowsAll.length) {
+    /* 达到 1000 名上限时说明是「按上限截断」，否则说明是筛选后的真实人数 */
+    if (allRows.length > rowsAll.length) {
+      h += '<span class="info tiny muted">' + esc(t('rank.topCap', { n: U.num(rowsAll.length) })) + '</span>';
+    } else if (tot > rowsAll.length) {
       h += '<span class="info tiny muted">' + esc(t('rank.coverage', { n: U.num(rowsAll.length), t: U.num(tot) })) + '</span>';
     }
     h += '</div>';
     return h;
   };
 
-  /* 展开行：每模块 分值 / 权重 / 加权贡献（#10） */
+  /* 展开行：身份 + 三个总分 + 七模块贡献（带条形）+ 成绩速览
+     布局重构为「上：身份与总分条／中：模块贡献（横向条，最直观）／下：成绩速览」三层，
+     取代旧版左右两栏里数字堆叠的排布。 */
   P.expandBody = function (p, state) {
     const rt = (state && state.recType) || 'all';
     const sc = scoreOf(p, rt);
@@ -476,63 +501,79 @@
     const tot = cs.reduce(function (a, c) { return a + c.v; }, 0) || 1;
     const st = M.stats(p);
     const wcaUrl = 'https://www.worldcubeassociation.org/persons/' + encodeURIComponent(String(p.wcaId || p.id).toUpperCase());
+    const worldNo = (M.ranked.indexOf(p) + 1) || p.rank || 0;
 
-    let h = '<div class="exp-inner exp-v2">';
+    /* 模块按贡献从大到小排，条形长度即贡献占比，扫一眼就知道靠什么进的榜 */
+    const csDesc = cs.slice().sort(function (a, b) { return b.v - a.v; });
 
-    /* 左：选手身份 + 三个总分大数字 */
-    h += '<div class="exp-v2-side">';
-    h += '<div class="exp-v2-who"><span class="exp-v2-flag">' + flag(p.country, 'f-lg') + '</span>' +
-      '<div><b>' + esc(p.name) + '</b><div class="tiny muted">' + esc(countryName(p.country)) + ' · ' +
-      (genderOf(p.gender) === 'F' ? esc(t('f.gender.f')) : esc(t('f.gender.m'))) + ' · ' + p.start + '–' + p.end + '</div></div></div>';
-    h += '<div class="exp-v2-scores">';
-    [['overall', sc.overall], ['career', sc.career], ['peak', sc.peak]].forEach(function (s) {
-      h += '<div class="exp-v2-score"><span class="k">' + esc(t('rank.tab.' + s[0])) + '</span><span class="v">' + U.fmt(s[1], 1) + '</span></div>';
+    let h = '<div class="exp-inner exp-v3">';
+
+    /* ── 顶部：国旗 + 姓名 + 三个总分 ───────────────────────── */
+    h += '<div class="exp-v3-top">';
+    h += '<div class="exp-v3-id">' +
+      '<span class="exp-v3-flag">' + flag(p.country, 'f-lg') + '</span>' +
+      '<div class="exp-v3-idtxt">' +
+      '<b>' + esc(p.name) + '</b>' +
+      '<div class="exp-v3-meta">' +
+      '<span>' + esc(countryName(p.country)) + '</span>' +
+      '<span class="dot">·</span><span>' + (genderOf(p.gender) === 'F' ? esc(t('f.gender.f')) : esc(t('f.gender.m'))) + '</span>' +
+      '<span class="dot">·</span><span>' + p.start + '–' + p.end + '</span>' +
+      '<span class="dot">·</span><span>' + esc(String(p.wcaId || p.id)) + '</span>' +
+      '</div></div></div>';
+    h += '<div class="exp-v3-scores">';
+    [['overall', sc.overall, true], ['career', sc.career, false], ['peak', sc.peak, false]].forEach(function (s) {
+      h += '<div class="exp-v3-score' + (s[2] ? ' lead' : '') + '"><span class="k">' + esc(t('rank.tab.' + s[0])) + '</span>' +
+        '<span class="v' + (s[2] ? ' grad' : '') + '">' + U.fmt(s[1], 1) + '</span></div>';
+    });
+    h += '</div></div>';
+
+    /* ── 中部：七模块贡献（横向条） ─────────────────────────── */
+    h += '<div class="exp-v3-mods">';
+    h += '<div class="exp-v3-mods-h"><span>' + esc(t('rank.module')) + '</span>' +
+      '<span class="tiny muted">' + esc(t('player.contrib')) + ' · Σ = ' + U.fmt(tot, 2) + '</span></div>';
+    csDesc.forEach(function (c) {
+      const pct = c.v / tot * 100;
+      h += '<div class="exp-v3-mod">' +
+        '<span class="nm"><i style="background:' + c.color + '"></i>' + esc(c.name) + '</span>' +
+        '<span class="track"><i style="width:' + Math.max(1.5, pct).toFixed(1) + '%;background:' + c.color + '"></i></span>' +
+        '<span class="raw" title="' + esc(t('player.raw')) + '">' + U.fmt(c.raw, 1) + '</span>' +
+        '<span class="w" title="' + esc(t('player.weight')) + '">' + U.fmt(c.w * 100, 0) + '%</span>' +
+        '<span class="v">' + U.fmt(c.v, 2) + '</span>' +
+        '<span class="pc">' + U.fmt(pct, 1) + '%</span></div>';
     });
     h += '</div>';
-    h += '<div class="exp-v2-facts">';
-    const facts = [
-      [t('col.wr'), p.wr], [t('col.cr') || 'CR', p.cr], [t('col.nr') || 'NR', p.nr],
-      [t('col.comps') || '参赛', p.comps], [t('col.months') || '项目', (p.events || []).length],
-      [t('player.rankWorld'), (M.ranked.indexOf(p) + 1) || p.rank || '—']
-    ];
-    facts.forEach(function (f) {
-      h += '<div class="exp-v2-fact"><span>' + esc(f[0]) + '</span><b>' + esc(String(f[1])) + '</b></div>';
-    });
-    h += '</div>';
-    h += '</div>';
 
-    /* 右：七模块贡献表 + 纪录 / 领奖台摘要 */
-    h += '<div class="exp-v2-main">';
-    h += '<div class="exp-modtable">';
-    h += '<div class="exp-modrow bk-head"><span>' + esc(t('rank.module')) + '</span><span class="bk-num">' + esc(t('player.raw')) + '</span><span class="bk-num">' + esc(t('player.weight')) + '</span><span class="bk-num">' + esc(t('player.contrib')) + '</span><span class="bk-num">' + esc(t('player.pct')) + '</span></div>';
-    cs.forEach(function (c) {
-      h += '<div class="exp-modrow"><span class="bk-name"><i style="background:' + c.color + '"></i>' + esc(c.name) + '</span>' +
-        '<span class="bk-num">' + U.fmt(c.raw, 1) + '</span>' +
-        '<span class="bk-num">' + U.fmt(c.w * 100, 1) + '%</span>' +
-        '<span class="bk-num"><b>' + U.fmt(c.v, 2) + '</b></span>' +
-        '<span class="bk-num">' + U.fmt(c.v / tot * 100, 1) + '%</span></div>';
-    });
+    /* ── 底部：成绩速览 + 纪录亮点 + 操作 ───────────────────── */
+    h += '<div class="exp-v3-foot">';
+    h += '<div class="exp-v3-chips">';
+    h += '<span class="exp-v3-chip"><span class="k">' + esc(t('col.wr')) + '</span><b>' + U.num(p.wr) + '</b></span>';
+    h += '<span class="exp-v3-chip"><span class="k">CR</span><b>' + U.num(p.cr) + '</b></span>';
+    h += '<span class="exp-v3-chip"><span class="k">NR</span><b>' + U.num(p.nr) + '</b></span>';
+    h += '<span class="exp-v3-chip"><span class="k">' + esc(t('player.comps')) + '</span><b>' + U.num(p.comps) + '</b></span>';
+    h += '<span class="exp-v3-chip"><span class="k">' + esc(t('stat.podiumTotal')) + '</span><b>' + U.num(st.podiumTotal || p.podTotal || 0) + '</b></span>';
+    h += '<span class="exp-v3-chip"><span class="k">' + esc(t('player.rankWorld')) + '</span><b>No.' + worldNo + '</b></span>';
     h += '</div>';
-
-    /* 纪录亮点：按层级统计 + 保持最久的一条 */
+    h += '<div class="exp-v3-recs">';
     if (p.records && p.records.length) {
       const byLv = { WR: 0, CR: 0, NR: 0 };
       let longest = null;
-      p.records.forEach(function (r) { byLv[r.level] = (byLv[r.level] || 0) + 1; if (!longest || r.held > longest.held) longest = r; });
-      h += '<div class="exp-v2-chips">';
+      p.records.forEach(function (r) {
+        byLv[r.level] = (byLv[r.level] || 0) + 1;
+        if (!longest || r.held > longest.held) longest = r;
+      });
       ['WR', 'CR', 'NR'].forEach(function (lv) {
         if (!byLv[lv]) return;
         h += '<span class="rec-chip lv-' + lv + '">' + lv + ' ×' + byLv[lv] + '</span>';
       });
       if (longest) h += '<span class="rec-chip">' + esc(t('rec.held')) + ' ' + esc(heldText(longest.held)) + '</span>';
-      h += '</div>';
     }
     h += '</div>';
-
     h += '<div class="exp-actions">' +
       '<a class="btn btn-primary" href="#/player/' + p.id + '">' + esc(t('player.title')) + '</a>' +
       '<button class="btn" data-pkadd="' + p.id + '">' + esc(t('player.compare')) + '</button>' +
       '<a class="btn" href="' + wcaUrl + '" target="_blank" rel="noopener">WCA ↗</a></div>';
+    h += '</div>';
+
     h += '</div>';
     return h;
   };

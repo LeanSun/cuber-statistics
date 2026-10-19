@@ -65,7 +65,32 @@ jobs:
             const sp=M.presetGroups.find(g=>g.id==="speed");
             if(!sp||sp.ids.join(",")!=="222,333,444,555,666,777") bad("speed group wrong: "+JSON.stringify(sp));
             if(M.presetGroups.some(g=>g.id==="fmc")) bad("fmc group should be removed");
-            console.log("extra assertions OK: iso="+iso+" zh="+M.countriesZh[iso]+" cont="+M.continentOf[iso]+" held="+st.heldLongest);
+            /* M4统治力 / M7 实战对战：worldRank 的值是对象 {r,b,a}，必须取 .r。
+               早期版本把对象当名次传入 domScore()，NaN 传播导致这两个模块全员归零。 */
+            const zeroM4=M.ranked.filter(p=>!(p.m.m4>0));
+            const zeroM7=M.ranked.filter(p=>!(p.m.m7>0));
+            if(zeroM4.length) bad("m4 all-zero for "+zeroM4.length+" players (worldRank .r bug?)");
+            if(zeroM7.length) bad("m7 all-zero for "+zeroM7.length+" players (worldRank .r bug?)");
+            const elo=M.ranked.map(p=>p.eloPeak);
+            if(Math.min.apply(null,elo)<1400||Math.max.apply(null,elo)>2300) bad("eloPeak out of 1400-2300 range: "+Math.min.apply(null,elo)+"~"+Math.max.apply(null,elo));
+            /* 年度前10 / 前100：此前因 ETL 未产出 yearRank 而恒为 0 */
+            if(!M.ranked.some(p=>p.yTop10>0)) bad("yTop10 all zero (annual ranking missing)");
+            if(!M.ranked.some(p=>p.yTop100>0)) bad("yTop100 all zero (annual ranking missing)");
+            /* 归一化分母与逐项计算过程：选手页要靠它们写出每个模块的代入过程 */
+            if(!M.meta||!M.meta.modMax) bad("meta.modMax missing (module normalization denominators)");
+            ["m1","m2","m3","m4","m5","m6","m7"].forEach(k=>{ if(!(M.meta.modMax[k]>0)) bad("modMax."+k+" not positive: "+M.meta.modMax[k]); });
+            const mc=M.ranked[0].mCalc;
+            if(!mc) bad("mCalc missing on detail-tier player");
+            else {
+              if(!Array.isArray(mc.rec)||mc.rec.length!==6) bad("mCalc.rec wrong: "+JSON.stringify(mc.rec));
+              if(!Array.isArray(mc.pod)||mc.pod.length!==12) bad("mCalc.pod wrong");
+              if(!Array.isArray(mc.rk)||!mc.rk.length||mc.rk[0].length!==6) bad("mCalc.rk wrong: "+JSON.stringify(mc.rk).slice(0,120));
+              /* 前端代入 M5 的结果必须与 ETL 归一化后的 m5 一致（否则页面上的推导过程对不上号） */
+              const rawM5=(mc.ev/21)*0.7+Math.min(mc.ev/17,1)*0.3;
+              const nM5=Math.min(100,rawM5/M.meta.modMax.m5*100);
+              if(Math.abs(nM5-M.ranked[0].m.m5)>0.05) bad("M5 front-end recompute mismatch: "+nM5.toFixed(3)+" vs "+M.ranked[0].m.m5);
+            }
+            console.log("extra assertions OK: iso="+iso+" zh="+M.countriesZh[iso]+" cont="+M.continentOf[iso]+" held="+st.heldLongest+" elo="+Math.min.apply(null,elo)+"~"+Math.max.apply(null,elo)+" yTop10max="+Math.max.apply(null,M.ranked.map(p=>p.yTop10)));
           '
       - name: Page render smoke (DOM stubs)
         run: |

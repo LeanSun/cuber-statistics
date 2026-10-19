@@ -8,21 +8,61 @@
   const esc = U.esc;
   const { avatar, flag, playerLink, modName, ecBox, scoreOf, infoTip, evName, contName, countryName } = P.util;
 
-  /* 国家配色：主要国家用本国标志性色，其余按 iso 稳定取色 */
+  /* 国家配色：主要国家用本国标志性色，其余按 iso 稳定取色。
+     可在「评分原理说明」页逐国自定义（localStorage 持久化，用户覆盖优先）。
+     中国红与国旗红几乎同色，图上容易和国旗本身混为一谈 —— 默认已改用更深的绛红。 */
+  const CCOL_KEY = 'goat-countrycolors-v1';
   const COUNTRY_COLORS = {
-    CN: '#de2910', HK: '#de2910', MO: '#009944', TW: '#003399',
+    CN: '#a4121a', HK: '#8f1420', MO: '#00703c', TW: '#1f3d8f',
     US: '#1f4fd8', JP: '#bc002d', KR: '#0047a0', DE: '#111111', GB: '#012169',
     FR: '#0055a4', NL: '#ec0000', PL: '#dc143c', SE: '#006aa7', IT: '#008c45',
     ES: '#aa151b', RU: '#0039a6', UA: '#005bbb', CA: '#d80621', AU: '#00843d',
     BR: '#009b3a', MX: '#006847', IN: '#ff671f', ID: '#e70011', MY: '#010080',
     SG: '#ef3340', TH: '#2d2a4a', VN: '#da251d', PH: '#0038a8', NZ: '#00247d',
     CH: '#d52b1e', NG: '#008751', KE: '#006600', EG: '#ce1126', ZA: '#002395',
-    AR: '#74acdf', CL: '#0033a0'
+    AR: '#5b8cc4', CL: '#0033a0'
   };
+  /* YYYYMMDD → YYYY-MM-DD（泳道清单用；非法值统一显示为「至今」） */
+  function laneDate(dn) {
+    const s = String(dn == null ? '' : dn);
+    if (s.length !== 8) return t.isEn() ? 'ongoing' : '至今';
+    return s.slice(0, 4) + '-' + s.slice(4, 6) + '-' + s.slice(6, 8);
+  }
+
+  /* ---- 国家配色自定义（与模块配色同一套交互，评分原理页可改） ---- */
+  let ccCustom = null;
+  function loadCCustom() {
+    if (ccCustom) return ccCustom;
+    ccCustom = {};
+    try {
+      const s = localStorage.getItem(CCOL_KEY);
+      if (s) { const o = JSON.parse(s); Object.keys(o).forEach((k) => { if (/^#[0-9a-fA-F]{3,8}$/.test(o[k])) ccCustom[k] = o[k]; }); }
+    } catch (e) { }
+    return ccCustom;
+  }
   function countryColor(iso) {
-    if (COUNTRY_COLORS[iso]) return COUNTRY_COLORS[iso];
+    const k = String(iso || '').toUpperCase();
+    const cu = loadCCustom();
+    if (cu[k]) return cu[k];
+    if (COUNTRY_COLORS[k]) return COUNTRY_COLORS[k];
     return 'hsl(' + U.hue(iso || '??') + ',55%,50%)';
   }
+  P.countryColorDefaults = COUNTRY_COLORS;
+  P.countryColor = countryColor;
+  P.hasCustomCountryColor = function (k) { return !!loadCCustom()[String(k || '').toUpperCase()]; };
+  P.setCountryColor = function (k, v) {
+    const key = String(k || '').toUpperCase();
+    if (!/^#[0-9a-fA-F]{3,8}$/.test(v)) return false;
+    const cu = loadCCustom();
+    if (COUNTRY_COLORS[key] && v.toLowerCase() === COUNTRY_COLORS[key].toLowerCase()) delete cu[key];
+    else cu[key] = v;
+    try {
+      if (Object.keys(cu).length) localStorage.setItem(CCOL_KEY, JSON.stringify(cu));
+      else localStorage.removeItem(CCOL_KEY);
+    } catch (e) { }
+    return true;
+  };
+  P.resetCountryColors = function () { ccCustom = {}; try { localStorage.removeItem(CCOL_KEY); } catch (e) { } };
 
   /* ================= 动态可视化 ================= */
   /* 视图：分数竞速图 / 纪录持有图（名次变迁图已移除） */
@@ -30,15 +70,32 @@
   let TL_MS = M.milestones; /* 当前单项筛选下的里程碑集合（供图表标线使用） */
   P.tlIdxToInfo = tlIdxToInfo; P.tlSlider = tlSlider; /* 供 app.js 滑块 / 播放使用 */
 
-  /* 动画速率：可自定义「时间跳跃（天/秒）/ 动画时长 / 刷新间隔」，持久化到 localStorage */
+  /* 动画速率：可自定义「时间跳跃（天/秒）/ 动画时长 / 刷新间隔」，持久化到 localStorage
+     每项同时提供滑杆与数字输入框：滑杆用于快速手调，数字框用于精确输入（如 45 天/秒）。 */
   const RATE_KEY = 'goat-tlrate-v1';
   const RATE_DEF = { jump: 30, anim: 800, fps: 200 };
+  const RATE_META = {
+    jump: { min: 1, max: 365, step: 1, unit: () => (t.isEn() ? 'days/s' : ' 天/秒') },
+    anim: { min: 0, max: 2500, step: 100, unit: () => 'ms' },
+    fps: { min: 60, max: 1000, step: 20, unit: () => 'ms' }
+  };
+  function clampRate(k, v) {
+    const mt = RATE_META[k]; if (!mt) return v;
+    let n = parseInt(v, 10);
+    if (isNaN(n)) n = RATE_DEF[k];
+    return Math.max(mt.min, Math.min(mt.max, n));
+  }
   function loadRate() {
-    try { const o = JSON.parse(localStorage.getItem(RATE_KEY)); if (o) return Object.assign({}, RATE_DEF, o); } catch (e) { }
+    try {
+      const o = JSON.parse(localStorage.getItem(RATE_KEY));
+      if (o) { const r = Object.assign({}, RATE_DEF, o); Object.keys(RATE_META).forEach((k) => { r[k] = clampRate(k, r[k]); }); return r; }
+    } catch (e) { }
     return Object.assign({}, RATE_DEF);
   }
   function saveRate(o) { try { localStorage.setItem(RATE_KEY, JSON.stringify(o)); } catch (e) { } }
   P.tlRate = function () { return loadRate(); };
+  P.tlRateMeta = RATE_META;
+  P.tlClampRate = clampRate;
 
   /* 自定义重大事件：localStorage 持久化 + 与内置合并 */
   const MS_KEY = 'goat-milestones-custom';
@@ -88,23 +145,28 @@
     });
     h += '</div></div>';
     h += '<span class="spacer"></span>';
-    h += '<label class="tiny muted row" style="gap:5px"><input type="checkbox" id="tlSmooth"' + (state.tlSmooth ? ' checked' : '') + '> ' + esc(t('tl.smooth')) + '</label>';
+    /* 「3 期滑动平滑」：勾选后每一帧的分数取「当天 / 前 1 天 / 前 2 天」三期的平均值，
+       用于压掉某一天集中刷出大量纪录造成的尖峰，让名次变化曲线更平滑；
+       它只影响中间帧的抖动，不改变末帧（末帧仍是完整历史地位分）。 */
+    h += '<span class="tiny muted row" style="gap:5px"><input type="checkbox" id="tlSmooth"' + (state.tlSmooth ? ' checked' : '') + '> ' +
+      esc(t('tl.smooth')) + infoTip(t('tl.smooth.d')) + '</span>';
     h += '</div>';
 
-    /* 动画速率自定义（仅分数竞速图需要）：默认 30 天/秒 */
+    /* 动画速率自定义（仅分数竞速图需要）：默认 30 天/秒，滑杆 + 数字输入框双通道 */
     if (view === 'race') {
       h += '<div class="row tl-top tl-rate" style="margin-top:10px">';
       h += '<span class="flabel">' + esc(t('tl.rate')) + '</span>';
-      h += '<label class="rate-item"><span>' + esc(t('tl.rate.jump')) + '</span>' +
-        '<input type="range" id="tlRateJump" min="1" max="365" step="1" value="' + rate.jump + '">' +
-        '<b id="tlRateJumpV">' + rate.jump + ' 天/秒</b></label>';
-      h += '<label class="rate-item"><span>' + esc(t('tl.rate.anim')) + '</span>' +
-        '<input type="range" id="tlRateAnim" min="0" max="2500" step="100" value="' + rate.anim + '">' +
-        '<b id="tlRateAnimV">' + rate.anim + 'ms</b></label>';
-      h += '<label class="rate-item"><span>' + esc(t('tl.rate.fps')) + '</span>' +
-        '<input type="range" id="tlRateFps" min="60" max="1000" step="20" value="' + rate.fps + '">' +
-        '<b id="tlRateFpsV">' + rate.fps + 'ms</b></label>';
+      [['jump', 'tl.rate.jump'], ['anim', 'tl.rate.anim'], ['fps', 'tl.rate.fps']].forEach(function (r) {
+        const mt = RATE_META[r[0]];
+        h += '<label class="rate-item"><span>' + esc(t(r[1])) + '</span>' +
+          '<input type="range" id="tlRate' + r[0] + 'Cap" min="' + mt.min + '" max="' + mt.max +
+          '" step="' + mt.step + '" value="' + rate[r[0]] + '" data-rate="' + r[0] + '">' +
+          '<input type="number" class="rate-num" id="tlRate' + r[0] + '" min="' + mt.min + '" max="' + mt.max +
+          '" step="' + mt.step + '" value="' + rate[r[0]] + '" data-rate="' + r[0] + '" aria-label="' + esc(t(r[1])) + '">' +
+          '<b>' + rate[r[0]] + esc(mt.unit()) + '</b></label>';
+      });
       h += '<button class="btn btn-ghost" id="tlRateReset">' + esc(t('tl.rate.reset')) + '</button>';
+      h += '<span class="tiny muted rate-hint">' + esc(t('tl.rate.step1')) + '</span>';
       h += '</div>';
     }
 
@@ -137,21 +199,59 @@
     const custom = loadCustomMs().map(function (m) { return Object.assign({ custom: true }, m); });
     const ms = msBase.concat(custom).sort(function (a, b) { return (a.year || 0) - (b.year || 0); });
     TL_MS = ms;
+    h += '<div class="tl-stage">';
     h += '<div class="chart-box tl-chart-link" id="tlChart" style="height:' + chH + 'px" data-view="' + view + '" data-mode="' + mode +
       '" data-fy="' + fy + '" data-metric="' + metric + '" data-lane="' + state.tlLane + '" data-smooth="' + (state.tlSmooth ? 1 : 0) +
       '" data-region="' + geoRegion + '" data-country="' + geoCountry + '" data-ev="' + evsBox.join(',') +
       '" data-gender="' + (state.gender || 'all') + '" data-type="' + (state.recType || 'all') + '"></div>';
 
-    /* 事件轨道：竞速图横轴是分数，里程碑竖线无处安放，改在这里呈现（可点击跳转） */
-    if (view !== 'lane') {
-      h += '<div class="ms-rail" id="msRail" title="' + esc(t('tl.rail.d')) + '">';
-      ms.forEach(function (m) {
-        const label = t.isEn() ? (m.en || m.zh) : m.zh;
-        h += '<button class="ms-rail-item' + (m.custom ? ' ms-custom' : '') + '" data-msjump="' + (m.date || (m.year + '-01-01')) + '">' +
-          '<b>' + (m.date || m.year) + '</b> ' + esc(String(label).slice(0, 22)) + '</button>';
+    /* 纪录持有图：泳道下方的持有者清单。
+       悬停清单项时在图上高亮对应色块并显示该选手的国旗与姓名（data-laneseg 联动）；
+       每项同时给出「开始 → 结束」日期与真实持有天数。 */
+    if (view === 'lane') {
+      const lanesSrc = (state.tlLane === 'avg' ? M.lanesAvg : M.lanes) || [];
+      h += '<div class="lane-list" id="laneList">';
+      let flatIx = 0;   /* 泳道图 series.data 是把所有泳道的段拍平的数组，下标需连续累加 */
+      lanesSrc.forEach(function (L, li) {
+        h += '<div class="lane-row">';
+        h += '<div class="lane-row-h"><span class="lane-ev">' + Ic.event(L.ev, 'ev-mini') + ' ' +
+          esc(evName(M.EV[L.ev] || { zh: L.zh, en: L.en })) + '</span>' +
+          (L.retired ? '<span class="lane-retired">' + esc(t('f.retired')) + '</span>' : '') + '</div>';
+        h += '<div class="lane-segs">';
+        L.segs.forEach(function (sg, si) {
+          /* 国旗用 CSS class（.fi.fi-xx）渲染即可，无需探测 data URI */
+          h += '<button type="button" class="lane-seg" data-laneseg="' + li + '-' + si + '" data-laneix="' + (flatIx++) + '">' +
+            (sg.iso ? '<span class="lane-flag fi fi-' + String(sg.iso).toLowerCase() + '"></span>' : '') +
+            '<span class="lane-holder">' + esc(sg.holder) + '</span>' +
+            '<span class="lane-dates mono">' + laneDate(sg.fromDn) + ' → ' + laneDate(sg.toDn) + '</span>' +
+            '<span class="lane-days">' + sg.days + ' ' + (t.isEn() ? 'days' : '天') + '</span>' +
+            '</button>';
+        });
+        h += '</div></div>';
       });
       h += '</div>';
-      h += '<p class="tiny muted" style="margin:6px 0 0">' + esc(t('tl.msWhy')) + '</p>';
+    }
+
+    /* 重大事件：竞速图横轴是分数，里程碑竖线无处安放；
+       按需求改为「浮在分数竞速图右下角的可折叠弹窗」，点击条目可跳转到对应时间。
+       泳道图横轴就是年份，仍用markLine 直接画在图上，无需弹窗。 */
+    if (view !== 'lane') {
+      const recent = ms.slice().reverse().slice(0, 40);
+      h += '<div class="ms-pop" id="msPop">';
+      h += '<button type="button" class="ms-pop-tab" id="msPopTab" aria-expanded="false">' +
+        Ic.glyph('star') + '<span>' + esc(t('tl.events')) + '</span><b>' + ms.length + '</b>' +
+        '<i class="ms-pop-caret">▾</i></button>';
+      h += '<div class="ms-pop-body" id="msPopBody" hidden>';
+      h += '<div class="ms-pop-h">' + esc(t('tl.events')) +
+        (singleEv ? ' · ' + esc(evName(M.EV[singleEv])) : '') +
+        '<span class="tiny muted">' + esc(t('tl.msWhy')) + '</span></div>';
+      h += '<div class="ms-pop-list" id="msRail">';
+      recent.forEach(function (m) {
+        const label = t.isEn() ? (m.en || m.zh) : m.zh;
+        h += '<button class="ms-rail-item' + (m.custom ? ' ms-custom' : '') + '" data-msjump="' + (m.date || (m.year + '-01-01')) + '" title="' + esc(String(label)) + '">' +
+          '<b>' + (m.date || m.year) + '</b> ' + esc(String(label).slice(0, 26)) + '</button>';
+      });
+      h += '</div></div></div>';
     }
     h += '</div>';
 
@@ -299,7 +399,10 @@
   }
 
   /* 分数竞速图：口径与「历史地位排名」完全一致 —— 生涯累计按截至当日的纪录 / 领奖台
-     年度分比例缩放，峰谷比保持不变，因此末帧即总榜综合能力分。 */
+     年度分比例缩放，峰谷比保持不变，因此末帧即总榜综合能力分。
+     项目筛选与总榜用同一套规则：先按项目裁剪选手池，再按「命中比例」做广度折减
+     （0.45~1.00，单项目时恒为 1）。此前这里只裁选手池、不重新计分，
+     导致上方筛选项目后下方竞速图几乎不变，已修复。 */
   function snapshot(mode, fy, smooth, region, country, evs, gender, rtype) {
     const key = rtype === 'single' ? 'yearlyS' : (rtype === 'avg' ? 'yearlyA' : 'yearly');
     function cum(p, y) {
@@ -325,14 +428,28 @@
       const ratio = Math.max(0, Math.min(1, cf / all));
       if (ratio <= 0) return;
       const sc = P.util.scoreOf(p, rtype);
-      const career = sc.career * ratio;
+      /* 广度折减：与总榜一致，命中所选项目越少折减越多（单项目恒为 1） */
+      let breadth = 1;
+      if (evs && evs.length) {
+        let hit = 0;
+        for (let i = 0; i < evs.length; i++) if ((p.events || []).indexOf(evs[i]) >= 0) hit++;
+        breadth = 0.45 + 0.55 * (hit / evs.length);
+      }
+      const career = sc.career * ratio * breadth;
       const ratio2 = Math.max(0.05, Math.min(3, sc.peak / Math.max(sc.career, 0.01)));
       const v = career * Math.pow(ratio2, 0.4);
       if (v <= 0) return;
       rows.push({ name: p.name, country: p.country, hue: p.hue, id: p.id, iso: p.country, value: v, color: countryColor(p.country), flag: window.Charts.flagUri(p.country) });
     });
-    return rows.sort(function (a, b) { return b.value - a.value; });
+    return rows.sort(function (a, b) { return b.value - a.value; })
+      /* 排名序号 1–15（前端 barRace 画在条形左端） */
+      .map(function (r, i) { r.no = i + 1; return r; });
   }
+
+  /* 暴露给冒烟测试：验证筛选项目确实改变了竞速图结果 */
+  P.tlSnapshot = function (evs, fy, rtype, gender, country) {
+    return snapshot('cumulative', fy == null ? 2025 : fy, false, '', country || '', evs || [], gender || 'all', rtype || 'all');
+  };
 
   function markLines() {
     const T = window.Charts.theme();
@@ -764,6 +881,22 @@
     });
     h += '<button class="btn btn-ghost" id="mColorReset">' + esc(t('md.resetDefault')) + '</button>';
     h += '</div></div>';
+
+    /* 国家配色：竞速图/ 泳道图按国籍取色，逐国可自定义 */
+    const CC = P.countryColorDefaults || {};
+    const ccKeys = Object.keys(CC).sort();
+    h += '<div class="card reveal md-colors"><div class="md-params-title">' + Ic.glyph('flag') + ' ' +
+      esc(t('md.countryColors')) + '</div>' +
+      '<p class="tiny muted" style="margin:6px 0 10px">' + esc(t('md.countryColorsHint')) + '</p>' +
+      '<div class="md-colors-body cc-body" id="ccBody">';
+    ccKeys.forEach(function (iso) {
+      h += '<label class="crow cc-row"><input type="color" data-ccolor="' + iso + '" value="' + esc(countryColor(iso)) + '">' +
+        '<span class="cc-flag fi fi-' + iso.toLowerCase() + '"></span>' +
+        '<span class="cr-name">' + esc(countryName(iso) || iso) + '</span>' +
+        '<code>' + esc(countryColor(iso)) + '</code></label>';
+    });
+    h += '</div><div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap">' +
+      '<button class="btn btn-ghost" id="ccReset">' + esc(t('md.resetDefault')) + '</button></div></div>';
 
     /* 两栏：左目录 + 右详情（一次只展示一个章节） */
     h += '<div class="md-layout">';

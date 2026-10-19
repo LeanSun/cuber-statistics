@@ -327,6 +327,23 @@ tr:hover .rank-no{transform:scale(1.08)}
 .rank-no.top2{background:var(--border-2);color:var(--text)}
 .rank-no.top3{background:var(--m2);color:#3a2007}
 .pname{display:flex;align-items:center;gap:8px;justify-content:flex-start}
+/* 鼠标划过选手列：名字轻微放大并做一次短促的「跳动」，让长榜单里更容易锁定目标 */
+.pname .linkish,.pname .pname-txt{
+  display:inline-block;transform-origin:left center;
+  transition:transform .18s cubic-bezier(.34,1.56,.64,1),color .18s;
+}
+tr:hover .pname .linkish,tr:hover .pname .pname-txt{
+  animation:nameHop .42s cubic-bezier(.34,1.56,.64,1) 1;
+}
+@keyframes nameHop{
+  0%{transform:scale(1)}
+  38%{transform:scale(1.16) translateY(-2px)}
+  70%{transform:scale(1.04) translateY(0)}
+  100%{transform:scale(1.08)}
+}
+@media (prefers-reduced-motion:reduce){
+  tr:hover .pname .linkish,tr:hover .pname .pname-txt{animation:none;transform:scale(1.05)}
+}
 .avatar{
   width:28px;height:28px;border-radius:50%;flex:none;display:inline-flex;align-items:center;justify-content:center;
   font-size:11px;font-weight:600;color:#fff;transition:transform .18s ease;
@@ -361,6 +378,13 @@ tr:hover .rank-no{transform:scale(1.08)}
 .ev-res i{font-style:normal;color:var(--text-3);margin:0 1px}
 .ev-res.muted{font-weight:400;color:var(--text-3)}
 .bar-total.ev-rank{min-width:44px;color:var(--accent)}
+/* 多项目：各所选项目上的世界名次徽章（与单项目模式一样能直接看到名次） */
+.ev-badges{display:inline-flex;gap:3px;flex:none;flex-wrap:nowrap;max-width:190px;overflow:hidden}
+.ev-badge{display:inline-flex;align-items:center;justify-content:center;
+  min-width:30px;padding:1px 5px;border-radius:999px;color:#fff;
+  font-size:10.5px;font-weight:700;font-style:normal;
+  font-variant-numeric:tabular-nums;white-space:nowrap;opacity:.92}
+.ev-badge:hover{opacity:1;filter:brightness(1.08)}
 .ev-tag{white-space:nowrap}
 @keyframes barGrow{from{transform:scaleX(0);opacity:.35}to{transform:scaleX(1);opacity:1}}
 .gcol{width:1%;white-space:nowrap}
@@ -430,8 +454,12 @@ tr:hover .rank-no{transform:scale(1.08)}
 
 /* ============ 选手页 ============ */
 .pcard{padding:20px 22px}
-.pcard-main{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap}
+.pcard-main{display:flex;flex-direction:column;gap:0;min-width:0}
+/* 姓名与综合能力分同一行、按基线对齐，保证大号分数与姓名处在同一水平线上 */
+.pcard-topline{display:flex;align-items:baseline;justify-content:space-between;
+  gap:18px;flex-wrap:wrap}
 .pcard-id{display:flex;gap:16px;align-items:flex-start;flex:1;min-width:280px}
+.pcard-name{flex:1;min-width:0}
 .pcard-name h1{font-size:26px;margin-bottom:2px;letter-spacing:-.01em}
 .wca-name{display:inline-flex;align-items:center;gap:6px;color:var(--text)}
 .wca-name:hover{color:var(--accent);text-decoration:none}
@@ -440,7 +468,10 @@ tr:hover .rank-no{transform:scale(1.08)}
 .p-tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
 .tag{background:var(--bg-soft);border-radius:999px;padding:3px 11px;font-size:12px;color:var(--text-2)}
 .tag.acc{background:var(--accent-soft);color:var(--accent)}
-.pcard-score{margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:10px}
+/* 次级分数行：生涯/ 巅峰 / 均衡 + PK 按钮 */
+.pcard-sub{display:flex;align-items:center;justify-content:space-between;
+  gap:14px;flex-wrap:wrap;margin-top:10px}
+.pcard-score{display:flex;flex-direction:column;align-items:flex-end;gap:0;flex:none}
 .sc-wrap{text-align:right}
 .sc-label{font-size:11.5px;color:var(--text-3)}
 .sc-value{
@@ -449,9 +480,26 @@ tr:hover .rank-no{transform:scale(1.08)}
   filter:drop-shadow(0 2px 10px rgba(47,111,235,.18));
 }
 .sc-row{display:flex;gap:14px}
-.sc-mini{text-align:right;font-size:12px;color:var(--text-3)}
+.sc-mini{text-align:left;font-size:12px;color:var(--text-3)}
 .sc-mini b{display:block;font-size:16px;color:var(--text);font-variant-numeric:tabular-nums}
 .pkadd-btn{align-self:flex-end}
+/* 信息栏内的排名胶囊（世界 / 洲 / 地区 / 巅峰高度） */
+.pid-ranks{display:grid;grid-template-columns:repeat(auto-fit,minmax(178px,1fr));
+  gap:9px;margin-top:14px;padding-top:13px;border-top:1px dashed var(--border)}
+.pid-rank{display:flex;align-items:center;gap:9px;padding:8px 12px;
+  border-radius:12px;background:var(--bg-soft);border:1px solid var(--border);
+  transition:transform .18s cubic-bezier(.34,1.4,.64,1),border-color .18s,background .18s}
+.pid-rank:hover{transform:translateY(-2px);border-color:var(--accent);background:var(--bg-soft-2)}
+.pid-rank .pr-ic{display:inline-flex;align-items:center;justify-content:center;
+  width:24px;height:24px;border-radius:8px;flex:none;
+  background:var(--accent-soft);color:var(--accent)}
+.pid-rank .pr-ic .ic,.pid-rank .pr-ic svg{width:14px;height:14px}
+.pid-rank .pr-label{font-size:12px;color:var(--text-2);white-space:nowrap}
+.pid-rank .pr-val{margin-left:auto;display:flex;align-items:baseline;gap:1px;
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.pid-rank .pr-val b{font-size:16px;font-weight:800;color:var(--text)}
+.pid-rank .pr-val i{font-style:normal;font-size:11px;color:var(--text-3)}
+.pid-rank .pr-sub{font-size:10.5px;color:var(--text-3);white-space:nowrap}
 .rank4{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:16px}
 .rank-card{
   background:var(--bg-soft);border-radius:var(--r-md);padding:12px 14px;position:relative;overflow:hidden;
@@ -724,8 +772,10 @@ tr:hover .rank-no{transform:scale(1.08)}
   .bigsearch{flex-direction:column}
   .bigsearch .bs-ic{display:none}
   .card{padding:13px 14px}
-  .pcard-score{margin-left:0;width:100%;align-items:flex-start}
+  .pcard-topline{align-items:flex-start;flex-direction:column-reverse;gap:6px}
+  .pcard-score{margin-left:0;width:auto;align-items:flex-start}
   .sc-wrap,.sc-mini{text-align:left}
+  .pid-ranks{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
   .pkadd-btn{align-self:flex-start}
   .breakdown-row{grid-template-columns:minmax(96px,1.2fr) 1fr 52px 54px;gap:8px;font-size:12.5px}
   .breakdown-row .bk-num:nth-child(5),.breakdown-row .bk-num:nth-child(6){display:none}
@@ -811,8 +861,16 @@ tr[data-prow]:hover .pname .linkish,.pname:hover .linkish{
 
 /* 动画速率控制条 */
 .tl-rate{flex-wrap:wrap;gap:14px;align-items:center}
+.rate-hint{opacity:.8}
 .rate-item{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--text-2)}
 .rate-item input[type=range]{width:110px}
+/* 数字输入框：与滑杆并排，用于精确输入速率（如 45 天/秒） */
+.rate-num{width:64px;padding:3px 6px;font-size:11.5px;font-variant-numeric:tabular-nums;
+  text-align:center;border:1px solid var(--border-2);border-radius:7px;
+  background:var(--bg-elev);color:var(--text)}
+.rate-num:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 22%,transparent)}
+.rate-num::-webkit-outer-spin-button,.rate-num::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.rate-num[type=number]{-moz-appearance:textfield;appearance:textfield}
 .rate-item b{font-size:11.5px;color:var(--text);min-width:52px;font-variant-numeric:tabular-nums}
 
 /* 自定义重大事件：三输入框表单 */
@@ -837,11 +895,14 @@ tr[data-prow]:hover .pname .linkish,.pname:hover .linkish{
   background:var(--bg-soft);border:1px solid var(--border);border-radius:10px;padding:5px 10px}
 .crow input[type=color]{width:26px;height:26px;padding:0;border:0;background:none;cursor:pointer}
 .crow code{font-size:11px;color:var(--text-3)}
+/* 国家配色：国旗 + 国名 + 取色器 */
+.md-colors-body.cc-body{gap:10px}
+.crow.cc-row{padding:4px 9px}
+.cc-row .cc-flag{width:20px;height:14px;border-radius:2px;flex:none;background-size:cover}
+.cc-row .cc-flag.fi{background-color:var(--bg-soft-2)}
 
 /* 展开详情 v2：左身份卡 + 右模块表 */
 .exp-inner.exp-v2{display:grid;grid-template-columns:minmax(220px,280px) 1fr;gap:16px;align-items:start}
-.exp-v2-side{display:flex;flex-direction:column;gap:12px;padding:14px;border-radius:14px;
-  background:var(--bg-soft);border:1px solid var(--border)}
 .exp-v2-who{display:flex;gap:10px;align-items:center}
 .exp-v2-who b{font-size:15px;display:block;margin-bottom:2px}
 .exp-v2-flag .fi{width:30px;height:22px}
@@ -858,6 +919,67 @@ tr[data-prow]:hover .pname .linkish,.pname:hover .linkish{
 .rec-chip{font-size:11.5px;padding:3px 9px;border-radius:999px;background:var(--bg-soft);
   border:1px solid var(--border);color:var(--text-2)}
 .rec-chip.lv-WR{background:color-mix(in srgb,#ffd84d 20%,transparent);border-color:#ffd84d;color:#b8860b}
+
+/* ============ 展开详情 v3：三层纵向布局（身份+总分／模块贡献条／成绩速览） ============ */
+.exp-inner.exp-v3{display:flex;flex-direction:column;gap:14px;padding:4px 2px}
+/* 顶部：身份 + 三个总分 */
+.exp-v3-top{display:flex;gap:18px;align-items:center;flex-wrap:wrap;
+  padding:12px 16px;border-radius:14px;
+  background:linear-gradient(120deg,var(--bg-soft),var(--bg-soft-2));
+  border:1px solid var(--border)}
+.exp-v3-id{display:flex;gap:12px;align-items:center;min-width:0;flex:1}
+.exp-v3-flag .fi{width:38px;height:28px;border-radius:4px}
+.exp-v3-idtxt{min-width:0}
+.exp-v3-idtxt>b{display:block;font-size:18px;font-weight:700;letter-spacing:-.01em;
+  line-height:1.25;word-break:break-word}
+.exp-v3-meta{display:flex;gap:6px;flex-wrap:wrap;align-items:center;
+  font-size:12px;color:var(--text-3);margin-top:3px}
+.exp-v3-meta .dot{opacity:.5}
+.exp-v3-scores{display:flex;gap:8px;flex:none}
+.exp-v3-score{display:flex;flex-direction:column;align-items:center;gap:1px;
+  min-width:76px;padding:7px 12px;border-radius:12px;
+  background:var(--bg-elev);border:1px solid var(--border)}
+.exp-v3-score.lead{border-color:var(--accent);box-shadow:0 2px 10px color-mix(in srgb,var(--accent) 18%,transparent)}
+.exp-v3-score .k{font-size:11px;color:var(--text-3)}
+.exp-v3-score .v{font-size:19px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.15}
+.exp-v3-score .v.grad{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+/* 中部：七模块贡献条 */
+.exp-v3-mods{display:flex;flex-direction:column;gap:5px;padding:12px 16px;
+  border-radius:14px;background:var(--bg-soft);border:1px solid var(--border)}
+.exp-v3-mods-h{display:flex;justify-content:space-between;align-items:baseline;
+  font-size:12px;font-weight:700;color:var(--text-2);
+  padding-bottom:7px;margin-bottom:2px;border-bottom:1px dashed var(--border)}
+.exp-v3-mod{display:grid;grid-template-columns:104px minmax(80px,1fr) 46px 38px 54px 48px;
+  gap:9px;align-items:center;font-size:12px}
+.exp-v3-mod .nm{display:flex;align-items:center;gap:6px;min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-2)}
+.exp-v3-mod .nm i{width:9px;height:9px;border-radius:50%;flex:none}
+.exp-v3-mod .track{height:9px;border-radius:999px;background:var(--bg-soft-2);overflow:hidden}
+.exp-v3-mod .track i{display:block;height:100%;border-radius:999px;
+  transition:width .4s cubic-bezier(.4,0,.2,1)}
+.exp-v3-mod .raw,.exp-v3-mod .w,.exp-v3-mod .v,.exp-v3-mod .pc{
+  text-align:right;font-variant-numeric:tabular-nums;color:var(--text-3)}
+.exp-v3-mod .w{opacity:.75}
+.exp-v3-mod .v{color:var(--text);font-weight:700}
+.exp-v3-mod .pc{opacity:.8}
+/* 底部：速览胶囊 + 纪录亮点 + 操作 */
+.exp-v3-foot{display:flex;gap:12px;align-items:center;flex-wrap:wrap;
+  padding-top:2px}
+.exp-v3-chips{display:flex;gap:6px;flex-wrap:wrap}
+.exp-v3-chip{display:inline-flex;align-items:baseline;gap:5px;
+  padding:3px 10px;border-radius:999px;font-size:11.5px;
+  background:var(--bg-soft-2);border:1px solid var(--border)}
+.exp-v3-chip .k{color:var(--text-3)}
+.exp-v3-chip b{font-variant-numeric:tabular-nums;color:var(--text)}
+.exp-v3-recs{display:flex;gap:6px;flex-wrap:wrap}
+.exp-v3-foot .exp-actions{margin-left:auto}
+@media (max-width:760px){
+  .exp-v3-top{flex-direction:column;align-items:stretch}
+  .exp-v3-scores{justify-content:space-between}
+  .exp-v3-score{min-width:0;flex:1}
+  .exp-v3-mod{grid-template-columns:78px minmax(50px,1fr) 40px 34px 46px 42px;gap:6px;font-size:11.5px}
+  .exp-v3-foot .exp-actions{margin-left:0;width:100%}
+}
 .rec-chip.lv-CR{background:color-mix(in srgb,#38bdf8 18%,transparent);border-color:#38bdf8}
 .rec-chip.lv-NR{background:color-mix(in srgb,#4ade80 18%,transparent);border-color:#4ade80}
 @media (max-width:760px){
@@ -913,9 +1035,58 @@ tr[data-prow]:hover .pname .linkish,.pname:hover .linkish{
 .calc-eq b.grad{background:var(--grad-egg,linear-gradient(90deg,var(--m1),var(--m7)));
   -webkit-background-clip:text;background-clip:text;color:transparent;font-size:20px}
 
-/* 项目领域格子：图标 / 名称 / 名次 纵向排列，消除重叠 */
-.cov-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px}
-.cov-cell{display:flex;flex-direction:column;align-items:center;gap:3px;padding:10px 6px 8px;
+/* 各模块计算过程（逐项代入） */
+.mc-card{margin-top:4px}
+.mc-item{border:1px solid var(--border);border-radius:12px;background:var(--bg-soft);
+  margin-bottom:8px;overflow:hidden}
+.mc-item-h{display:flex;align-items:center;gap:10px;padding:10px 13px;cursor:pointer;
+  list-style:none;flex-wrap:wrap}
+.mc-item-h::-webkit-details-marker{display:none}
+.mc-item-h::marker{content:""}
+.mc-item[open] .mc-item-h{border-bottom:1px dashed var(--border)}
+.mc-item-h:hover{background:var(--bg-elev)}
+.mc-dot{width:9px;height:9px;border-radius:50%;flex:none}
+.mc-name{font-weight:700;font-size:13.5px;flex:none}
+.mc-eq{flex:1 1 260px;min-width:0;font-size:11.5px;color:var(--text-2);line-height:1.45;
+  font-family:var(--mono,ui-monospace,Consolas,monospace)}
+.mc-res{display:flex;align-items:baseline;gap:8px;margin-left:auto;flex:none}
+.mc-res b{font-size:16px;font-variant-numeric:tabular-nums}
+.mc-res-w{font-size:11.5px;color:var(--text-2);font-variant-numeric:tabular-nums}
+.mc-item-h .sum-caret{transition:transform .18s}
+.mc-item[open] .mc-item-h .sum-caret{transform:rotate(90deg)}
+.mc-item-b{padding:11px 13px 13px}
+.mc-subs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.mc-sub{display:inline-flex;align-items:baseline;gap:6px;font-size:11.5px;
+  background:var(--bg-elev);border:1px solid var(--border);border-radius:999px;padding:3px 10px}
+.mc-sub-k{color:var(--text-2)}
+.mc-sub-v{color:var(--text);font-variant-numeric:tabular-nums;font-weight:600}
+.mc-nod{margin:0 0 10px}
+.mc-norm{display:flex;align-items:center;gap:9px;flex-wrap:wrap;font-size:12px;color:var(--text-2)}
+.mc-ns{display:inline-flex;align-items:baseline;gap:5px;background:var(--bg-elev);
+  border:1px solid var(--border);border-radius:9px;padding:4px 9px}
+.mc-ns b{color:var(--text);font-size:13.5px;font-variant-numeric:tabular-nums}
+.mc-ns.grad b{background:var(--grad-egg,linear-gradient(90deg,var(--m1),var(--m7)));
+  -webkit-background-clip:text;background-clip:text;color:transparent;font-size:16px}
+.mc-op{font-weight:700;color:var(--text-3)}
+.mc-total{margin-top:12px;padding:12px 14px;border:1px solid var(--border-2);border-radius:12px;
+  background:var(--bg-elev)}
+.mc-total-h{display:flex;align-items:center;gap:7px;font-weight:700;font-size:13px;margin-bottom:8px}
+.mc-total-eq{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:12.5px;
+  color:var(--text-2);font-variant-numeric:tabular-nums}
+.mc-t{display:inline-flex;align-items:center;gap:4px;background:var(--bg-soft);
+  border:1px solid var(--border);border-radius:8px;padding:2px 8px}
+.mc-t i{width:7px;height:7px;border-radius:50%}
+.mc-t-op{color:var(--text-3);font-weight:700}
+.mc-total-eq b.grad{background:var(--grad-egg,linear-gradient(90deg,var(--m1),var(--m7)));
+  -webkit-background-clip:text;background-clip:text;color:transparent;font-size:19px}
+.mc-total-eq2{margin-top:8px;font-size:13px;color:var(--text-2);font-variant-numeric:tabular-nums}
+.mc-total-eq2 b.grad{background:var(--grad-egg,linear-gradient(90deg,var(--m1),var(--m7)));
+  -webkit-background-clip:text;background-clip:text;color:transparent;font-size:20px}
+
+/* 项目领域格子：图标 / 名称 / 名次 纵向排列，消除重叠
+   （需求：图标与名称间距拉开、名称要能完整显示） */
+.cov-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:9px}
+.cov-cell{display:flex;flex-direction:column;align-items:center;gap:7px;padding:12px 8px 10px;
   border:1px solid var(--border);border-radius:12px;background:var(--bg-soft);
   position:relative;overflow:hidden;transition:transform .18s,border-color .18s}
 .cov-cell::before{content:"";position:absolute;inset:0;
@@ -924,9 +1095,11 @@ tr[data-prow]:hover .pname .linkish,.pname:hover .linkish{
 .cov-cell:hover{transform:translateY(-2px) scale(1.04);border-color:var(--accent)}
 .cov-cell.empty{opacity:.4;border-style:dashed;background:transparent}
 .cov-cell.empty::before{display:none}
-.cov-cell .ev-mini{font-size:20px;line-height:1}
-.cov-cell .cov-name{font-size:11.5px;color:var(--text-2);text-align:center;line-height:1.25}
-.cov-cell .cov-rank{font-size:13px;font-weight:800;color:var(--text);font-variant-numeric:tabular-nums}
+.cov-cell .ev-mini{font-size:22px;line-height:1;flex:none;margin-bottom:2px}
+/* 名称单行不折行（原来是 wrap + 窄列，导致「3x3x3 多盲」这类长名称被截断显示不全） */
+.cov-cell .cov-name{font-size:11.5px;color:var(--text-2);text-align:center;line-height:1.3;
+  white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.cov-cell .cov-rank{font-size:13px;font-weight:800;color:var(--text);font-variant-numeric:tabular-nums;letter-spacing:.02em}
 .cov-cell.empty .cov-rank{font-weight:400;color:var(--text-3)}
 
 /* 事件轨道（分数竞速图的里程碑呈现） */
@@ -942,3 +1115,51 @@ tr[data-prow]:hover .pname .linkish,.pname:hover .linkish{
 
 /* 竞速图可点击跳转 */
 .tl-chart-link{cursor:pointer}
+
+/* ============ 重大事件：浮在分数竞速图右下角的可折叠弹窗 ============ */
+.tl-stage{position:relative}
+.ms-pop{position:absolute;right:10px;bottom:10px;z-index:6;max-width:min(420px,72%);
+  display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.ms-pop-tab{display:inline-flex;align-items:center;gap:7px;cursor:pointer;
+  padding:5px 11px;border-radius:999px;font-size:12px;font-weight:600;
+  color:var(--text-2);background:var(--bg-elev);
+  border:1px solid var(--border-2);box-shadow:var(--shadow);
+  transition:color .16s,border-color .16s,background .16s}
+.ms-pop-tab:hover{color:var(--accent);border-color:var(--accent)}
+.ms-pop-tab.on{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
+.ms-pop-tab svg,.ms-pop-tab .ic{width:14px;height:14px;flex:none}
+.ms-pop-tab b{display:inline-flex;align-items:center;justify-content:center;
+  min-width:18px;height:18px;padding:0 5px;border-radius:999px;
+  background:var(--bg-soft-2);color:var(--text-2);font-size:10.5px;
+  font-variant-numeric:tabular-nums}
+.ms-pop-caret{font-style:normal;font-size:10px;transition:transform .2s}
+.ms-pop-tab.on .ms-pop-caret{transform:rotate(180deg)}
+.ms-pop-body{width:100%;max-height:270px;overflow:auto;padding:10px 11px;
+  border-radius:13px;background:var(--bg-elev);
+  border:1px solid var(--border-2);box-shadow:0 10px 30px rgba(0,0,0,.20);
+  animation:msPopIn .22s cubic-bezier(.34,1.3,.64,1)}
+@keyframes msPopIn{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:none}}
+.ms-pop-h{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;
+  font-size:12px;font-weight:700;color:var(--text);
+  padding-bottom:7px;margin-bottom:8px;border-bottom:1px dashed var(--border)}
+.ms-pop-list{display:flex;gap:6px;flex-wrap:wrap}
+.ms-pop-list .ms-rail-item{margin-top:0}
+
+/* ============ 纪录持有图：泳道清单（悬停 → 图上高亮 + 姓名国旗浮标） ============ */
+.lane-list{display:flex;flex-direction:column;gap:9px;margin-top:12px}
+.lane-row{border:1px solid var(--border);border-radius:12px;background:var(--bg-soft);padding:9px 11px}
+.lane-row-h{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+.lane-ev{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--text)}
+.lane-retired{font-size:10.5px;padding:1px 7px;border-radius:999px;
+  background:var(--bg-soft-2);border:1px dashed var(--border-2);color:var(--text-3)}
+.lane-segs{display:flex;flex-wrap:wrap;gap:6px}
+.lane-seg{display:inline-flex;align-items:center;gap:8px;cursor:pointer;
+  padding:4px 10px;border-radius:999px;font-size:11.5px;
+  background:var(--bg-elev);border:1px solid var(--border);color:var(--text-2);
+  transition:border-color .16s,background .16s,transform .16s}
+.lane-seg:hover,.lane-seg.on{border-color:var(--accent);background:var(--accent-soft);color:var(--text)}
+.lane-seg.on{transform:translateY(-1px);box-shadow:0 2px 8px color-mix(in srgb,var(--accent) 22%,transparent)}
+.lane-flag{width:18px;height:13px;border-radius:2px;flex:none;background-size:cover}
+.lane-holder{font-weight:600;color:var(--text);white-space:nowrap}
+.lane-dates{font-size:10.5px;color:var(--text-3);white-space:nowrap}
+.lane-days{font-size:10.5px;color:var(--accent);font-weight:600;white-space:nowrap}
