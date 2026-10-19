@@ -9,6 +9,92 @@
   const toastEl = document.getElementById('toast');
   const esc = U.esc;
 
+  /* ---------- 长尾名册（懒加载） ----------
+     js/data.js 只带可排名的头部选手；其余选手（全部 30 万 WCA 注册者）压缩在
+     js/roster.js 里，首屏不阻塞，用户开始搜索时才按需载入并合并进搜索索引，
+     保证「选手总数」与「搜得到人」覆盖全量 300227。 */
+  let roster = null;        // Map<lowerName|id, [轻量选手对象]>
+  let rosterLoading = null;
+  function rosterURL() {
+    const b = document.getElementsByTagName('base')[0];
+    const base = b ? b.getAttribute('href') : './';
+    return (base || './') + 'js/roster.js';
+  }
+  function loadRoster() {
+    if (roster) return Promise.resolve(roster);
+    if (rosterLoading) return rosterLoading;
+    rosterLoading = new Promise(function (res, rej) {
+      const s = document.createElement('script');
+      s.src = rosterURL();
+      s.async = true;
+      s.onload = function () {
+        const R = window.WCA_ROSTER;
+        if (!R || !R.rows) { res(null); return; }
+        const map = new Map();
+        R.rows.split('\n').forEach(function (line) {
+          if (!line) return;
+          const f = line.split('~');
+          const o = {
+            id: f[0], wcaId: f[0], name: f[1], nameZh: null,
+            country: f[2], gender: f[3], overall: +f[4] || 0,
+            start: +f[5] || 0, end: +f[6] || 0, comps: +f[7] || 0,
+            events: f[8] ? f[8].split(',') : [],
+            roster: 1, slim: 1, records: [], podiums: [],
+            m: {}, pk: {}, yearly: {}, yearlyS: {}, yearlyA: {},
+            wr: 0, cr: 0, nr: 0, recTotal: 0, podTotal: 0, nrW: 0,
+            months1: 0, months10: 0, months100: 0, peakSpan: 0, peakAge: 0,
+            wcGold: 0, ccGold: 0, ncGold: 0, eloPeak: 1500
+          };
+          o.career = o.overall; o.peak = o.overall;
+          o.hue = 0; o.mainEvent = o.events[0] || '';
+          o.cities = 0; o.dnf = 0; o.resultRows = 0; o.attempts = 0; o.solves = 0;
+          o.maxEventsPerComp = 0; o.multiEventComp = 0;
+          const push = function (k) {
+            const kk = k.toLowerCase();
+            let a = map.get(kk); if (!a) { a = []; map.set(kk, a); }
+            a.push(o);
+          };
+          push(o.id); push(o.name);
+        });
+        roster = map;
+        res(roster);
+      };
+      s.onerror = function () { res(null); };
+      document.head.appendChild(s);
+    });
+    return rosterLoading;
+  }
+  /* 在已有选手 + 名册里搜索；名册未载入时先载入再搜 */
+  function searchAll(q, q2, limit) {
+    const hit = function (src) {
+      return src.filter(function (p) {
+        if (String(p.wcaId || p.id).toLowerCase().indexOf(q2) >= 0) return true;
+        if (p.name.toLowerCase().indexOf(q) >= 0) return true;
+        if (p.country.toLowerCase() === q) return true;
+        if ((M.countries[p.country] || '').toLowerCase().indexOf(q) >= 0) return true;
+        if ((M.countriesZh && (M.countriesZh[p.country] || '').indexOf(q) >= 0)) return true;
+        return p.events.some(function (e) {
+          const E = M.EV[e]; if (!E) return false;
+          return (E.zh && E.zh.indexOf(q) >= 0) || (E.en && E.en.toLowerCase().indexOf(q) >= 0);
+        });
+      }).sort(function (a, b) { return b.overall - a.overall; }).slice(0, limit || 12);
+    };
+    const local = hit(M.ranked);
+    if (!roster) return Promise.resolve(local);
+    /* 先看名册里有没有更靠前的命中 */
+    const tail = [];
+    roster.forEach(function (arr, k) {
+      if (k.indexOf(q2) >= 0 || k.indexOf(q) >= 0) tail.push.apply(tail, arr);
+    });
+    const seen = {};
+    const all = local.concat(tail);
+    all.forEach(function (p) { seen[p.id] = 1; });
+    return Promise.resolve(Object.keys(seen).map(function (id) {
+      return all.filter(function (p) { return p.id === id; })[0];
+    }).sort(function (a, b) { return b.overall - a.overall; }).slice(0, limit || 12));
+  }
+  window.WB_roster = { load: loadRoster, search: searchAll, has: function () { return !!roster; } };
+
   const state = {
     tab: 'overall', sortKey: 'score', sortDir: 'desc', page: 1,
     group: 'all', customIds: [], evSel: [], country: '', continent: '', region: '',
@@ -312,8 +398,11 @@
   function updateSummary(route) {
     const el = document.getElementById('fgSummary');
     if (!el) return;
+    /* 无筛选时展示 WCA 全量选手数；有筛选时展示当前条件下的可用选手数 */
     let n = M.ranked.length;
-    if (route === 'rank') n = P.filtered(state).length;
+    const noFilt = !state.geo && (!state.gender || state.gender === 'all') && !state.y0 && !state.y1
+      && (!state.evSel || !state.evSel.length) && (!state.group || state.group === 'all') && !state.retired;
+    if (route === 'rank' || route === 'timeline') n = noFilt ? ((M.meta && M.meta.players) || n) : P.filtered(state).length;
     else if (route === 'topics') n = P.util.topicPool(state).length;
     let geoLabel = '';
     if (state.region) geoLabel = P.util.regionName(state.region);
@@ -409,28 +498,24 @@
       function doSearch() {
         const q = (inp.value || '').trim().toLowerCase();
         if (!q) { box.innerHTML = ''; return; }
-        /* 搜索范围＝本站点收录的全部选手（含精简档案），支持姓名 / WCA ID / 国家（中英文）/ 项目 */
+        /* 搜索范围＝全量 WCA 选手：data.js 的可排名选手 +懒加载的长尾名册 */
         const q2 = q.replace(/^#/, '');
-        const hits = M.ranked.filter(function (p) {
-          if (String(p.wcaId || p.id).toLowerCase().indexOf(q2) >= 0) return true;
-          if (p.name.toLowerCase().indexOf(q) >= 0) return true;
-          if (p.country.toLowerCase() === q) return true;
-          if ((M.countries[p.country] || '').toLowerCase().indexOf(q) >= 0) return true;
-          if ((M.countriesZh && (M.countriesZh[p.country] || '').indexOf(q) >= 0)) return true;
-          return p.events.some(function (e) {
-            const E = M.EV[e]; if (!E) return false;
-            return (E.zh && E.zh.indexOf(q) >= 0) || (E.en && E.en.toLowerCase().indexOf(q) >= 0);
-          });
-        }).sort(function (a, b) { return b.overall - a.overall; }).slice(0, 12);
-        if (!hits.length) { box.innerHTML = '<p class="tiny muted">' + esc(t('ui.noresult')) + '</p>'; return; }
-        box.innerHTML = '<div class="card" style="padding:10px">' + hits.map(function (p) {
-          return '<div class="row" style="gap:10px;padding:5px 0;border-bottom:1px solid var(--border)">' +
-            '<a href="#/player/' + p.id + '" style="flex:1">' + esc(p.name) + '</a>' +
-            P.util.flag(p.country) + '<span class="tiny muted">' + esc(P.util.countryName(p.country)) + '</span>' +
-            '<span class="tiny muted">' + U.fmt(P.util.scoreOf(p).overall, 1) + '</span></div>';
-        }).join('') + '</div>';
+        box.innerHTML = '<p class="tiny muted">' + esc(t('home.searching')) + '</p>';
+        searchAll(q, q2, 12).then(function (hits) {
+          if (!hits.length) { box.innerHTML = '<p class="tiny muted">' + esc(t('ui.noresult')) + '</p>'; return; }
+          box.innerHTML = '<div class="card" style="padding:10px">' + hits.map(function (p) {
+            return '<div class="row" style="gap:10px;padding:5px 0;border-bottom:1px solid var(--border)">' +
+              '<a href="#/player/' + p.id + '" style="flex:1">' + esc(p.name) + '</a>' +
+              P.util.flag(p.country) + '<span class="tiny muted">' + esc(P.util.countryName(p.country)) + '</span>' +
+              '<span class="tiny muted">' + U.fmt(p.overall, 1) + '</span></div>';
+          }).join('') + '</div>';
+        });
       }
-      if (inp) inp.addEventListener('input', doSearch);
+      if (inp) {
+        /* 首次输入时才拉取长尾名册，避免首屏加载 30 万条 */
+        inp.addEventListener('focus', function () { loadRoster(); }, { once: true });
+        inp.addEventListener('input', doSearch);
+      }
       if (form) form.addEventListener('submit', function (e) { e.preventDefault(); doSearch(); });
       view.querySelectorAll('.stat .v[data-count]').forEach(countUp);
     }

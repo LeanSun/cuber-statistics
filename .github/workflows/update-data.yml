@@ -11,9 +11,9 @@ on:
         required: false
         default: '2500'
       slim_max:
-        description: 'Total players emitted (rest are compact profiles)'
+        description: 'Players emitted into js/data.js (the rest go to the lazy roster file)'
         required: false
-        default: '30000'
+        default: '60000'
   # 数据管道代码变更时自动重建（不含 js/data.js 本身，避免机器人提交触发循环）
   push:
     branches: [main]
@@ -66,7 +66,7 @@ jobs:
             --zip /tmp/wca_export.tsv.zip \
             --out js/data.js \
             --detail-max "${{ github.event.inputs.detail_max || '2500' }}" \
-            --slim-max "${{ github.event.inputs.slim_max || '30000' }}" \
+            --slim-max "${{ github.event.inputs.slim_max || '60000' }}" \
             --date "${EXPORT_DATE:-$(date +%F)}" \
             --ver "${EXPORT_VER:-v2.0.2}"
 
@@ -74,7 +74,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add js/data.js
+          git add js/data.js js/roster.js
           if git diff --cached --quiet; then
             echo "No changes to js/data.js"
           else

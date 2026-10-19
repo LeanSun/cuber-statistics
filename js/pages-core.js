@@ -143,9 +143,11 @@
     h += '</section>';
 
     const sc = M.meta;
+    /* 选手总数用WCA 全量人数（js/data.js 只带可排名的头部，长尾在懒加载名册里） */
+    const nPlayers = sc.players || M.ranked.length;
     h += '<div class="sec-head reveal"><h2>' + esc(t('home.overview')) + '</h2></div>';
     h += '<div class="card reveal"><div class="grid grid-4">';
-    h += '<div class="stat"><div class="k">' + esc(t('home.stat.players')) + '</div><div class="v hc1" data-count="' + sc.players + '" data-dec="0">0</div></div>';
+    h += '<div class="stat" title="' + esc(t('home.stat.playersTip')) + '"><div class="k">' + esc(t('home.stat.players')) + '</div><div class="v hc1" data-count="' + nPlayers + '" data-dec="0">0</div></div>';
     h += '<div class="stat"><div class="k">' + esc(t('home.stat.comps')) + '</div><div class="v hc2" data-count="' + sc.comps + '" data-dec="0">0</div></div>';
     h += '<div class="stat"><div class="k">' + esc(t('home.stat.wr')) + '</div><div class="v hc3" data-count="' + sc.wr + '" data-dec="0">0</div></div>';
     h += '<div class="stat"><div class="k">' + esc(t('home.stat.records')) + '</div><div class="v hc4" data-count="' + sc.records + '" data-dec="0">0</div></div>';
