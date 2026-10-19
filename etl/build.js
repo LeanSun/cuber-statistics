@@ -34,7 +34,7 @@ const ZIP = arg('--zip', null);
 const DIR = arg('--dir', null);
 const OUT = arg('--out', path.join(ROOT, 'js', 'data.js'));
 const EMIT_MAX = parseInt(arg('--emit-max', '0'), 10) || 0;
-const SLIM_MAX = parseInt(arg('--slim-max', '30000'), 10) || 0;
+const SLIM_MAX = parseInt(arg('--slim-max', '305000'), 10) || 0;
 const DETAIL_MAX = parseInt(arg('--detail-max', '2500'), 10) || 0;
 const KEEP_YEARLY = 3000;
 let KEEP_YEARLY_N = KEEP_YEARLY;
@@ -338,15 +338,16 @@ const players = new Map();
    只能靠 result_id 关联回选手；结果行上千万条，用 Uint32Array 存下标最省内存
    （Map 存字符串在这个量级会爆堆外内存）。 */
 let rid2ix = new Uint32Array(1 << 24);
-function ridSet(rid, v) {
+let rid2ev = new Uint16Array(1 << 24);
+function ridSet(rid, v, ev) {
   if (rid >= rid2ix.length) {
     let cap = rid2ix.length;
     while (cap <= rid) cap *= 2;
-    const bigger = new Uint32Array(cap);
-    bigger.set(rid2ix);
-    rid2ix = bigger;
+    const bigger = new Uint32Array(cap); bigger.set(rid2ix); rid2ix = bigger;
+    const b2 = new Uint16Array(cap); b2.set(rid2ev); rid2ev = b2;
   }
   rid2ix[rid] = v;
+  if (ev != null) rid2ev[rid] = ev;
 }
 /* 扫描 result_attempts 得到真实的「尝试数 / 有效复原数 / DNF 数」。
    约定：-1 = DNF、-2 = DNS、0 = 无成绩（cutoff 未过等，不算尝试）。 */
@@ -354,6 +355,7 @@ async function processAttempts() {
   if (!hasEntry('result_attempts')) { log('result_attempts 表不存在，跳过单次成绩统计'); return 0; }
   const arr = Array.from(players.values());
   arr.forEach(function (p) { p.attempts = 0; p.solves = 0; p.dnf = 0; });
+  const evIds = evIxList.length ? evIxList : Array.from(events.keys());
   let rows = 0;
   await streamTsv('result_attempts', (r) => {
     rows++;
@@ -364,6 +366,12 @@ async function processAttempts() {
     const v = toInt(pick(r, ['value']));
     if (v === 0 || v === -2) return;
     p.attempts++;
+    const eid = evIds[rid2ev[rid]];
+    const eb = eid ? evBucket(p, eid) : null;
+    if (eb) {
+      eb.att++;
+      if (v === -1) eb.dnf++; else eb.sol++;
+    }
     if (v === -1) p.dnf++; else p.solves++;
   });
   log('result_attempts rows:', rows);
@@ -384,13 +392,41 @@ function getPlayer(id) {
       gender: (persons.get(id) || { gender: 'M' }).gender,
       eventsSet: new Set(), compsSet: new Set(),
       start: 9999, end: 0, wr: 0, cr: 0, nr: 0, nrW: 0,
+      wrS: 0, crS: 0, nrS: 0, nrWS: 0, wrA: 0, crA: 0, nrA: 0, nrWA: 0,
       resultRows: 0, attempts: 0, solves: 0, dnf: 0,
-      podiums: [], records: [], yearly: {},
-      activeStreak: 1
+      podiums: [], records: [], yearly: {}, yearlyS: {}, yearlyA: {},
+      activeStreak: 1,
+      /* 按项目的真实统计（另类统计页项目筛选用）：
+         evStat[项目] = { rows, att, sol, dnf, pod, gold, comps, years } */
+      evStat: {}
     };
     players.set(id, p);
   }
   return p;
+}
+/* 取（并初始化）选手在某项目上的统计桶 */
+function evBucket(p, eid) {
+  let b = p.evStat[eid];
+  if (!b) {
+    b = { rows: 0, att: 0, sol: 0, dnf: 0, pod: 0, gold: 0, sil: 0, bro: 0,
+      wr: 0, cr: 0, nr: 0, held: 0, heldLong: 0, heldNow: 0,
+      comps: 0, years: [], seen: [], cities: {}, goldPerYear: {},
+      recPerYear: {}, wc: 0, cc: 0, nc: 0, lo: 0, op: 0 };
+    p.evStat[eid] = b;
+  }
+  return b;
+}
+function compCity(cid) {
+  const c = comps.get(cid);
+  return c ? (c.city || c.name || cid) : (cid || '?');
+}
+/* 项目 id → 连续下标（供 rid2ev 用 Uint16 存） */
+let evIx = null, evIxList = [];
+function buildEventIndex() {
+  const m = new Map(); let i = 0;
+  events.forEach(function (v, k) { m.set(k, i++); });
+  evIxList = Array.from(events.keys());
+  return m;
 }
 
 function trackMilestone(eid, best, year) {
@@ -442,12 +478,42 @@ function daysBetween(a, b) {
   const A = new Date(numToDate(a) + 'T00:00:00Z'), B = new Date(numToDate(b) + 'T00:00:00Z');
   return Math.max(0, Math.round((B - A) / 86400000));
 }
+function tlIsLeap(y) { return (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0; }
+/* dateNum(YYYYMMDD) → 小数年（用于泳道图 x 定位，保留天级精度） */
+function fyOfDn(dn) {
+  if (!dn) return 0;
+  const y = Math.floor(dn / 10000), mo = Math.floor(dn / 100) % 100, d = dn % 100;
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return y;
+  const dt = Date.UTC(y, mo - 1, d), y0 = Date.UTC(y, 0, 1);
+  return y + (dt - y0) / 86400000 / (tlIsLeap(y) ? 366 : 365);
+}
+/* 洲际纪录在导出里不是字面量 'CR'，而是具体洲代码；无纪录为字面量 'NULL'。
+   （WCA 官方口径：ER 欧洲 / NAR 北美 / AsR 亚洲 / SAR 南美 / AfR 非洲 / OcR 大洋洲） */
+const CONT_RECORD = { AfR: 1, ER: 1, OcR: 1, NAR: 1, AsR: 1, SAR: 1 };
+const CR_REGION = { AfR: 'Af', ER: 'Eu', OcR: 'Oc', NAR: 'NAm', AsR: 'As', SAR: 'SAm' };
+function recordLevel(v) {
+  if (v === 'WR') return 'WR';
+  if (v === 'CR' || CONT_RECORD[v]) return 'CR';
+  if (v === 'NR') return 'NR';
+  return '';
+}
+const eventLastYear = {};   // event -> 有成绩的最近年份（停办项目泳道截止用）
 
-function addRecord(p, eid, type, level, value, comp, year) {
-  if (level === 'WR') p.wr++; else if (level === 'CR') p.cr++; else p.nr++;
+function addRecord(p, eid, type, level, value, comp, year, rr) {
+  const isS = type !== 'avg';
+  if (level === 'WR') { p.wr++; if (isS) p.wrS++; else p.wrA++; }
+  else if (level === 'CR') { p.cr++; if (isS) p.crS++; else p.crA++; }
+  else { p.nr++; if (isS) p.nrS++; else p.nrA++; }
+  /* 按项目分桶计数（另类统计页「项目筛选」用） */
+  {
+    const eb = evBucket(p, eid);
+    if (level === 'WR') eb.wr++; else if (level === 'CR') eb.cr++; else eb.nr++;
+    eb.recPerYear[year] = (eb.recPerYear[year] || 0) + 1;
+  }
   /* NR 按「该国该项目参赛人数」加权：参赛人数越少的国家，拿到 NR 越容易，记分越低 */
   const ciso = Calc.isoNorm(p.country);
   const ns = level === 'NR' ? nrScaleOf(eid, ciso) : 1;
+  if (isS) p.nrWS += ns; else p.nrWA += ns;
   p.nrW += ns;
   const ev = events.get(eid) || { w: 0.8 };
   const S = Math.max(0.6, Math.min(2.2, 2.2 - (year - 2003) * 0.04));
@@ -466,7 +532,7 @@ function addRecord(p, eid, type, level, value, comp, year) {
     recSeqCount++;
   }
   p.records.push({
-    ev: eid, type: type, level: level,
+    ev: eid, type: type, level: level, rr: rr || (level === 'CR' ? 'CR' : ''),
     date: comp ? comp.date : (year + '-01-01'),
     value: fmtResult(eid, value, type),
     comp: comp ? comp.name : '', held: 0, current: false, dn: dn, k: k,
@@ -485,16 +551,22 @@ async function processResults() {
     const compId = r.competition_id;
     const comp = comps.get(compId);
     const year = comp ? comp.year : 2003;
+    if (year > (eventLastYear[eid] || 0)) eventLastYear[eid] = year;
     const p = getPlayer(pid);
     p.eventsSet.add(eid);
     if (compId) p.compsSet.add(compId);
     if (year < p.start) p.start = year;
     if (year > p.end) p.end = year;
     p.resultRows++;
+    const eb = evBucket(p, eid);
+    eb.rows++;
+    if (compId && eb.seen.indexOf(compId) < 0) { eb.seen.push(compId); eb.comps++; }
+    if (eb.years.indexOf(year) < 0) eb.years.push(year);
+    eb.cities[compCity(compId)] = 1;
     /* 结果行 id → 选手下标：result_attempts 表靠 result_id 关联，
        导出 v2 起单次成绩不在 results 里，必须另扫该表才能拿到真实尝试数。 */
     const rid = toInt(r.id);
-    if (rid > 0) ridSet(rid, p.ix + 1);
+    if (rid > 0) { if (!evIx) evIx = buildEventIndex(); ridSet(rid, p.ix + 1, evIx.get(eid)); }
     /* 老版本导出（v1）把单次值放在 value1..value5，这里兜底读一次。
        若后续 result_attempts 扫到了真实值，会覆盖这些计数。 */
     for (let vi = 1; vi <= 5; vi++) {
@@ -513,14 +585,22 @@ async function processResults() {
       let fs = finalCounts.get(key); if (!fs) { fs = new Set(); finalCounts.set(key, fs); }
       fs.add(pid);
       p.podiums.push({ ev: eid, tier: tier, place: pos, comp: comp ? comp.name : compId, compId: compId, year: year, field: 0, factors: null, R: 0 });
+      eb.pod++;
+      if (pos === 1) eb.gold++; else if (pos === 2) eb.sil++; else eb.bro++;
+      if (tier === 'WC') eb.wc = (eb.wc || 0) + 1;
+      else if (tier === 'CC') eb.cc = (eb.cc || 0) + 1;
+      else if (tier === 'NC') eb.nc = (eb.nc || 0) + 1;
+      else if (tier === 'Local') eb.lo = (eb.lo || 0) + 1;
+      else eb.op = (eb.op || 0) + 1;
+      if (pos === 1) { eb.goldPerYear[year] = (eb.goldPerYear[year] || 0) + 1; }
     }
 
-    const rsr = r.regional_single_record, rar = r.regional_average_record;
-    if (rsr === 'WR' || rsr === 'CR' || rsr === 'NR') addRecord(p, eid, 'single', rsr, r.best, comp, year);
-    if (rar === 'WR' || rar === 'CR' || rar === 'NR') addRecord(p, eid, 'avg', rar, r.average, comp, year);
+    const rsr = recordLevel(r.regional_single_record), rar = recordLevel(r.regional_average_record);
+    if (rsr) addRecord(p, eid, 'single', rsr, r.best, comp, year, r.regional_single_record);
+    if (rar) addRecord(p, eid, 'avg', rar, r.average, comp, year, r.regional_average_record);
 
-    if (rsr === 'WR') (wrSingleG[eid] = wrSingleG[eid] || []).push({ date: year, name: p.name, country: p.country });
-    if (rar === 'WR') (wrAvgG[eid] = wrAvgG[eid] || []).push({ date: year, name: p.name, country: p.country });
+    if (rsr === 'WR') (wrSingleG[eid] = wrSingleG[eid] || []).push({ dn: dateNum(comp ? comp.date : year + '-01-01'), fy: fyOfDn(dateNum(comp ? comp.date : year + '-01-01')), name: p.name, country: p.country });
+    if (rar === 'WR') (wrAvgG[eid] = wrAvgG[eid] || []).push({ dn: dateNum(comp ? comp.date : year + '-01-01'), fy: fyOfDn(dateNum(comp ? comp.date : year + '-01-01')), name: p.name, country: p.country });
 
     trackMilestone(eid, r.best, year);
 
@@ -530,8 +610,11 @@ async function processResults() {
       const pw = pos === 1 ? 1 : (pos === 2 ? 0.6 : 0.4);
       p.yearly[year] = (p.yearly[year] || 0) + pw * tw * 2;
     }
-    if (rsr === 'WR' || rsr === 'CR' || rsr === 'NR' || rar === 'WR' || rar === 'CR' || rar === 'NR') {
+    if (rsr || rar) {
+      /* 年度分按单次 / 平均拆分累计，供前端「单次 / 平均 / 总计」口径切换 */
       p.yearly[year] = (p.yearly[year] || 0) + 1;
+      if (rsr) p.yearlyS[year] = (p.yearlyS[year] || 0) + 1;
+      if (rar) p.yearlyA[year] = (p.yearlyA[year] || 0) + 1;
     }
   });
   log('results rows:', rows, 'players:', players.size);
@@ -550,11 +633,16 @@ function placeW(pos) { return pos === 1 ? 1 : (pos === 2 ? 0.6 : 0.4); }
 function computeModules() {
   log('计算七模块评分…');
   const raw = {};
-  const MAXMOD = { m1: 0, m2: 0, m3: 0, m4: 0, m5: 0, m6: 0, m7: 0 };
+  const MODALL = ['m1', 'm1s', 'm1a', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7'];
+  const MAXMOD = { m1: 0, m1s: 0, m1a: 0, m2: 0, m3: 0, m4: 0, m5: 0, m6: 0, m7: 0 };
   const list = [];
   players.forEach((p, id) => {
-    /* NR 按国家参赛规模加权后的等效数量（p.nr 仍为原始次数，用于展示） */
-    const m1 = p.wr * 3 + p.cr * 1.5 + (p.nrW || 0) * 0.8;
+    /* NR 按国家参赛规模加权后的等效数量（p.nr 仍为原始次数，用于展示）。
+       m1 为单次 + 平均合计；m1s / m1a 分别只计单次 / 平均纪录（各自按全局最大值归一），
+       供前端「单次 / 平均 / 总计」筛选切换纪录分口径。 */
+    const m1s = (p.wrS || 0) * 3 + (p.crS || 0) * 1.5 + (p.nrWS || 0) * 0.8;
+    const m1a = (p.wrA || 0) * 3 + (p.crA || 0) * 1.5 + (p.nrWA || 0) * 0.8;
+    const m1 = m1s + m1a;
     let m2 = 0, m3 = 0;
     p.podiums.forEach((pod) => {
       const tw = pod.tier === 'WC' ? 1 : (pod.tier === 'CC' ? 0.7 : 0.4);
@@ -575,8 +663,8 @@ function computeModules() {
     const m5 = (evCount / 21) * 0.7 + Math.min(evCount / 17, 1) * 0.3;
     const span = Math.max(1, p.end - p.start + 1);
     const m6 = (span / 22) * 0.5 + (Math.min(p.compsSet.size, 300) / 300) * 0.3 + (p.activeStreak || 1) / 15 * 0.2;
-    raw[id] = { m1, m2, m3, m4, m5, m6, m7 };
-    ['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7'].forEach((k) => { if (raw[id][k] > MAXMOD[k]) MAXMOD[k] = raw[id][k]; });
+    raw[id] = { m1, m1s, m1a, m2, m3, m4, m5, m6, m7 };
+    MODALL.forEach((k) => { if (raw[id][k] > MAXMOD[k]) MAXMOD[k] = raw[id][k]; });
     list.push(p);
   });
 
@@ -592,7 +680,7 @@ function computeModules() {
   list.forEach((p) => {
     const r = raw[p.wcaId];
     const m = {}, pk = {};
-    ['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7'].forEach((k) => { m[k] = Math.round(norm(r[k], k) * 100) / 100; });
+    MODALL.forEach((k) => { m[k] = Math.round(norm(r[k], k) * 100) / 100; });
     const ys = Object.keys(p.yearly).map(Number).sort((a, b) => a - b);
     let total = 0; ys.forEach((y) => total += p.yearly[y]);
     const avgAnnual = ys.length ? total / ys.length : 0;
@@ -603,7 +691,7 @@ function computeModules() {
     }
     const conc = avgAnnual > 0 ? best3 / (3 * avgAnnual) : 1;
     const peakFactor = Math.max(0.85, Math.min(1.15, conc));
-    ['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7'].forEach((k) => { pk[k] = Math.round(Math.min(100, m[k] * peakFactor) * 100) / 100; });
+    MODALL.forEach((k) => { pk[k] = Math.round(Math.min(100, m[k] * peakFactor) * 100) / 100; });
 
     p.m = m; p.pk = pk;
     p.eloPeak = Math.round(1400 + m.m7 * 900);
@@ -658,7 +746,7 @@ function computeModules() {
      成绩取 ranks_single/ranks_average 的官方 best 列（WCA 权威口径，
      旧/新多盲编码由此自动正确解码）；未入榜者在该项目上必然弱于入榜者，
      前端追加在榜尾即可保证整体次序正确。 */
-  const EVENT_BOARD_MAX = 2000;
+  const EVENT_BOARD_MAX = 5000;
   list.forEach((p) => {
     const wr = worldRank.get(p.wcaId) || {};
     Object.keys(wr).forEach((eid) => {
@@ -729,6 +817,12 @@ function computeHeld(list, asOf) {
       const next = a[lo];
       rec.held = daysBetween(rec.dn, next || today);
       rec.current = !next;
+      const eb = p.evStat && p.evStat[rec.ev];
+      if (eb) {
+        eb.held += rec.held;
+        if (rec.held > eb.heldLong) eb.heldLong = rec.held;
+        if (rec.current) eb.heldNow++;
+      }
       n++;
     });
   });
@@ -736,20 +830,29 @@ function computeHeld(list, asOf) {
 }
 
 /* ---------------- WR 泳道 ---------------- */
-function buildLanes(store) {
+function buildLanes(store, asOf) {
+  const endDn = dateNum(asOf) || dateNum(new Date().toISOString().slice(0, 10));
+  const endFy = fyOfDn(endDn);
   return Object.keys(store).sort().map((eid) => {
-    const arr = store[eid].slice().sort((a, b) => a.date - b.date);
+    const arr = store[eid].slice().sort((a, b) => a.dn - b.dn);
     const segs = [];
+    /* 停办项目：最后一段只画到该项目的最后一次比赛，不再延伸到今天 */
+    const retired = !!(Calc.EV[eid] || {}).retired;
+    const stopDn = retired ? (dateNum(String(eventLastYear[eid] || endDn) + '-12-31') || endDn) : endDn;
+    const stopFy = retired ? fyOfDn(stopDn) : endFy;
     let cur = null;
     arr.forEach((e) => {
       if (!cur || cur.holder !== e.name) {
-        if (cur) cur.to = e.date;
-        cur = { from: e.date, to: 2026, holder: e.name, country: e.country, id: null, days: 0, color: 'hsl(' + Calc.U.hue(e.name) + ',58%,52%)' };
+        if (cur) { cur.to = e.fy; cur.toDn = e.dn; cur.days = daysBetween(cur.fromDn, e.dn); }
+        cur = {
+          from: e.fy, to: stopFy, fromDn: e.dn, toDn: stopDn, holder: e.name, country: e.country,
+          id: null, days: 0, color: 'hsl(' + Calc.U.hue(e.name) + ',58%,52%)'
+        };
         segs.push(cur);
       }
     });
-    if (cur) cur.to = 2026;
-    return { ev: eid, zh: (Calc.EV[eid] || { zh: eid }).zh, en: (Calc.EV[eid] || { en: eid }).en, segs: segs };
+    if (cur) { cur.to = stopFy; cur.toDn = stopDn; cur.days = daysBetween(cur.fromDn, stopDn); }
+    return { ev: eid, zh: (Calc.EV[eid] || { zh: eid }).zh, en: (Calc.EV[eid] || { en: eid }).en, retired: retired, segs: segs };
   });
 }
 
@@ -792,8 +895,10 @@ function buildEventMilestones() {
   const emitIds = new Set();
   emit.forEach((p) => emitIds.add(p.wcaId));
   KEEP_YEARLY_N = Math.min(emit.length, KEEP_YEARLY);
-  emit.forEach((p, i) => { if (i >= KEEP_YEARLY_N) p.yearly = {}; });
-  list.forEach((p) => { if (!emitIds.has(p.wcaId)) p.yearly = {}; });
+  emit.forEach((p, i) => {
+    if (i >= KEEP_YEARLY_N) { p.yearly = {}; p.yearlyS = {}; p.yearlyA = {}; }
+  });
+  list.forEach((p) => { if (!emitIds.has(p.wcaId)) { p.yearly = {}; p.yearlyS = {}; p.yearlyA = {}; } });
 
   /* 定向二次扫描：仅对输出选手求真实「单场最多项目数 / 多项目参赛场次」 */
   await enrichCompStats(emitIds);
@@ -830,33 +935,58 @@ function buildEventMilestones() {
     months1: 0, months10: 0, months100: 0, eloPeak: p.eloPeak, peakSpan: 0, peakAge: 0,
     resultRows: p.resultRows || 0, attempts: p.attempts || 0, solves: p.solves || 0, dnf: p.dnf || 0,
     cities: p.cities || 0, maxEventsPerComp: p.maxEventsPerComp || 0, multiEventComp: p.multiEventComp || 0,
-    yearly: p.yearly
+    yearly: p.yearly, yearlyS: p.yearlyS || {}, yearlyA: p.yearlyA || {}
   });
   /* 精简档案用「数组 + 列名表」紧凑编码，浏览器端展开为对象后再 assemble。
-     相比完整对象（约 720 字节/人）可压到约 200 字节/人，让收录量扩大一个数量级。 */
-  const SLIM_KEYS = ['id', 'name', 'country', 'gender', 'start', 'end', 'comps', 'mainEvent', 'events', 'hue',
-    'm', 'pk', 'career', 'peak', 'overall', 'balance', 'wr', 'cr', 'nr', 'nrW', 'recTotal', 'podTotal',
-    'wcGold', 'ccGold', 'ncGold', 'eloPeak', 'resultRows', 'attempts', 'solves', 'dnf', 'cities',
+     career/peak/overall/balance/eloPeak/hue/rank 均由 assemble 依 m/pk 现算，
+     不再冗余存储；约 150 字节/人，可把全部约 30 万 WCA 选手随包下发、可搜索。 */
+  const SLIM_KEYS = ['id', 'name', 'country', 'gender', 'start', 'end', 'comps', 'mainEvent', 'events',
+    'm', 'pk', 'wr', 'cr', 'nr', 'resultRows', 'attempts', 'solves', 'dnf', 'cities',
     'maxEventsPerComp', 'multiEventComp'];
+  const MODK = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm1s', 'm1a'];
   const slimRows = slim.map((p) => SLIM_KEYS.map((k) => {
     if (k === 'm' || k === 'pk') {
       const o = p[k] || {};
-      return [round2(o.m1), round2(o.m2), round2(o.m3), round2(o.m4), round2(o.m5), round2(o.m6), round2(o.m7)];
+      return MODK.map((mk) => round2(o[mk]));
     }
     if (k === 'events') return (p.events || []).join(',');
-    if (k === 'balance') return Math.round(Math.log(Math.max(p.career, 0.01) / Math.max(p.peak, 0.01)) * 1000) / 1000;
-    if (k === 'nrW') return Math.round((p.nrW || 0) * 100) / 100;
     return p[k];
   }));
   function round2(v) { return Math.round((v || 0) * 100) / 100; }
 
-  const emitPlayers = detail.map((p) => Object.assign(base(p), { records: p.records, podiums: p.podiums }));
+  /* 按项目统计（另类统计页项目筛选用）：只保留该项目上有真实成绩的条目，
+     紧凑成 'eid:rows,att,sol,dnf,pod,gold,sil,bro,wr,cr,nr,comps,wc,cc,nc,lo,op,held,heldLong,heldNow,cityN,yrCnt,yrStr,goldY,recBest'
+     的紧凑字符串，避免几十万选手的对象开销。 */
+  const EVK = ['rows', 'att', 'sol', 'dnf', 'pod', 'gold', 'sil', 'bro', 'wr', 'cr', 'nr',
+    'comps', 'wc', 'cc', 'nc', 'lo', 'op', 'held', 'heldLong', 'heldNow'];
+  function encEvStat(p) {
+    const ids = Object.keys(p.evStat || {});
+    if (!ids.length) return '';
+    const parts = ids.map((eid) => {
+      const b = p.evStat[eid];
+      const nums = EVK.map((k) => b[k] || 0);
+      nums.push(Object.keys(b.cities || {}).length);
+      nums.push((b.years || []).length);
+      nums.push((b.years || []).join('.'));
+      /* goldPerYear / recPerYear 供「最佳年份」类指标使用 */
+      const gy = b.goldPerYear || {};
+      nums.push(Object.keys(gy).map((y) => y + '_' + gy[y]).join('.'));
+      const ry = b.recPerYear || {};
+      let rb = 0; Object.keys(ry).forEach((y) => { if (ry[y] > rb) rb = ry[y]; });
+      nums.push(rb);
+      return eid + ':' + nums.join(',');
+    });
+    return parts.join(';');
+  }
 
+  const emitPlayers = detail.map((p) => Object.assign(base(p), { records: p.records, podiums: p.podiums, evS: encEvStat(p) }));
+
+  const AS_OF = arg('--date', '') || new Date().toISOString().slice(0, 10);
   const CFG = {
     countries: countryName, continentOf: continentShort, meta: meta,
     years: (function () { const a = []; for (let y = 2003; y <= new Date().getFullYear(); y++) a.push(y); return a; })(),
     milestones: Calc.MILESTONES, eventMilestonesMap: buildEventMilestones(),
-    lanes: buildLanes(wrSingleG), lanesAvg: buildLanes(wrAvgG),
+    lanes: buildLanes(wrSingleG, AS_OF), lanesAvg: buildLanes(wrAvgG, AS_OF),
     eventBoards: EVENT_BOARDS
   };
 
@@ -864,12 +994,12 @@ function buildEventMilestones() {
     '(function () {\n  var PLAYERS = ' + JSON.stringify(emitPlayers) + ';\n' +
     '  var SLIM_KEYS = ' + JSON.stringify(SLIM_KEYS) + ';\n' +
     '  var SLIM = ' + JSON.stringify(slimRows) + ';\n' +
-    '  var MODK = ["m1","m2","m3","m4","m5","m6","m7"];\n' +
+    '  var MODK = ["m1","m2","m3","m4","m5","m6","m7","m1s","m1a"];\n' +
     '  SLIM.forEach(function (a) {\n' +
-    '    var o = { slim: 1, records: [], podiums: [], yearly: {}, nameZh: null, months1: 0, months10: 0, months100: 0, peakSpan: 0, peakAge: 0 };\n' +
+    '    var o = { slim: 1, records: [], podiums: [], yearly: {}, yearlyS: {}, yearlyA: {}, nameZh: null, months1: 0, months10: 0, months100: 0, peakSpan: 0, peakAge: 0, wcGold: 0, ccGold: 0, ncGold: 0, recTotal: 0, podTotal: 0, nrW: 0 };\n' +
     '    for (var i = 0; i < SLIM_KEYS.length; i++) {\n' +
     '      var k = SLIM_KEYS[i], v = a[i];\n' +
-    '      if (k === "m" || k === "pk") { var mo = {}; for (var j = 0; j < 7; j++) mo[MODK[j]] = v[j]; o[k] = mo; }\n' +
+    '      if (k === "m" || k === "pk") { var mo = {}; for (var j = 0; j < MODK.length; j++) mo[MODK[j]] = v[j]; o[k] = mo; }\n' +
     '      else if (k === "events") { o.events = v ? String(v).split(",") : []; }\n' +
     '      else o[k] = v;\n' +
     '    }\n' +

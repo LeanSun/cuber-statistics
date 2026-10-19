@@ -147,6 +147,11 @@ res('CC2022', '222', '2018ZHAN01', 'f', 2, 150, 160, 'NR', 'NR')
 res('NAC2021', '333', '2013PARK01', 'f', 1, 355, 405, 'NR', 'NR')  # Max US -> NC
 res('NAC2021', '333', '2008FELI01', 'f', 2, 345, 395, 'WR', 'WR')  # Felix AUS -> OP
 res('NAC2021', '333oh', '2013PARK01', 'f', 1, 900, 950, 'WR', 'WR')  # NC
+
+# v2 导出口径：洲际纪录用洲代码（ER / NAR / OcR…），验证 CR 能正确统计
+res('OP2020', '333', '2008DENI01', 'f', 1, 379, 429, 'ER', 'ER')      # Mats Valk(NLD) -> 欧洲纪录
+res('NAC2021', '333', '2013PARK01', 'c', 2, 356, 406, 'NAR', 'NAR')   # Max Park(USA) -> 北美纪录
+res('GO2008', '333', '2007HABA01', 'f', 1, 900, 990, 'ER', '')        # Tim Habermaas(DEU) -> 欧洲纪录
 res('NAC2021', '333oh', '2008FELI01', 'f', 2, 950, 1000, 'CR', 'CR')  # OP
 
 # OP2020 (Open Holland, not a championship)

@@ -8,6 +8,8 @@
   const esc = U.esc;
   const { avatar, flag, playerLink, modName, contribs, ecBox, scoreOf, infoTip, evName, contName, regionName, countryName, strength } = P.util;
   function tt(zh, en) { return t.isEn() ? en : zh; }
+  /* 性别归一化（兼容 'Male'/'Female'/'m'/'f' 等真实导出写法） */
+  function genderOf(g) { if (!g) return ''; g = String(g).charAt(0).toUpperCase(); return g === 'F' ? 'F' : 'M'; }
 
   /* ---------- LaTeX 公式工具 ---------- */
   function tex(s, display) {
@@ -67,17 +69,19 @@
         ' <a href="https://www.worldcubeassociation.org/persons/' + esc(p.wcaId) + '" target="_blank" rel="noopener">WCA ↗</a></div>';
     }
 
-    /* 信息栏 */
+    /* 信息栏（无头像；国旗 / WCA ID / 性别放大并加外框） */
     h += '<div class="card pcard reveal">';
     h += '<div class="pcard-main">';
-    h += '<div class="pcard-id">' + avatar(p, 'xl');
     h += '<div class="pcard-name"><h1><a class="wca-name" href="https://www.worldcubeassociation.org/persons/' + esc(p.wcaId) + '" target="_blank" rel="noopener" title="' + esc(t('player.wca')) + '">' + esc(p.nameZh || p.name) + ' ' + Ic.glyph('external') + '</a></h1>';
-    h += '<div class="row" style="gap:8px;margin-top:4px">' + flag(p.country) +
-      '<span class="muted tiny">' + esc(countryName(p.country)) + '</span>' +
-      '<span class="muted tiny mono">' + esc(p.wcaId) + '</span>' +
-      '<span class="muted tiny">' + (p.gender === 'F' ? t('f.gender.f') : t('f.gender.m')) + '</span></div>';
+    h += '<div class="pid-box">' +
+      '<span class="pid-cell pid-flag">' + flag(p.country, 'f-lg') + '<span class="pid-txt">' + esc(countryName(p.country)) + '</span></span>' +
+      '<span class="pid-cell mono" title="' + esc(t('player.wca')) + '">' + esc(p.wcaId) + '</span>' +
+      '<span class="pid-cell">' + (genderOf(p.gender) === 'F' ? t('f.gender.f') : t('f.gender.m')) + '</span>' +
+      '</div>';
     h += '<div class="p-tags">';
-    h += '<span class="tag acc" title="' + esc(tt('你在全球所有选手中的综合排名', 'Your overall global ranking among all players')) + '">' + esc(t('col.rank')) + ' ' + p.rank + '</span>';
+    h += '<span class="tip tag-tip" tabindex="0" aria-label="' + esc(t('player.mainEventTip')) + '">' +
+      '<span class="tag acc">' + esc(t('player.mainEvent')) + ' ' + esc(evName(M.EV[p.mainEvent])) + '</span>' +
+      '<span class="tip-body">' + esc(t('player.mainEventTip')) + '</span></span>';
     h += '<span class="tag" title="' + esc(tt('首次参赛到最近参赛的年份区间', 'Years from your first to your latest competition')) + '">' + esc(t('player.career')) + ' ' + p.start + '–' + p.end + '</span>';
     h += '<span class="tag" title="' + esc(tt('你参加过的 WCA 比赛总场数', 'Total WCA competitions you have entered')) + '">' + esc(t('player.comps')) + ' ' + p.comps + '</span>';
     h += '<span class="tag" title="' + esc(tt('你参加过的 WCA 项目数量', 'Number of distinct WCA events you have entered')) + '">' + esc(t('player.events')) + ' ' + p.events.length + '</span>';
@@ -95,7 +99,7 @@
     h += '<button class="btn btn-primary pkadd-btn" data-pkadd="' + p.id + '">' + Ic.glyph('pk') + ' ' + esc(t('player.compare')) + '</button>';
     h += '</div></div>';
 
-    /* 世界 / 洲 / 地区 / 国家排名 */
+    /* 世界 / 洲 / 地区 / 巅峰高度 排名（WCA 地区排名已按需求移除） */
     h += '<div class="rank4">';
     h += rankCard(t('player.rankWorld'), rk.world, M.ranked.length, 'globe', '',
       tt('你在全球所有选手中的综合排名', 'Your overall rank among all players worldwide'));
@@ -103,8 +107,10 @@
       tt('你所在大洲（' + contName(rk.contName) + '）内的综合排名', 'Your rank within your continent (' + contName(rk.contName) + ')'));
     h += rankCard(t('player.rankNation'), rk.nation, rk.nationOf, 'flag', countryName(p.country),
       tt('你所在国家（' + countryName(p.country) + '）内的综合排名', 'Your rank within your country (' + countryName(p.country) + ')'));
-    h += rankCard(regionName(rk.regName) + t('player.rankSuffix'), rk.region, rk.regionOf, 'globe', '',
-      tt('你所在 WCA 地区（' + regionName(rk.regName) + '）内的综合排名', 'Your rank within your WCA region (' + regionName(rk.regName) + ')'));
+    const peakRank = M.ranked.filter(function (x) { return scoreOf(x).peak > sc.peak; }).length + 1;
+    h += rankCard(t('player.rankPeak') + t('player.rankSuffix'), peakRank, M.ranked.length, 'globe', '',
+      tt('按巅峰高度（最佳连续 12 个月）在世界范围内的排名 —— 与「世界排名」的综合能力口径互为补充：综合能力偏生涯厚度，巅峰高度只看最尖的那一段。',
+        'Your rank by peak height (best rolling 12 months) worldwide — a complement to the world rank: combined ability leans on career volume, peak height looks only at the sharpest stretch.'));
     h += '</div>';
     h += '</div>';
 
@@ -112,6 +118,20 @@
     h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('player.breakdown')) + '</h2>' +
       '<span class="tiny muted">' + esc(t('player.weight')) + ' Σ=1</span></div>';
     h += '<p class="tiny muted" style="margin-bottom:12px">' + tex('M_{\\text{total}}=\\frac{1000}{100}\\sum_{m=1}^{7}\\beta_{m}\\,M_{m},\\qquad \\sum_{m}\\beta_{m}=1', true) + '</p>';
+    /* 总分计算过程：三步复现屏幕上的每个数字 */
+    h += '<div class="calc-flow"><div class="calc-flow-h">' + Ic.glyph('book') + ' ' + esc(t('player.calcFlow')) + '</div>' +
+      '<p class="tiny muted" style="margin-bottom:10px">' + esc(t('player.calcFlow.d')) + '</p><div class="calc-steps">';
+    h += '<div class="calc-step"><div class="calc-step-no">1</div><div class="calc-step-b"><b>' + esc(t('player.calcStep1t')) + '</b>' +
+      '<p class="tiny muted">' + esc(t('player.calcStep1')) + '</p><div class="calc-mods">' +
+      cs.map(function (c) { return '<span class="calc-mod"><i style="background:' + c.color + '"></i>' + esc(c.name) + ' <b>' + U.fmt(c.raw, 1) + '</b></span>'; }).join('') +
+      '</div></div></div>';
+    h += '<div class="calc-step"><div class="calc-step-no">2</div><div class="calc-step-b"><b>' + esc(t('player.calcStep2t')) + '</b>' +
+      '<p class="tiny muted">' + esc(t('player.calcStep2')) + '</p>' +
+      '<div class="calc-eq">C（' + esc(t('rank.tab.career')) + '）＝ <b>' + U.fmt(sc.career, 1) + '</b>　　P（' + esc(t('rank.tab.peak')) + '）＝ <b>' + U.fmt(sc.peak, 1) + '</b></div></div></div>';
+    h += '<div class="calc-step"><div class="calc-step-no">3</div><div class="calc-step-b"><b>' + esc(t('player.calcStep3t')) + '</b>' +
+      '<p class="tiny muted">' + esc(t('player.calcStep3')) + '</p>' +
+      '<div class="calc-eq">Overall ＝ ' + U.fmt(sc.career, 1) + '<sup>0.6</sup> × ' + U.fmt(sc.peak, 1) + '<sup>0.4</sup> ＝ <b class="grad">' + U.fmt(sc.overall, 1) + '</b></div></div></div>';
+    h += '</div></div>';
     h += '<div class="grid grid-2" style="align-items:start">';
     h += '<div>' + ecBox('donut', cs.map(function (c) { return { name: c.name, value: c.v, color: c.color }; }), { radius: ['48%', '74%'], legend: true }, 260) + '</div>';
     h += '<div>' + ecBox('waterfall', cs.map(function (c) { return { name: c.name, value: c.v, color: c.color }; }), { name: t('player.contrib') }, 260) + '</div>';
@@ -134,8 +154,9 @@
     h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('player.cmp')) + '</h2>' + infoTip(t('player.cmp.d')) + '</div>';
     const cmp = P.playerCompare ? P.playerCompare(p) : null;
     if (cmp) {
-      h += '<div class="cmp-radar-wrap"><div class="pk-radar-wrap">' + ecBox('radar', { rows: cmp.series, indicators: cmp.indicators }, { max: 100 }, 360) + '</div></div>';
+      h += '<div class="cmp-radar-wrap"><div class="pk-radar-wrap">' + ecBox('radar', { rows: cmp.series, indicators: cmp.indicators }, { max: 100, radius: '72%' }, 500) + '</div></div>';
       h += '<p class="tiny muted" style="text-align:center;margin-bottom:8px">' + esc(t('player.cmp.note')) + '</p>';
+      h += '<p class="tiny muted" style="text-align:center">' + esc(t('player.cmp.zero')) + '</p>';
     }
     h += '</div>';
 
@@ -192,21 +213,18 @@
     p.podiums.slice().sort(function (a, b) { return (b.R || 0) - (a.R || 0); }).forEach(function (r, i) { h += podRow(p, r, i); });
     h += '</div></details>';
 
-    /* 排名演变 + 覆盖 */
-    h += '<div class="grid grid-2">';
-    h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('player.rankcurve')) + '</h2></div>' +
-      '<p class="tiny muted">' + esc(t('player.rankcurve.d')) + '</p>' +
-      ecBox('line', { series: [{ name: p.name, color: 'hsl(' + p.hue + ',58%,50%)', pts: rankCurve(p) }], cats: rankCurve(p).map(function (d) { return d[0]; }) }, { inverse: true, min: 1, max: 150, yFmt: '#{value}' }, 260) + '</div>';
-    h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('player.coverage')) + '</h2></div>' +
-      '<p class="tiny muted">' + esc(t('player.coverage.d')) + '</p>' + coverage(p) + '</div>';
-    h += '</div>';
+    /* 项目领域（原「项目覆盖热力」；世界排名演变板块已移除） */
+    h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('player.coverage')) + '</h2>' +
+      infoTip(t('player.coverage.d', { n: 5000 })) + '</div>' +
+      '<p class="tiny muted" style="margin-bottom:12px">' + esc(t('player.coverage.d', { n: 5000 })) + '</p>' +
+      coverage(p) + '</div>';
 
     /* 原始统计 */
     h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('player.coreStats')) + '</h2></div><div class="grid grid-4">';
-    [['col.wr', p.wr], ['rec.level.CR', p.cr], ['rec.level.NR', p.nr], ['col.wc', p.wcGold],
-    ['pod.level.CC', p.ccGold], ['pod.level.NC', p.ncGold], ['col.months', p.months1],
-    ['col.elo', p.eloPeak], ['stat.podiumTotal', st.podiumTotal], ['player.comps', p.comps]].forEach(function (s) {
-      h += '<div class="stat"><div class="k">' + esc(t(s[0])) + '</div><div class="v">' + U.num(s[1]) + '</div></div>';
+    [['col.wr', p.wr, ''], ['rec.level.CR', p.cr, t('player.crTip')], ['rec.level.NR', p.nr, ''], ['col.wc', p.wcGold, ''],
+    ['pod.level.CC', p.ccGold, ''], ['pod.level.NC', p.ncGold, ''], ['col.months', p.months1, ''],
+    ['col.elo', p.eloPeak, t('player.eloTip')], ['stat.podiumTotal', st.podiumTotal, ''], ['player.comps', p.comps, '']].forEach(function (s) {
+      h += '<div class="stat"><div class="k">' + esc(t(s[0])) + (s[2] ? ' ' + infoTip(s[2]) : '') + '</div><div class="v">' + U.num(s[1]) + '</div></div>';
     });
     h += '</div></div>';
     return h;
@@ -321,32 +339,35 @@
     return h;
   }
 
-  function rankCurve(p) {
-    const ys = Object.keys(p.yearly).map(Number).sort(function (a, b) { return a - b; });
-    const maxY = Math.max.apply(null, ys.map(function (y) { return p.yearly[y]; })) || 1;
-    const st = strength(p);
-    return ys.map(function (y) {
-      const rel = p.yearly[y] / maxY;
-      const r = Math.round(1 + (1 - rel) * (140 * (1 - st) + 6));
-      return [y, Math.max(1, Math.min(300, r))];
-    });
+  /* 项目领域：每格显示该项目的世界名次（WCA 官方 ranks 口径，取单次/平均更优者） */
+  const EVENT_RANK_MAX = 5000;
+  const _covIdx = {};
+  function boardIdx(ev) {
+    if (_covIdx[ev]) return _covIdx[ev];
+    const arr = (M.eventBoards || {})[ev] || [];
+    const m = {};
+    arr.forEach(function (e) { m[e.id] = e; });
+    _covIdx[ev] = m;
+    return m;
   }
-
   function coverage(p) {
-    const st = strength(p);
     let h = '<div class="cov-grid">';
     M.events.forEach(function (e) {
-      const has = p.events.indexOf(e.id) >= 0;
+      const has = (p.events || []).indexOf(e.id) >= 0;
+      const nm = esc(evName(e));
       if (!has) {
-        h += '<div class="cov-cell empty" title="' + esc(evName(e)) + '">' + Ic.event(e.id, 'ev-mini') +
-          '<span class="cov-name">' + esc(evName(e)) + '</span><span class="tiny muted">—</span></div>';
+        h += '<div class="cov-cell empty" title="' + nm + '">' + Ic.event(e.id, 'ev-mini') +
+          '<span class="cov-name">' + nm + '</span><span class="cov-rank">—</span></div>';
         return;
       }
-      const seed = (U.hue(p.id + e.id) % 100) / 100;
-      const q = Math.max(0.05, Math.min(1, st * 0.75 + seed * 0.35));
-      h += '<div class="cov-cell" style="--a:' + round(q, 2) + '" title="' + esc(evName(e)) + '">' + Ic.event(e.id, 'ev-mini') +
-        '<span class="cov-name">' + esc(evName(e)) + '</span>' +
-        '<span class="tiny">#' + Math.max(1, Math.round((1 - q) * 220 + 1)) + '</span></div>';
+      const ent = boardIdx(e.id)[p.id];
+      const r = ent ? ent.r : 0;
+      /* 名次越靠前颜色越实（对数缩放，与色条一致） */
+      const q = r > 0 ? Math.max(0.08, Math.min(1, 1 - Math.log(r) / Math.log(EVENT_RANK_MAX + 1))) : 0.08;
+      const best = ent ? (ent.s || '') + (ent.af ? ' / ' + ent.af : '') : '';
+      h += '<div class="cov-cell" style="--a:' + round(q, 2) + '" title="' + nm + (r ? ' · #' + r + (best ? ' · ' + best : '') : ' · ' + t('player.coverage.noRank')) + '">' +
+        Ic.event(e.id, 'ev-mini') + '<span class="cov-name">' + nm + '</span>' +
+        '<span class="cov-rank">' + (r > 0 ? '#' + r : '—') + '</span></div>';
     });
     h += '</div>';
     return h;

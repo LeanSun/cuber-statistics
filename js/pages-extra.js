@@ -30,9 +30,9 @@
   let TL_MS = M.milestones; /* 当前单项筛选下的里程碑集合（供图表标线使用） */
   P.tlIdxToInfo = tlIdxToInfo; P.tlSlider = tlSlider; /* 供 app.js 滑块 / 播放使用 */
 
-  /* 动画速率：可自定义「时间跳跃 / 动画时长 / 刷新间隔」，持久化到 localStorage */
+  /* 动画速率：可自定义「时间跳跃（天/秒）/ 动画时长 / 刷新间隔」，持久化到 localStorage */
   const RATE_KEY = 'goat-tlrate-v1';
-  const RATE_DEF = { jump: 1, anim: 800, fps: 900 };
+  const RATE_DEF = { jump: 30, anim: 800, fps: 200 };
   function loadRate() {
     try { const o = JSON.parse(localStorage.getItem(RATE_KEY)); if (o) return Object.assign({}, RATE_DEF, o); } catch (e) { }
     return Object.assign({}, RATE_DEF);
@@ -55,10 +55,24 @@
   }
   P.msSample = msSample;
 
+  /* 事件轨道高亮：播放经过的事件点亮 */
+  P.tlHighlightRail = function (fy) {
+    const rail = document.getElementById('msRail');
+    if (!rail || !rail.querySelectorAll) return;
+    const items = rail.querySelectorAll('.ms-rail-item');
+    Array.prototype.forEach.call(items, function (b) {
+      const d = b.getAttribute('data-msjump') || '';
+      const m = d.match(/^(\d{4})(?:-(\d{2}))?/);
+      if (!m) return;
+      const y = +m[1] + ((+m[2] || 1) - 1) / 12;
+      b.classList.toggle('on', y <= fy + 0.02);
+    });
+  };
+
   P.timeline = function (state) {
     const view = (state.tlView === 'rank') ? 'race' : (state.tlView || 'race');
     const mode = 'cumulative';
-    const step = 'year';
+    const step = 'day';
     const metric = 'overall';
     const fy = state.tlFy || 2025;
     const sl = tlSlider(step, fy);
@@ -77,18 +91,18 @@
     h += '<label class="tiny muted row" style="gap:5px"><input type="checkbox" id="tlSmooth"' + (state.tlSmooth ? ' checked' : '') + '> ' + esc(t('tl.smooth')) + '</label>';
     h += '</div>';
 
-    /* 动画速率自定义（仅分数竞速图需要） */
+    /* 动画速率自定义（仅分数竞速图需要）：默认 30 天/秒 */
     if (view === 'race') {
       h += '<div class="row tl-top tl-rate" style="margin-top:10px">';
       h += '<span class="flabel">' + esc(t('tl.rate')) + '</span>';
       h += '<label class="rate-item"><span>' + esc(t('tl.rate.jump')) + '</span>' +
-        '<input type="range" id="tlRateJump" min="0.25" max="4" step="0.25" value="' + rate.jump + '">' +
-        '<b id="tlRateJumpV">' + rate.jump + '×</b></label>';
+        '<input type="range" id="tlRateJump" min="1" max="365" step="1" value="' + rate.jump + '">' +
+        '<b id="tlRateJumpV">' + rate.jump + ' 天/秒</b></label>';
       h += '<label class="rate-item"><span>' + esc(t('tl.rate.anim')) + '</span>' +
         '<input type="range" id="tlRateAnim" min="0" max="2500" step="100" value="' + rate.anim + '">' +
         '<b id="tlRateAnimV">' + rate.anim + 'ms</b></label>';
       h += '<label class="rate-item"><span>' + esc(t('tl.rate.fps')) + '</span>' +
-        '<input type="range" id="tlRateFps" min="200" max="3000" step="100" value="' + rate.fps + '">' +
+        '<input type="range" id="tlRateFps" min="60" max="1000" step="20" value="' + rate.fps + '">' +
         '<b id="tlRateFpsV">' + rate.fps + 'ms</b></label>';
       h += '<button class="btn btn-ghost" id="tlRateReset">' + esc(t('tl.rate.reset')) + '</button>';
       h += '</div>';
@@ -109,17 +123,38 @@
     const chH = view === 'race' ? 520 : Math.max(560, (M.events.length * 46 + 90));
     const geoRegion = (state.geo && state.geo.indexOf('cont:') === 0) ? state.geo.slice(5) : '';
     const geoCountry = (state.geo && state.geo.indexOf('cont:') !== 0 && state.geo) ? state.geo : '';
-    h += '<div class="chart-box" id="tlChart" style="height:' + chH + 'px" data-view="' + view + '" data-mode="' + mode +
-      '" data-fy="' + fy + '" data-metric="' + metric + '" data-lane="' + state.tlLane + '" data-smooth="' + (state.tlSmooth ? 1 : 0) +
-      '" data-region="' + geoRegion + '" data-country="' + geoCountry + '"></div>';
-    h += '</div>';
-
-    const evSel = state.evSel || [];
-    const singleEv = evSel.length === 1 ? evSel[0] : (state.group && M.EV[state.group] ? state.group : '');
+    /* 当前生效的项目集合（显式多选 / 预设分组 / 单个项目）——供竞速图按项目切换 */
+    const evSel0 = state.evSel || [];
+    let evsBox = evSel0.slice();
+    if (!evsBox.length && state.group && state.group !== 'all' && !M.EV[state.group]) {
+      const g = M.presetGroups.filter(function (x) { return x.id === state.group; })[0];
+      if (g && g.ids) evsBox = g.ids.slice();
+    } else if (!evsBox.length && state.group && M.EV[state.group]) {
+      evsBox = [state.group];
+    }
+    const singleEv = evSel0.length === 1 ? evSel0[0] : (state.group && M.EV[state.group] ? state.group : '');
     const msBase = singleEv ? M.eventMilestones(singleEv) : M.milestones;
     const custom = loadCustomMs().map(function (m) { return Object.assign({ custom: true }, m); });
     const ms = msBase.concat(custom).sort(function (a, b) { return (a.year || 0) - (b.year || 0); });
     TL_MS = ms;
+    h += '<div class="chart-box tl-chart-link" id="tlChart" style="height:' + chH + 'px" data-view="' + view + '" data-mode="' + mode +
+      '" data-fy="' + fy + '" data-metric="' + metric + '" data-lane="' + state.tlLane + '" data-smooth="' + (state.tlSmooth ? 1 : 0) +
+      '" data-region="' + geoRegion + '" data-country="' + geoCountry + '" data-ev="' + evsBox.join(',') +
+      '" data-gender="' + (state.gender || 'all') + '" data-type="' + (state.recType || 'all') + '"></div>';
+
+    /* 事件轨道：竞速图横轴是分数，里程碑竖线无处安放，改在这里呈现（可点击跳转） */
+    if (view !== 'lane') {
+      h += '<div class="ms-rail" id="msRail" title="' + esc(t('tl.rail.d')) + '">';
+      ms.forEach(function (m) {
+        const label = t.isEn() ? (m.en || m.zh) : m.zh;
+        h += '<button class="ms-rail-item' + (m.custom ? ' ms-custom' : '') + '" data-msjump="' + (m.date || (m.year + '-01-01')) + '">' +
+          '<b>' + (m.date || m.year) + '</b> ' + esc(String(label).slice(0, 22)) + '</button>';
+      });
+      h += '</div>';
+      h += '<p class="tiny muted" style="margin:6px 0 0">' + esc(t('tl.msWhy')) + '</p>';
+    }
+    h += '</div>';
+
     h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('tl.events')) +
       (singleEv ? ' · ' + esc(evName(M.EV[singleEv])) : '') + '</h2>' +
       (custom.length ? '<span class="tiny muted">+' + custom.length + ' ' + esc(t('tl.msCustom')) + '</span>' : '') + '</div>';
@@ -151,13 +186,32 @@
     return h;
   };
 
-  /* 滑块：年 / 月 / 周 三种步进；索引 0 代表 1982–2003 的一次性跳转 */
+  /* 滑块：默认按天步进（30 天/秒），保留年 / 月 / 周切换 */
   const TL_START = new Date(2003, 0, 1);
+  const TL_END = (function () {
+    const u = (M.meta && M.meta.updated) || '';
+    const m = u.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    const d = m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date();
+    return isNaN(d.getTime()) ? new Date() : d;
+  })();
+  const TL_DAYS = Math.max(1, Math.round((TL_END - TL_START) / 86400000));
   function tlDayOfYear(d) { const s = new Date(d.getFullYear(), 0, 0); return (d - s) / 86400000; }
   function tlIsLeap(y) { return (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0; }
   function tlDateToFy(d) { return d.getFullYear() + tlDayOfYear(d) / (tlIsLeap(d.getFullYear()) ? 366 : 365); }
   function tlWeekStart(k) { return new Date(TL_START.getTime() + k * 7 * 86400000); }
+  function tlPad(n) { return (n < 10 ? '0' : '') + n; }
+  function tlDateLabel(d) { return d.getFullYear() + '-' + tlPad(d.getMonth() + 1) + '-' + tlPad(d.getDate()); }
+  function tlFyToDayIdx(fy) {
+    const y = Math.max(2003, Math.min(TL_END.getFullYear(), Math.floor(fy)));
+    const jan1 = new Date(y, 0, 1);
+    const d = new Date(jan1.getTime() + (fy - y) * (tlIsLeap(y) ? 366 : 365) * 86400000);
+    return Math.max(0, Math.min(TL_DAYS, Math.round((d - TL_START) / 86400000)));
+  }
   function tlIdxToInfo(idx, step) {
+    if (step === 'day' || step == null) {
+      const d = new Date(TL_START.getTime() + Math.max(0, Math.min(TL_DAYS, idx)) * 86400000);
+      return { fy: tlDateToFy(d), label: tlDateLabel(d) };
+    }
     if (step === 'year') return { fy: idx, label: String(idx) };
     if (idx <= 0) return { fy: 2002.4, label: '1982–2003', pre: true };
     if (step === 'month') {
@@ -168,6 +222,10 @@
     return { fy: tlDateToFy(d), label: d.getFullYear() + '.' + (d.getMonth() + 1 < 10 ? '0' : '') + (d.getMonth() + 1) };
   }
   function tlSlider(step, fy) {
+    if (step === 'day' || step == null) {
+      const v = tlFyToDayIdx(fy || 2003);
+      return { min: 0, max: TL_DAYS, step: 1, value: v, label: tlIdxToInfo(v, 'day').label };
+    }
     if (step === 'year') {
       const v = Math.max(2003, Math.min(2025, Math.round(fy)));
       return { min: 2003, max: 2025, step: 1, value: v, label: String(v) };
@@ -179,6 +237,13 @@
     const v = Math.max(0, Math.min(1200, Math.round((fy - 2003) * 365.25 / 7) + 1));
     return { min: 0, max: 1200, step: 1, value: v, label: tlIdxToInfo(v, 'week').label };
   }
+  /* 日期串（YYYY-MM-DD 或 YYYY）→ 滑块索引，供事件轨道跳转 */
+  P.tlDateToIdx = function (s) {
+    const m = String(s || '').match(/^(\d{4})(?:-(\d{2}))?(?:-(\d{2}))?/);
+    if (!m) return 0;
+    const d = new Date(+m[1], +(m[2] || 1) - 1, +(m[3] || 1));
+    return Math.max(0, Math.min(TL_DAYS, Math.round((d - TL_START) / 86400000)));
+  };
 
   /* 由 app.js 调用：渲染 / 更新动态图表 */
   P.drawTimeline = function (box) {
@@ -191,13 +256,16 @@
     const smooth = box.getAttribute('data-smooth') === '1';
     const region = box.getAttribute('data-region') || '';
     const country = box.getAttribute('data-country') || '';
+    const evs = (box.getAttribute('data-ev') || '').split(',').filter(Boolean);
+    const gender = box.getAttribute('data-gender') || '';
+    const rtype = box.getAttribute('data-type') || 'all';
     try {
-      const opt = tlOption(view, mode, fy, smooth, metric, region, country, lane);
+      const opt = tlOption(view, mode, fy, smooth, metric, region, country, lane, evs, gender, rtype);
       if (!opt) return null;
       opt.backgroundColor = 'transparent';
       window.Charts.resolveDeep ? window.Charts.resolveDeep(opt) : (function () { })(opt);
-      /* 结构（视图 / 模式 / 维度 / 单均）不变时做增量合并，名次与分数丝滑过渡 */
-      const sig = view + '|' + mode + '|' + metric + '|' + lane;
+      /* 结构（视图 / 模式 / 维度 / 单均 / 项目 / 性别）不变时做增量合并，名次与分数丝滑过渡 */
+      const sig = view + '|' + mode + '|' + metric + '|' + lane + '|' + evs.join('+') + '|' + gender + '|' + rtype;
       const sameStruct = box.__tlSig === sig;
       if (sameStruct) {
         opt.animationDuration = 0;
@@ -211,28 +279,59 @@
     } catch (e) { return null; }
   };
 
-  function inScope(p, region, country) {
-    if (country) return p.country === country;
-    if (region) {
-      if (M.continents[region]) return M.continentOf[p.country] === region;
-      return M.regionOf[M.continentOf[p.country]] === region;
+  function inScope(p, region, country, gender, evs) {
+    if (country) { if (p.country !== country) return false; }
+    else if (region) {
+      const c = M.continentOf[p.country];
+      if (M.continents[region]) { if (c !== region) return false; }
+      else if (M.regionOf[c] !== region) return false;
+    }
+    if (gender && gender !== 'all') {
+      const g = p.gender ? String(p.gender).charAt(0).toUpperCase() : '';
+      if (g !== gender) return false;
+    }
+    if (evs && evs.length) {
+      let hit = false;
+      for (let i = 0; i < evs.length; i++) if ((p.events || []).indexOf(evs[i]) >= 0) { hit = true; break; }
+      if (!hit) return false;
     }
     return true;
   }
-  function metricScale(p, metric) {
-    if (metric === 'm1') return p.m.m1 / 100;
-    if (metric === 'm3') return p.m.m3 / 100;
-    return 1;
-  }
 
-  function snapshot(mode, fy, smooth, metric, region, country) {
-    const fn = mode === 'active' ? M.actAtF : M.cumAtF;
-    return M.ranked.filter(function (p) { return inScope(p, region, country); }).map(function (p) {
-      const sc = metricScale(p, metric);
-      let v = fn(p, fy) * sc;
-      if (smooth) v = (fn(p, fy) + fn(p, fy - 1) + fn(p, fy - 2)) * sc / 3;
-      return { name: p.name, country: p.country, hue: p.hue, id: p.id, value: v, color: countryColor(p.country) };
-    }).filter(function (d) { return d.value > 0; }).sort(function (a, b) { return b.value - a.value; });
+  /* 分数竞速图：口径与「历史地位排名」完全一致 —— 生涯累计按截至当日的纪录 / 领奖台
+     年度分比例缩放，峰谷比保持不变，因此末帧即总榜综合能力分。 */
+  function snapshot(mode, fy, smooth, region, country, evs, gender, rtype) {
+    const key = rtype === 'single' ? 'yearlyS' : (rtype === 'avg' ? 'yearlyA' : 'yearly');
+    function cum(p, y) {
+      const yv = p[key] || {}; let s = 0;
+      for (const k in yv) if (+k <= y) s += yv[k];
+      return s;
+    }
+    function cumF(p, f) {
+      const yv = p[key] || {}; let s = 0;
+      for (const k in yv) if (+k <= f) s += yv[k];
+      const yi = Math.floor(f), frac = f - yi;
+      if (frac > 0) s += (yv[yi + 1] || 0) * frac;
+      return s;
+    }
+    const END_Y = 2026;
+    const rows = [];
+    M.ranked.forEach(function (p) {
+      if (!inScope(p, region, country, gender, evs)) return;
+      const all = cum(p, END_Y);
+      if (all <= 0) return;
+      let cf = cumF(p, fy);
+      if (smooth) cf = (cumF(p, fy) + cumF(p, fy - 1) + cumF(p, fy - 2)) / 3;
+      const ratio = Math.max(0, Math.min(1, cf / all));
+      if (ratio <= 0) return;
+      const sc = P.util.scoreOf(p, rtype);
+      const career = sc.career * ratio;
+      const ratio2 = Math.max(0.05, Math.min(3, sc.peak / Math.max(sc.career, 0.01)));
+      const v = career * Math.pow(ratio2, 0.4);
+      if (v <= 0) return;
+      rows.push({ name: p.name, country: p.country, hue: p.hue, id: p.id, iso: p.country, value: v, color: countryColor(p.country), flag: window.Charts.flagUri(p.country) });
+    });
+    return rows.sort(function (a, b) { return b.value - a.value; });
   }
 
   function markLines() {
@@ -247,24 +346,28 @@
       },
       lineStyle: { color: T.accent || T.text3, type: 'dashed', width: 1.4, opacity: 0.85 },
       data: list.map(function (m) {
-        return { xAxis: String(m.year), name: (t.isEn() ? (m.en || m.zh) : m.zh).slice(0, 14), lineStyle: m.custom ? { color: T.accent, width: 1.8 } : undefined };
+        return { xAxis: +m.year, name: (t.isEn() ? (m.en || m.zh) : m.zh).slice(0, 14), lineStyle: m.custom ? { color: T.accent, width: 1.8 } : undefined };
       })
     };
   }
 
-  function tlOption(view, mode, fy, smooth, metric, region, country, lane) {
-    if (window.Charts.setLaneI18n) window.Charts.setLaneI18n({ mo: (t.isEn() ? 'mo' : '个月'), y: (t.isEn() ? 'y' : '年') });
+  function tlOption(view, mode, fy, smooth, metric, region, country, lane, evs, gender, rtype) {
+    if (window.Charts.setLaneI18n) window.Charts.setLaneI18n({ mo: (t.isEn() ? 'mo' : '个月'), y: (t.isEn() ? 'y' : '年'), day: (t.isEn() ? 'd' : '天') });
     if (view === 'lane') {
       const lanes = (lane === 'avg' ? M.lanesAvg : M.lanes).map(function (L) {
         return { label: evName(M.EV[L.ev] || { zh: L.zh, en: L.en }), segs: L.segs };
       });
-      return window.Charts.lanes(lanes, { y0: 2004, y1: 2026, laneH: 34 });
+      const opt = window.Charts.lanes(lanes, { y0: 2004, y1: 2026, laneH: 34 });
+      /* 里程碑竖线（横轴为年份，可标注）；挂在一条透明 line series 上 */
+      const ml = markLines();
+      if (ml.data.length) {
+        opt.series.push({ type: 'line', data: [], symbol: 'none', lineStyle: { width: 0 }, silent: true, markLine: ml, z: 5 });
+      }
+      return opt;
     }
     const TOP = 15;
     const rate = loadRate();
-    const snap = snapshot(mode, fy, smooth, 'overall', region, country).slice(0, TOP).map(function (d) {
-      return { name: d.name, value: d.value, color: d.color };
-    });
+    const snap = snapshot(mode, fy, smooth, region, country, evs, gender, rtype).slice(0, TOP);
     return window.Charts.barRace(snap, { top: TOP, duration: rate.anim });
   }
 
@@ -285,15 +388,20 @@
 
     if (tab === 'other') return h + otherTab(state);
 
-    /* 二级筛选表头：按项目过滤 */
+    /* 榜单池 = 全局筛选（国家 / 大洲 / 性别 / 年份区间 / 项目多选）后的选手，
+       否则顶部筛选条在另类统计页会完全失效 */
+    const pool = P.util.topicPool(state);
+
+    /* 二级筛选表头：按项目过滤（停办项目也可用，与筛选条口径一致） */
     const te = state.topicEvent || '';
     h += '<div class="ev-filter-head reveal"><span class="ev-filter-label">' + esc(t('top.eventFilter')) + '</span>' +
       '<div class="ev-strip ev-strip-topic" role="group" aria-label="' + esc(t('top.eventFilter')) + '">';
     h += '<button class="ev-tab' + (!te ? ' on' : '') + '" data-topicev="">' + esc(t('f.all')) + '</button>';
-    M.events.forEach(function (e) {
-      h += '<button class="ev-tab' + (te === e.id ? ' on' : '') + (e.retired ? ' retired' : '') + '" data-topicev="' + e.id + '" title="' + esc(t.isEn() ? e.en : e.zh) + '">' +
-        window.Icons.event(e.id) + '<span>' + esc(t.isEn() ? e.en : e.zh) + '</span></button>';
-    });
+    M.events.slice().sort(function (a, b) { return (a.retired ? 1 : 0) - (b.retired ? 1 : 0) || a.rank - b.rank; })
+      .forEach(function (e) {
+        h += '<button class="ev-tab' + (te === e.id ? ' on' : '') + (e.retired ? ' retired' : '') + '" data-topicev="' + e.id + '" title="' + esc(t.isEn() ? e.en : e.zh) + '">' +
+          window.Icons.event(e.id) + '<span>' + esc(t.isEn() ? e.en : e.zh) + '</span></button>';
+      });
     h += '</div></div>';
 
     const defs = M.boards[tab] || [];
@@ -314,7 +422,7 @@
 
     const d = defs.filter(function (b) { return b.k === tbKey; })[0];
     if (d) {
-      const list = M.board(tab, d.k, 12, te);
+      const list = M.board(tab, d.k, 12, te, pool);
       if (list.length) {
         h += '<div class="card reveal board-card"><div class="card-head"><h2>' + esc(t('stat.' + d.k)) + '</h2>' +
           '<span class="tiny muted">' + (t.isEn() ? 'Top' : '前') + ' ' + list.length + '</span></div>';
@@ -343,6 +451,7 @@
 
   function otherTab(state) {
     const sub = state.otherTab || 'king';
+    const pool = P.util.topicPool ? P.util.topicPool(state) : M.ranked;
     let h = '<div class="seg reveal" id="otherSeg" style="margin-bottom:12px">';
     [['king', 'top.king'], ['nation', 'top.nation'], ['unknown', 'top.unknown'], ['counter', 'top.counter']].forEach(function (x) {
       h += '<button data-other="' + x[0] + '" class="' + (sub === x[0] ? 'on' : '') + '">' + esc(t(x[1])) + '</button>';
@@ -352,7 +461,7 @@
       h += '<p class="tiny muted" style="margin-bottom:12px">' + esc(t('top.king.d')) + '</p>';
       h += '<div class="grid grid-3">';
       M.events.filter(function (e) { return !e.retired; }).forEach(function (e) {
-        const best = M.ranked.filter(function (p) { return p.events.indexOf(e.id) >= 0; })[0] || M.ranked[0];
+        const best = pool.filter(function (p) { return p.events.indexOf(e.id) >= 0; })[0] || pool[0] || M.ranked[0];
         h += '<div class="card reveal king-card"><div class="row" style="gap:10px">' + Ic.event(e.id, 'ev-ic') +
           '<div><div class="tiny muted">' + esc(evName(e)) + '</div><div style="font-weight:600">' + playerLink(best) + '</div></div></div>';
         h += '<div class="row tiny muted" style="margin-top:8px;gap:12px"><span>' + flag(best.country) + '</span>' +
@@ -384,7 +493,7 @@
       h += '</tbody></table></div>';
     } else if (sub === 'unknown') {
       h += '<p class="tiny muted" style="margin-bottom:12px">' + esc(t('top.unknown.d')) + '</p>';
-      const list = M.ranked.filter(function (p) { return p.wr === 0; }).slice(0, 40);
+      const list = pool.filter(function (p) { return p.wr === 0; }).slice(0, 40);
       h += '<div class="table-wrap reveal"><table class="data mini"><thead><tr><th class="tl">#</th><th class="tl">' +
         esc(t('col.player')) + '</th><th>' + esc(t('col.total')) + '</th><th>' + esc(t('col.months')) + '</th><th>' +
         esc(t('col.elo')) + '</th><th>' + esc(t('stat.yearsTop10')) + '</th></tr></thead><tbody>';
@@ -403,7 +512,7 @@
         h += '<option value="' + x[0] + '"' + (zero === x[0] ? ' selected' : '') + '>' + esc(t(x[1])) + '</option>';
       });
       h += '</select></div>';
-      const base = M.ranked.slice(0, 20);
+      const base = pool.slice(0, 20);
       const factor = function (p) {
         return zero === 'wr' ? (p.wr ? 0.6 : 1) : zero === 'wc' ? (p.wcGold ? 0.7 : 1) :
           zero === 'months' ? (p.months1 > 12 ? 0.65 : 1) : zero === 'm1' ? 0.7 : zero === 'm2' ? 0.75 : 0.8;
@@ -427,15 +536,18 @@
   function sensitivity(state) {
     let h = '<div class="card reveal"><div class="card-head"><h2>' + esc(t('top.sens')) + '</h2>' + infoTip(t('top.sens.d')) + '</div>';
     const pts = [];
+    const pool = (P.util.topicPool ? P.util.topicPool(state) : M.ranked).slice(0, 60);
     for (let i = 0; i <= 10; i++) {
       const w1 = 0.20 + i * 0.05;
       const save = Pm.get('b1');
       Pm.set('b1', w1); Pm.normalize();
-      const top = M.ranked.slice(0, 40).map(function (p) { return { p: p, o: scoreOf(p).overall }; })
+      const top = pool.map(function (p) { return { p: p, o: scoreOf(p).overall }; })
         .sort(function (a, b) { return b.o - a.o; })[0];
+      if (!top) { Pm.set('b1', save); Pm.normalize(); continue; }
       pts.push([round(w1, 2), round(top.o, 1), esc(top.p.name)]);
       Pm.set('b1', save); Pm.normalize();
     }
+    if (!pts.length) return '';
     h += ecBox('scatter', pts, { xName: 'β₁ ' + t('m1.name'), yName: t('col.total') }, 300);
     h += '<p class="tiny muted" style="margin-top:8px">' + esc(t('top.sens.d')) + '</p></div>';
     return h;

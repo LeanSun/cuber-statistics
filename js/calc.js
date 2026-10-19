@@ -47,6 +47,19 @@
   function overall(c, pk) {
     return Math.pow(Math.max(c, 0.01), 0.6) * Math.pow(Math.max(pk, 0.01), 0.4);
   }
+  /* 按成绩类型取模块原始分：recType='single'/'avg' 时用 ETL 预归一化的 m1s/m1a 覆盖 m1，
+     'total'（默认）用合成后的 m1。ETL 已把单次 / 平均的纪录分各自按全局最大值归一，
+     因此这里直接替换 m1 再走加权即可，无需再算全局最大值。 */
+  function modsByType(p, tab, recType) {
+    var base = (tab === 'peak') ? p.pk : p.m;
+    if (!recType || recType === 'total') return base;
+    var key = recType === 'single' ? 'm1s' : 'm1a';
+    if (!base || base[key] == null) return base;
+    var o = {};
+    for (var k in base) o[k] = base[k];
+    o.m1 = base[key];
+    return o;
+  }
 
   /* ---------------- 国家表（ISO2 → [英文名, 中文名, 洲际码]） ----------------
      WCA 导出里 country_id 可能是国家全名、ISO2 或 ISO3（不同导出版本不一致），
@@ -107,13 +120,14 @@
   ];
   var EV = {}; EVENTS.forEach(function (e) { EV[e.id] = e; });
 
-  /* 正阶组＝2~7 阶；三阶单手与最少步归入「其他组」；最少步不再单独成组 */
+  /* 分组：正阶组＝2~7 阶；盲拧组仅现存项目（旧多盲 333mbo 归入已停办）；
+     三阶单手 / 最少步不单成组（可在「全部项目」里单独选）；
+     异型组＝魔表 / 五魔方 / 金字塔 / 斜转 / SQ1；无高阶组。 */
   var PRESET_GROUPS = [
     { id: 'all', zh: '全部项目', en: 'All events', ids: EVENTS.map(function (e) { return e.id; }) },
     { id: 'speed', zh: '正阶组', en: 'NxN cubes', ids: ['222', '333', '444', '555', '666', '777'] },
-    { id: 'blind', zh: '盲拧组', en: 'Blindfolded', ids: ['333bf', '444bf', '555bf', '333mbf', '333mbo'] },
-    { id: 'big', zh: '高阶组', en: 'Big cubes', ids: ['444', '555', '666', '777'] },
-    { id: 'other', zh: '其他组', en: 'Other', ids: ['333oh', '333fm', 'clock', 'minx', 'pyram', 'skewb', 'sq1'] },
+    { id: 'blind', zh: '盲拧组', en: 'Blindfolded', ids: ['333bf', '444bf', '555bf', '333mbf'] },
+    { id: 'other', zh: '异型组', en: 'Other puzzles', ids: ['clock', 'minx', 'pyram', 'skewb', 'sq1'] },
     { id: 'retired', zh: '已停办', en: 'Discontinued', ids: ['333ft', 'magic', 'mmagic', '333mbo'] }
   ];
 
@@ -307,7 +321,7 @@
 
   function bonus(p) {
     if (p.bonus) return p.bonus;
-    var covGroups = ['blind', 'big', 'other', 'speed', 'fmc'];
+    var covGroups = ['blind', 'other', 'speed'];
     var groups = 0;
     covGroups.forEach(function (g) {
       var ids = (PRESET_GROUPS.filter(function (x) { return x.id === g; })[0] || {}).ids || [];
@@ -349,10 +363,70 @@
     return p.ranks;
   }
 
-  function board(kind, key, n, ev, ctx) {
-    var all = ctx.ranked.filter(function (p) { return !ev || (p.events || []).indexOf(ev) >= 0; })
-      .map(function (p) { var st = stats(p); return { p: p, v: st[key] }; })
-      .filter(function (d) { return typeof d.v === 'number' && isFinite(d.v); });
+  /* 单项目口径的另类统计指标：只统计该项目上的真实数据。
+     ETL 把每选手的 evStat[eid] 传上来；缺项回落到「无数据」，不拿全项目数值冒充。 */
+  function evStatOf(p, ev) {
+    var b = evStatCtx ? evStatCtx(p, ev) : (p.evStat && ev ? p.evStat[ev] : null);
+    if (!b) return null;
+    var ys = (b.years || []).slice().sort(function (a, c) { return a - c; });
+    var streak = 1, maxSk = ys.length ? 1 : 0;
+    for (var i = 1; i < ys.length; i++) {
+      if (ys[i] === ys[i - 1] + 1) streak++; else streak = 1;
+      if (streak > maxSk) maxSk = streak;
+    }
+    var gSk = 0, cur = 0;
+    ys.forEach(function (y) {
+      var n = (b.goldPerYear || {})[y] || 0;
+      if (n > 0) { cur++; if (cur > gSk) gSk = cur; } else cur = 0;
+    });
+    var recBest = b.recBest || 0;
+    if (!recBest) {
+      var ry = b.recPerYear || {};
+      Object.keys(ry).forEach(function (y) { if (ry[y] > recBest) recBest = ry[y]; });
+    }
+    var pod = b.pod || 0, gold = b.gold || 0;
+    var d = {
+      wrCount: b.wr || 0, crCount: b.cr || 0, nrCount: b.nr || 0,
+      recTotal: (b.wr || 0) + (b.cr || 0) + (b.nr || 0),
+      recEvents: ((b.wr || 0) + (b.cr || 0) + (b.nr || 0)) > 0 ? 1 : 0,
+      recBestYear: recBest,
+      heldTotal: b.held || 0, heldLongest: b.heldLong || 0, holdingNow: b.heldNow || 0,
+      compCount: b.comps || 0,
+      compEventRows: b.rows || 0, resultRows: b.rows || 0,
+      attempts: b.att || 0, solves: b.sol || 0,
+      activeYears: ys.length, activeStreak: maxSk,
+      maxEventsPerComp: 1, multiEventComp: 0,
+      cities: b.cityN != null ? b.cityN : Object.keys(b.cities || {}).length,
+      podiumTotal: pod, gold: gold, silver: b.sil || 0, bronze: b.bro || 0,
+      podiumWC: b.wc || 0, podiumCC: b.cc || 0, podiumNC: b.nc || 0,
+      podiumLocal: b.lo || 0, podiumOpen: b.op || 0,
+      most4th: 0, top4NoPodium: 0,
+      goldEvents: gold > 0 ? 1 : 0, podiumEvents: pod > 0 ? 1 : 0,
+      podiumStreak: gSk,
+      bestYearGold: Object.keys(b.goldPerYear || {}).reduce(function (m, y) { return Math.max(m, b.goldPerYear[y]); }, 0),
+      podiumRate: round(pod / Math.max(1, b.comps || b.rows || 1), 4),
+      goldRate: round(gold / Math.max(1, pod), 4),
+      champConvert: round(((b.wc || 0) + (b.cc || 0) + (b.nc || 0)) / Math.max(1, pod), 4),
+      yearsTop10: 0, yearsTop100: 0,
+      coverage: 1, dominance: round((p.eloPeak - 1400) / 900, 3),
+      lowCompHighAch: round((p.overall || 0) / Math.max(1, b.comps), 4),
+      compDensity: round((b.comps || 0) / Math.max(1, ys.length), 2),
+      dnf: b.dnf || 0
+    };
+    return d;
+  }
+  var evStatCtx = null;
+
+  function board(kind, key, n, ev, ctx, pool) {
+    var src = pool || ctx.ranked;
+    var all = src.filter(function (p) { return !ev || (p.events || []).indexOf(ev) >= 0; })
+      .map(function (p) {
+        /* 指定项目时用「该项目上的真实指标」，不拿全项目数值冒充 */
+        var st = ev ? evStatOf(p, ev) : stats(p);
+        if (!st) return null;
+        return { p: p, v: st[key] };
+      })
+      .filter(function (d) { return d && typeof d.v === 'number' && isFinite(d.v); });
     /* 该项对所有人都为 0 → 说明数据里没有这个字段，不展示无意义的空排行 */
     var mx = 0;
     all.forEach(function (d) { if (d.v > mx) mx = d.v; });
@@ -479,6 +553,8 @@
       p.overall = round(overall(p.career, p.peak), 1);
       p.balance = round(Math.log(Math.max(p.career, 0.01) / Math.max(p.peak, 0.01)), 3);
       if (p.hue == null && p.name) p.hue = hue(p.name);
+      /* eloPeak 兜底：明细选手由 ETL 直接给出，精简档案用 M7 反推 */
+      if (p.eloPeak == null) p.eloPeak = Math.round(1400 + (p.m.m7 || 0) * 900);
     });
 
     var ranked = players.slice().sort(function (a, b) { return b.overall - a.overall; });
@@ -524,7 +600,44 @@
     var lanes = cfg.lanes || makeLanes(events.map(function (e) { return e.id; }), 0, players);
     var lanesAvg = cfg.lanesAvg || makeLanes(events.map(function (e) { return e.id; }), 2, players);
 
-    var ctx = { ranked: ranked, continentOf: continentOf, regionOf: regionOf };
+    var ctx = { ranked: ranked, continentOf: continentMap, regionOf: regionOf };
+    evStatCtx = function (p, ev) { return p.evS ? decodeEvStat(p, ev) : (p.evStat ? p.evStat[ev] : null); };
+
+    /* ETL 输出的按项目统计为紧凑字符串，这里按需解码（用完即弃，不常驻内存） */
+    var EVK = ['rows', 'att', 'sol', 'dnf', 'pod', 'gold', 'sil', 'bro', 'wr', 'cr', 'nr',
+      'comps', 'wc', 'cc', 'nc', 'lo', 'op', 'held', 'heldLong', 'heldNow',
+      'cityN', 'yrCnt', 'yrStr', 'gyStr', 'recBest'];
+    function decodeEvStat(p, ev) {
+      var s = p.evS;
+      if (!s || !ev) return null;
+      var seg = evStatCache[s];
+      if (!seg) {
+        seg = {};
+        s.split(';').forEach(function (row) {
+          var ci = row.indexOf(':');
+          if (ci < 0) return;
+          seg[row.slice(0, ci)] = row.slice(ci + 1).split(',');
+        });
+        if (evStatCacheLen > 4000) { evStatCache = {}; evStatCacheLen = 0; }
+        evStatCache[s] = seg; evStatCacheLen++;
+      }
+      var a = seg[ev];
+      if (!a) return null;
+      var b = { cities: {}, recPerYear: {}, goldPerYear: {} };
+      for (var i = 0; i < EVK.length; i++) {
+        var v = +a[i] || 0, k = EVK[i];
+        if (k === 'cities') b.cityN = v;
+        else if (k === 'yrCnt') b.yrCnt = v;
+        else if (k === 'yrStr') b.years = v ? String(v).split('.') : [];
+        else if (k === 'gyStr') {
+          if (v) String(v).split('.').forEach(function (g) { var t = g.split('_'); b.goldPerYear[t[0]] = +t[1]; });
+        } else if (k === 'recBest') b.recBest = v;
+        else b[k] = v;
+      }
+      b.cities = null;
+      return b;
+    }
+    var evStatCache = {}, evStatCacheLen = 0;
 
     function ensureDetail(p) { if (!p.records) p.records = []; if (!p.podiums) p.podiums = []; return p; }
 
@@ -537,7 +650,9 @@
       weights: WEIGHTS, modKeys: MODKEYS,
       lanes: lanes, lanesAvg: lanesAvg, nations: nations,
       milestones: milestones, eventMilestones: eventMilestonesFn,
-      boards: boards, board: function (k, key, n, e) { return board(k, key, n, e, ctx); },
+      boards: boards, board: function (k, key, n, e, pool) { return board(k, key, n, e, ctx, pool); },
+      evStatOf: function (p, ev) { return evStatOf(p, ev); },
+      decodeEvStat: function (p, ev) { return decodeEvStat(p, ev); },
       eventBoards: cfg.eventBoards || {},
       meta: meta, years: years,
       ensureDetail: ensureDetail, stats: function (p) { return stats(p); },
@@ -551,7 +666,7 @@
     U: U, MODKEYS: MODKEYS, WEIGHTS: WEIGHTS, EVENTS: EVENTS, EV: EV, PRESET_GROUPS: PRESET_GROUPS,
     CONTINENTS: CONTINENTS, REGIONS: REGIONS, REGION_OF: REGION_OF, CONTINENT_CODE: CONTINENT_CODE,
     MILESTONES: MILESTONES, BOARDS: BOARDS, EV_BARRIERS: EV_BARRIERS,
-    weighted: weighted, overall: overall, round: round, clamp: clamp, esc: esc,
+    weighted: weighted, overall: overall, modsByType: modsByType, round: round, clamp: clamp, esc: esc,
     CT: CT, isoNorm: isoNorm, countryEn: countryEn, countryZh: countryZh, contOfIso: contOfIso,
     stats: stats, bonus: bonus, ranksOf: ranksOf, board: board,
     cumAt: cumAt, actAt: actAt, cumAtF: cumAtF, actAtF: actAtF,

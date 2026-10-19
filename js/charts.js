@@ -227,25 +227,73 @@
     });
   }
 
-  /* ---------- 条形竞赛 ---------- */
+  /* ---------- 条形竞赛（custom 渲染：国旗 + 姓名 + 分数，支持点击跳转） ---------- */
   function barRace(items, opts) {
     opts = opts || {};
     const T = pal();
-    const n = opts.top || 12;
+    const n = opts.top || 15;
     const data = items.slice(0, n);
-    /* 补齐到固定条数，保证增量合并时竞速条身份稳定、平滑换位 */
-    while (data.length < n) data.push({ name: '', value: 0, itemStyle: { color: T.text3, opacity: 0 } });
-    return Object.assign(base({ stagger: 55, duration: opts.duration == null ? 720 : opts.duration }), {
-      grid: { left: 6, right: 62, top: 6, bottom: 6, containLabel: true },
+    /* 补齐到固定条数，保证增量合并时序列身份稳定、平滑换位 */
+    while (data.length < n) data.push({ name: '', value: 0 });
+    function fmtD(dn) {
+      const s = String(dn || '');
+      return s.length === 8 ? (s.slice(0, 4) + '-' + s.slice(4, 6) + '-' + s.slice(6, 8)) : '';
+    }
+    return Object.assign(base({ stagger: 0, duration: opts.duration == null ? 720 : opts.duration }), {
+      grid: { left: 6, right: 78, top: 6, bottom: 6, containLabel: true },
       xAxis: Object.assign({ type: 'value', max: function (v) { return Math.max(v.max, 1) * 1.05; } }, axisCommon()),
-      yAxis: Object.assign({ type: 'category', inverse: true, data: data.map(function (d) { return d.name; }) }, axisCommon(), { splitLine: { show: false }, axisLabel: { color: T.text, fontSize: 12 } }),
+      yAxis: Object.assign({ type: 'category', inverse: true, data: data.map(function (d) { return d.name; }) }, axisCommon(), { splitLine: { show: false }, axisLabel: { show: false } }),
       tooltip: Object.assign({ trigger: 'axis', axisPointer: { type: 'shadow' } }, base().tooltip),
       series: [{
-        type: 'bar', barMaxWidth: 22,
-        realtimeSort: true,
-        itemStyle: { borderRadius: [0, 5, 5, 0] },
-        label: { show: true, position: 'right', color: T.text2, fontSize: 11.5, formatter: function (p) { return p.value > 0 ? round(p.value, 1) : ''; } },
-        data: data.map(function (d) { return { value: round(d.value), itemStyle: { color: d.color } }; })
+        type: 'custom',
+        renderItem: function (params, api) {
+          const catIdx = api.value(1);
+          const val = Math.max(0, api.value(0));
+          const it = data[catIdx];
+          if (!it || !it.name) return;
+          const y0 = api.coord([0, catIdx])[1];
+          const x0 = api.coord([0, catIdx])[0];
+          const x1 = api.coord([val, catIdx])[0];
+          const h = Math.max(10, Math.min(24, api.size([0, 1])[1] * 0.68));
+          const w = Math.max(2, x1 - x0);
+          const kids = [{
+            type: 'rect', transition: ['shape'], shape: { x: x0, y: y0 - h / 2, width: w, height: h, r: 5 },
+            style: { fill: it.color || T.m[0], stroke: T.elev, lineWidth: 1 }
+          }];
+          let tx = x0 + 8;
+          const uri = it.flag || flagUri(it.iso);
+          if (uri) {
+            kids.push({ type: 'image', style: { image: uri, x: tx, y: y0 - 5, width: 15, height: 11 } });
+            tx += 20;
+          }
+          const room = x0 + w - tx - 6;
+          const per = 7.2;
+          let txt = it.name;
+          const maxc = Math.max(1, Math.floor(room / per));
+          if (txt.length > maxc) txt = maxc > 1 ? txt.slice(0, maxc - 1) + '…' : txt.slice(0, maxc);
+          if (txt) {
+            kids.push({
+              type: 'text', style: {
+                text: txt, x: tx, y: y0, fill: '#fff',
+                font: '600 11.5px "Segoe UI",system-ui,sans-serif',
+                textVerticalAlign: 'middle', textBaseline: 'middle'
+              }
+            });
+          }
+          /* 条尾分数 */
+          kids.push({
+            type: 'text', style: {
+              text: val > 0 ? String(Math.round(val * 10) / 10) : '', x: x1 + 6, y: y0,
+              fill: T.text2, font: '600 11.5px "Segoe UI",system-ui,sans-serif',
+              textVerticalAlign: 'middle', textBaseline: 'middle'
+            }
+          });
+          return { type: 'group', children: kids };
+        },
+        encode: { x: 0, y: 1 },
+        data: data.map(function (d, i) { return { value: [round(d.value), i], id: d.id, iso: d.iso, name: d.name }; }),
+        itemStyle: { opacity: 0.96 },
+        emphasis: { itemStyle: { opacity: 1 } }
       }]
     });
   }
@@ -283,7 +331,7 @@
     const data = [];
     laneData.forEach(function (L, li) {
       L.segs.forEach(function (sg) {
-        data.push({ value: [sg.from, li, sg.to, li, sg.holder, sg.country, sg.days], itemStyle: { color: sg.color } });
+        data.push({ value: [sg.from, li, sg.to, li, sg.holder, sg.country, sg.days, sg.fromDn || 0, sg.toDn || 0], itemStyle: { color: sg.color } });
       });
     });
     function renderItem(params, api) {
@@ -344,9 +392,8 @@
         formatter: function (p) {
           const v = p.data.value;
           const days = v[6] || 0;
-          const mo = Math.round(days / 30.4375);
-          const span = mo < 12 ? (mo + ' ' + (LANE_I18N.mo || '个月')) : (Math.floor(mo / 12) + ' ' + (LANE_I18N.y || '年') + (mo % 12 ? ' ' + (mo % 12) + (LANE_I18N.mo || '个月') : ''));
-          return '<b>' + v[4] + '</b> · ' + v[5] + '<br/>' + v[0] + '–' + v[2] + ' · ' + span;
+          function fd(dn) { const s = String(dn || ''); return s.length === 8 ? s.slice(0, 4) + '-' + s.slice(4, 6) + '-' + s.slice(6, 8) : '—'; }
+          return '<b>' + v[4] + '</b> · ' + v[5] + '<br/>' + fd(v[8]) + ' → ' + fd(v[9]) + ' · <b>' + days + '</b> ' + (LANE_I18N.day || '天');
         }
       },
       series: [{

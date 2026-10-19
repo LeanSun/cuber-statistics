@@ -44,18 +44,29 @@
   function contName(c) { const o = M.continents[c]; return o ? (t.isEn() ? o.en : o.zh) : (c || '—'); }
   function regionName(r) { const o = M.regions[r]; return o ? (t.isEn() ? o.en : o.zh) : (r || '—'); }
   function strength(p) { return Math.max(0.02, Math.min(1, (p.eloPeak - 1400) / 900)); }
-  function scoreOf(p) {
-    const c = Pm.weighted(p.m), pk = Pm.weighted(p.pk);
+  /* 成绩口径：总计 / 单次 / 平均 —— 只替换 M1 纪录分，其余模块不变 */
+  function modsOf(p, tab, rt) {
+    const mods = tab === 'peak' ? p.pk : p.m;
+    if (rt !== 'single' && rt !== 'avg') return mods;
+    const k = rt === 'single' ? 'm1s' : 'm1a';
+    if (mods[k] == null) return mods;
+    const c = {};
+    for (const kk in mods) c[kk] = mods[kk];
+    c.m1 = mods[k];
+    return c;
+  }
+  function scoreOf(p, rt) {
+    const c = Pm.weighted(modsOf(p, 'career', rt)), pk = Pm.weighted(modsOf(p, 'peak', rt));
     return { career: c, peak: pk, overall: Pm.overall(c, pk), balance: Math.log(Math.max(c, 0.01) / Math.max(pk, 0.01)) };
   }
-  function contribs(p, tab) {
+  function contribs(p, tab, rt) {
     const w = Pm.weights();
-    const mods = tab === 'peak' ? p.pk : p.m;
-    return MOD.map(function (k) { return { k: k, name: modName(k), raw: mods[k], w: w[k], v: w[k] * mods[k], color: MODC[k] }; });
+    const mods = modsOf(p, tab, rt);
+    return MOD.map(function (k) { return { k: k, name: modName(k), raw: mods[k] || 0, w: w[k], v: w[k] * (mods[k] || 0), color: MODC[k] }; });
   }
   /* 行内迷你堆叠条（七模块加权贡献） */
-  function miniStack(p, tab) {
-    const cs = contribs(p, tab);
+  function miniStack(p, tab, rt) {
+    const cs = contribs(p, tab, rt);
     const tot = cs.reduce(function (a, c) { return a + c.v; }, 0) || 1;
     let s = '<div class="ministack" role="img" aria-label="' + esc(t('rank.contribution')) + '">';
     cs.forEach(function (c) {
@@ -77,8 +88,29 @@
   P.util = {
     MOD: MOD, MODC: MODC, modName: modName, flag: flag, avatar: avatar, playerLink: playerLink,
     evName: evName, contName: contName, regionName: regionName, countryName: countryName,
-    scoreOf: scoreOf, contribs: contribs, ecBox: ecBox, infoTip: infoTip, strength: strength, fmtScore: fmtScore
+    scoreOf: scoreOf, contribs: contribs, ecBox: ecBox, infoTip: infoTip, strength: strength, fmtScore: fmtScore,
+    topicPool: topicPool
   };
+
+  /* 另类统计页的候选池：套用顶部筛选条（国家 / 大洲 / 性别 / 年份区间 /
+     预设分组 / 事件多选 / 停办项目），使全局筛选在该页同样生效 */
+  function topicPool(state) {
+    const pool = (state.group && state.group !== 'all') ? eventSet(state)
+      : ((state.evSel && state.evSel.length) ? state.evSel : null);
+    return M.ranked.filter(function (p) {
+      if (state.geo) {
+        if (state.geo.indexOf('cont:') === 0) { if (M.continentOf[p.country] !== state.geo.slice(5)) return false; }
+        else if (p.country !== state.geo) return false;
+      }
+      if (state.gender && state.gender !== 'all' && genderOf(p.gender) !== state.gender) return false;
+      if (state.y0 && p.end < state.y0) return false;
+      if (state.y1 && p.start > state.y1) return false;
+      if (pool && !(p.events || []).some(function (e) { return pool.indexOf(e) >= 0; })) return false;
+      if (!state.retired && (p.events || []).some(function (e) { return (M.EV[e] || {}).retired; })
+        && !(p.events || []).some(function (e) { return !(M.EV[e] || {}).retired; })) return false;
+      return true;
+    });
+  }
 
   /* ================= 首页 ================= */
   P.home = function () {
@@ -226,6 +258,7 @@
 
   P.filtered = function (state) {
     const pool = eventSet(state);
+    const rt = state.recType || 'all';
     const scoped = (state.group && state.group !== 'all') || (state.evSel && state.evSel.length);
     let rows = M.ranked.filter(function (p) {
       if (state.geo) {
@@ -252,7 +285,7 @@
     const bd = sev ? eventBoard(sev) : null;
     const bdM = evs.length >= 2 ? evs.map(function (ev) { return { ev: ev, b: eventBoard(ev), w: evWeight(ev) }; }) : null;
     rows = rows.map(function (p) {
-      const sc = scoreOf(p);
+      const sc = scoreOf(p, rt);
       let score = sc[state.tab] || sc.overall;
       if (state.group === 'custom' && state.customIds && state.customIds.length) {
         const hit = p.events.filter(function (e) { return state.customIds.indexOf(e) >= 0; }).length;
@@ -290,8 +323,7 @@
       switch (k) {
       case 'score':
       case 'total':
-        /* 单项目模式：按该项目世界排名排序（升序即从好到差） */
-        if (row.ev) return row.be ? -row.be.r : -1e9;
+        /* 单项目模式同样按历史地位分排序（该项目世界名次仅作条尾参考列） */
         return row.score;
       case 'player': return p.name;
       case 'country': return p.country;
@@ -314,6 +346,7 @@
 
   P.rank = function (state) {
     const rowsAll = P.filtered(state);
+    const rt = state.recType || 'all';
     const per = 50;
     const evMode = rowsAll.length ? (rowsAll[0].ev || '') : '';
     const firstRow = rowsAll[0] || null;
@@ -340,6 +373,12 @@
       h += '<span class="tiny muted">' + esc(t('rank.tab.' + state.tab + '.d')) + '</span>';
     }
     h += '<span class="spacer"></span>';
+    /* 成绩口径：总计 / 单次 / 平均（只影响 M1 纪录分） */
+    h += '<div class="seg" id="typeSeg" title="' + esc(t('rank.type.d')) + '">';
+    [['all', 'rank.type.all'], ['single', 'rank.type.single'], ['avg', 'rank.type.avg']].forEach(function (x) {
+      h += '<button data-type="' + x[0] + '" class="' + (rt === x[0] ? 'on' : '') + '">' + esc(t(x[1])) + '</button>';
+    });
+    h += '</div>';
     h += '<span class="tiny muted">' + esc(t('rank.perPage')) + '</span>';
     h += '<a class="btn" href="#/model">' + Ic.glyph('sliders') + ' ' + esc(t('rank.params')) + '</a>';
     h += '</div>';
@@ -396,11 +435,11 @@
         const be = row.be;
         const w = be ? evBarPct(be.r, row.bdLen) : 6;
         h += '<td class="barcell bars-full"><div class="bar-row evmode">' +
-          '<div class="bar-grow" style="width:' + w.toFixed(1) + '%">' + miniStack(p, modTab) + '</div>' +
+          '<div class="bar-grow" style="width:' + w.toFixed(1) + '%">' + miniStack(p, modTab, rt) + '</div>' +
           '<span class="ev-res">' + (be ? esc(be.s) + (be.af ? ' <i>/</i> ' + esc(be.af) : '') : '<span class="muted">—</span>') + '</span>' +
           '<span class="bar-total ev-rank"' + (be ? ' title="' + esc(t('player.rankWorld')) + '">#' + be.r : ' class="bar-total muted">—') + '</span></div></td>';
       } else {
-        h += '<td class="barcell bars-full"><div class="bar-row"><div class="bar-grow" style="width:' + bw.toFixed(1) + '%">' + miniStack(p, modTab) + '</div><span class="bar-total">' + U.fmt(score, 1) + '</span></div></td>';
+        h += '<td class="barcell bars-full"><div class="bar-row"><div class="bar-grow" style="width:' + bw.toFixed(1) + '%">' + miniStack(p, modTab, rt) + '</div><span class="bar-total">' + U.fmt(score, 1) + '</span></div></td>';
       }
       h += '<td class="tl exp-col"><button class="expand-btn" data-expand="' + p.id + '" aria-label="' + esc(t('ui.more')) + '">›</button></td>';
       h += '</tr>';
@@ -428,9 +467,10 @@
 
   /* 展开行：每模块 分值 / 权重 / 加权贡献（#10） */
   P.expandBody = function (p, state) {
-    const sc = scoreOf(p);
+    const rt = (state && state.recType) || 'all';
+    const sc = scoreOf(p, rt);
     const tab = (state && state.tab === 'peak') ? 'peak' : 'career';
-    const cs = contribs(p, tab);
+    const cs = contribs(p, tab, rt);
     const tot = cs.reduce(function (a, c) { return a + c.v; }, 0) || 1;
     const st = M.stats(p);
     const wcaUrl = 'https://www.worldcubeassociation.org/persons/' + encodeURIComponent(String(p.wcaId || p.id).toUpperCase());

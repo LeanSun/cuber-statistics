@@ -12,9 +12,9 @@
   const state = {
     tab: 'overall', sortKey: 'score', sortDir: 'desc', page: 1,
     group: 'all', customIds: [], evSel: [], country: '', continent: '', region: '',
-    gender: 'all', y0: null, y1: null, retired: false,
+    gender: 'all', y0: null, y1: null, retired: false, recType: 'all',
     scope: 'country', geo: '',
-    pk: [], tlView: 'race', tlMode: 'cumulative', tlFy: 2025, tlStep: 'year', tlMetric: 'overall', tlLane: 'single', tlSmooth: false, tlPlaying: false, tlRegion: '', tlCountry: '',
+    pk: [], tlView: 'race', tlMode: 'cumulative', tlFy: 2025, tlStep: 'day', tlMetric: 'overall', tlLane: 'single', tlSmooth: false, tlPlaying: false, tlRegion: '', tlCountry: '',
     topicTab: 'rec', topicStat: '', otherTab: 'king', nationMetric: 'total', counterZero: 'wr', topicBoard: ''
   };
 
@@ -235,17 +235,11 @@
     h += '</div>';
     h += '</div>';
 
-    /* ---------- 国家 / 地区 / 大洲 合并为单一下拉（总榜 + 动态演变） ---------- */
-    if (route === 'rank' || route === 'timeline') {
+    /* ---------- 国家 / 大洲 合并为单一下拉（总榜 + 图表可视化 + 另类统计；已移除 WCA 地区分组） ---------- */
+    if (route === 'rank' || route === 'timeline' || route === 'topics') {
       h += '<div class="fgroup"><span class="flabel">' + esc(t('f.region')) + '</span><div class="fctl">';
       h += '<select id="fgGeo" class="sel">';
       h += '<option value="">' + esc(t('f.all')) + '</option>';
-      h += '<optgroup label="' + esc(t.isEn() ? 'WCA regions' : 'WCA 地区') + '">';
-      Object.keys(M.regions).forEach(function (rg) {
-        const v = 'reg:' + rg;
-        h += '<option value="' + v + '"' + (state.region === rg ? ' selected' : '') + '>' + esc(t.isEn() ? M.regions[rg].en : M.regions[rg].zh) + '</option>';
-      });
-      h += '</optgroup>';
       const contOrder = ['As', 'NAm', 'SAm', 'Eu', 'Af', 'Oc'];
       h += '<optgroup label="' + esc(t.isEn() ? 'Continents' : '大洲') + '">';
       contOrder.forEach(function (c) {
@@ -267,13 +261,34 @@
       h += '</select></div></div>';
     }
 
-    if (route === 'rank') {
+    if (route === 'rank' || route === 'timeline' || route === 'topics') {
       h += '<div class="fgroup"><span class="flabel">' + esc(t('f.gender')) + '</span><div class="fctl">';
       [['all', 'f.gender.all'], ['M', 'f.gender.m'], ['F', 'f.gender.f']].forEach(function (g) {
         h += '<button class="chip' + (state.gender === g[0] ? ' on' : '') + '" data-gender="' + g[0] + '">' + esc(t(g[1])) + '</button>';
       });
       h += '</div></div>';
+    }
 
+    if (route === 'rank' || route === 'timeline') {
+      /* 成绩口径：总计 / 单次 / 平均（只影响纪录分 M1） */
+      h += '<div class="fgroup"><span class="flabel">' + esc(t('rank.type')) + '</span><div class="fctl">';
+      [['all', 'rank.type.all'], ['single', 'rank.type.single'], ['avg', 'rank.type.avg']].forEach(function (x) {
+        h += '<button class="chip' + ((state.recType || 'all') === x[0] ? ' on' : '') + '" data-type="' + x[0] + '" title="' + esc(t('rank.type.d')) + '">' + esc(t(x[1])) + '</button>';
+      });
+      h += '</div></div>';
+
+      h += '<div class="fgroup"><span class="flabel">' + esc(t('f.period')) + '</span><div class="fctl">';
+      h += '<select id="fgY0"><option value="">1982</option>';
+      for (let y = 2003; y <= 2025; y++) h += '<option value="' + y + '"' + (state.y0 === y ? ' selected' : '') + '>' + y + '</option>';
+      h += '</select><span class="tiny muted">–</span>';
+      h += '<select id="fgY1">';
+      for (let y = 2003; y <= 2025; y++) h += '<option value="' + y + '"' + ((state.y1 === y || (state.y1 == null && y === 2025)) ? ' selected' : '') + '>' + y + '</option>';
+      h += '</select></div></div>';
+
+      h += '<div class="fgroup"><span class="flabel">' + esc(t('f.retired')) + '</span><div class="fctl">';
+      h += '<button class="chip' + (state.retired ? ' on' : '') + '" data-retired="1">' + esc(state.retired ? t('f.include') : t('f.exclude')) + '</button>';
+      h += '</div></div>';
+    } else if (route === 'topics') {
       h += '<div class="fgroup"><span class="flabel">' + esc(t('f.period')) + '</span><div class="fctl">';
       h += '<select id="fgY0"><option value="">1982</option>';
       for (let y = 2003; y <= 2025; y++) h += '<option value="' + y + '"' + (state.y0 === y ? ' selected' : '') + '>' + y + '</option>';
@@ -299,6 +314,7 @@
     if (!el) return;
     let n = M.ranked.length;
     if (route === 'rank') n = P.filtered(state).length;
+    else if (route === 'topics') n = P.util.topicPool(state).length;
     let geoLabel = '';
     if (state.region) geoLabel = P.util.regionName(state.region);
     else if (state.geo) {
@@ -447,6 +463,7 @@
         state.tlFy = info.fy;
         if (lab) lab.textContent = info.label;
         if (box) { box.setAttribute('data-fy', state.tlFy); P.drawTimeline(box); }
+        if (P.tlHighlightRail) P.tlHighlightRail(info.fy);
       }
       if (range) range.addEventListener('input', function () { setFyFromRange(range); });
       if (sm) sm.addEventListener('change', function () {
@@ -457,34 +474,40 @@
         if (state.tlPlaying) { stopPlay(); return; }
         if (!range) return;
         state.tlPlaying = true; play.textContent = t('tl.pause');
-        /* 时间跳跃速率：jump 越大，每次前进的年份越多 */
-        const rate = (P.tlRate ? P.tlRate() : { jump: 1, anim: 800, fps: 900 });
-        const inc = Math.max(1, Math.round(rate.jump));
+        /* 时间步进速率：jump＝天/秒（默认 30），fps＝刷新间隔 */
+        const rate = (P.tlRate ? P.tlRate() : { jump: 30, anim: 800, fps: 200 });
+        const dtMs = Math.max(50, Math.min(2000, rate.fps || 200));
+        const daysPerSec = Math.max(0.5, rate.jump || 30);
+        let acc = 0;
         tlTimer = setInterval(function () {
           const sl = P.tlSlider(state.tlStep, state.tlFy);
           let idx = +range.value;
           if (idx >= sl.max) { stopPlay(); return; }
-          idx = Math.min(sl.max, idx + inc);
+          acc += daysPerSec * dtMs / 1000;
+          const step = Math.floor(acc);
+          acc -= step;
+          if (step < 1) return;
+          idx = Math.min(sl.max, idx + step);
           range.value = idx;
           setFyFromRange(range);
           if (idx >= sl.max) stopPlay();
-        }, Math.max(120, rate.fps || 900));
+        }, dtMs);
       });
       function stopPlay() {
         state.tlPlaying = false; clearInterval(tlTimer);
         const pb = document.getElementById('tlPlay'); if (pb) pb.textContent = t('tl.play');
       }
-      /* 动画速率自定义：时间跳跃 / 动画时长 / 刷新间隔 */
+      /* 动画速率自定义：时间跳跃（天/秒）/ 动画时长 / 刷新间隔 */
       ['Jump', 'Anim', 'Fps'].forEach(function (k) {
         const el = document.getElementById('tlRate' + k);
         if (!el) return;
         el.addEventListener('input', function () {
-          const r = (P.tlRate ? P.tlRate() : { jump: 1, anim: 800, fps: 900 });
+          const r = (P.tlRate ? P.tlRate() : { jump: 30, anim: 800, fps: 200 });
           const key = k === 'Jump' ? 'jump' : (k === 'Anim' ? 'anim' : 'fps');
           r[key] = parseFloat(el.value);
           try { localStorage.setItem('goat-tlrate-v1', JSON.stringify(r)); } catch (e) { }
           const lab = document.getElementById('tlRate' + k + 'V');
-          if (lab) lab.textContent = (key === 'jump' ? r.jump + '×' : r[key] + 'ms');
+          if (lab) lab.textContent = (key === 'jump' ? r.jump + ' 天/秒' : r[key] + 'ms');
           if (key === 'anim' && box) P.drawTimeline(box);
         });
       });
@@ -502,6 +525,23 @@
       if (cSel) cSel.addEventListener('change', function () {
         state.tlCountry = cSel.value; render(true);
       });
+      /* 竞速图点击选手条 / 姓名 → 跳转本站选手主页 */
+      if (box) {
+        let inst = null;
+        try { inst = P.drawTimeline(box); } catch (e) { inst = null; }
+        if (inst && inst.on) {
+          inst.on('click', function (params) {
+            let id = (params.data && params.data.id) || '';
+            if (!id && params.componentType === 'yAxis') {
+              const nm = params.value;
+              const hit = M.ranked.filter(function (x) { return x.name === nm; })[0];
+              if (hit) id = hit.id;
+            }
+            if (id) location.hash = '#/player/' + id;
+          });
+        }
+        if (P.tlHighlightRail) P.tlHighlightRail(state.tlFy || 2025);
+      }
     }
 
     if (route === 'topics') {
@@ -590,16 +630,20 @@
     const tx = document.getElementById('msText');
     if (!tx) return;
     const text = (tx.value || '').trim();
-    const y = parseInt((yr && yr.value || '').trim().slice(0, 4), 10);
-    if (!text || !y || isNaN(y)) { toast(t('tl.msEmpty')); return; }
+    const raw = (yr && yr.value || '').trim();
+    const ym = raw.match(/^(\d{4})(?:-(\d{1,2}))?(?:-(\d{1,2}))?/);
+    if (!text || !ym) { toast(t('tl.msEmpty')); return; }
+    const y = parseInt(ym[1], 10);
+    const date = ym[2] ? (ym[1] + '-' + (ym[2].length < 2 ? '0' + ym[2] : ym[2]) + (ym[3] ? '-' + (ym[3].length < 2 ? '0' + ym[3] : ym[3]) : '-01')) : (ym[1] + '-01-01');
     const list = msList();
     const evId = (ev && ev.value) || '';
     const evNameTxt = evId && M.EV[evId] ? (t.isEn() ? M.EV[evId].en : M.EV[evId].zh) : '';
     const zh = evNameTxt ? evNameTxt + ' · ' + text : text;
     const en = evId && M.EV[evId] ? M.EV[evId].en + ' · ' + text : text;
-    list.push({ year: y, zh: zh, en: en, ev: evId || '' });
+    list.push({ year: y, date: date, zh: zh, en: en, ev: evId || '' });
     try { localStorage.setItem(MS_KEY, JSON.stringify(list)); } catch (e) { }
     if (tx) tx.value = '';
+    if (yr) yr.value = '';
     toast(t('tl.msOk'));
     render(true);
   }
@@ -676,7 +720,7 @@
   }
 
   /* ---------- 全局事件委托 ---------- */
-  const DELEGATE = '[data-sort],[data-page],[data-expand],[data-prow],[data-tab],[data-pkadd],[data-pkrm],[data-pktrayrm],[data-pktrayclear],[data-toggle],[data-expandall],[data-goto],[data-group],[data-gender],[data-retired],[data-tlmode],[data-tlview],[data-tlstep],[data-tlmetric],[data-tllane],[data-topic],[data-topicev],[data-topicboard],[data-other],[data-nation],[data-scope],[data-continent],[data-evpick],[data-evtab],[data-evtoggle],[data-evall],[data-evnone],[data-evsave],[data-gload],[data-gdel],[data-reclevel],[data-rectype],[data-podtier],[data-mdanchor],[data-mdsec],[data-msimport],[data-msreset],[data-msdel],[data-modcolor]';
+  const DELEGATE = '[data-sort],[data-page],[data-expand],[data-prow],[data-tab],[data-type],[data-pkadd],[data-pkrm],[data-pktrayrm],[data-pktrayclear],[data-toggle],[data-expandall],[data-goto],[data-group],[data-gender],[data-retired],[data-tlmode],[data-tlview],[data-tlstep],[data-tlmetric],[data-tllane],[data-topic],[data-topicev],[data-topicboard],[data-other],[data-nation],[data-scope],[data-continent],[data-evpick],[data-evtab],[data-evtoggle],[data-evall],[data-evnone],[data-evsave],[data-gload],[data-gdel],[data-reclevel],[data-rectype],[data-podtier],[data-mdanchor],[data-mdsec],[data-msimport],[data-msreset],[data-msdel],[data-msjump],[data-modcolor]';
 
   document.addEventListener('click', function (e) {
     const el = e.target.closest ? e.target.closest(DELEGATE) : null;
@@ -718,6 +762,16 @@
     if (el.hasAttribute('data-tab')) {
       state.tab = el.getAttribute('data-tab'); state.page = 1; state.sortKey = 'score'; state.sortDir = 'desc';
       render(); return;
+    }
+    if (el.hasAttribute('data-type')) {
+      state.recType = el.getAttribute('data-type'); state.page = 1;
+      render(true); return;
+    }
+    if (el.hasAttribute('data-msjump')) {
+      const idx = (P.tlDateToIdx ? P.tlDateToIdx(el.getAttribute('data-msjump')) : 0);
+      const r = document.getElementById('tlRange');
+      if (r) { r.value = idx; r.dispatchEvent(new Event('input')); }
+      return;
     }
     if (el.hasAttribute('data-sort')) {
       const k = el.getAttribute('data-sort');
@@ -924,7 +978,7 @@
     b.addEventListener('click', function () {
       state.group = 'all'; state.customIds = []; state.evSel = []; state.geo = '';
       state.country = ''; state.continent = ''; state.region = '';
-      state.gender = 'all'; state.y0 = null; state.y1 = null; state.page = 1;
+      state.gender = 'all'; state.y0 = null; state.y1 = null; state.recType = 'all'; state.page = 1;
       state.topicBoard = ''; state.topicEvent = '';
       location.hash = (location.hash.split('?')[0] || '#/rank');
       render();
