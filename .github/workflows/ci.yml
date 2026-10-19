@@ -67,11 +67,14 @@ jobs:
             if(M.presetGroups.some(g=>g.id==="fmc")) bad("fmc group should be removed");
             /* M4统治力 / M7 实战对战：worldRank 的值是对象 {r,b,a}，必须取 .r。
                早期版本把对象当名次传入 domScore()，NaN 传播导致这两个模块全员归零。 */
-            const zeroM4=M.ranked.filter(p=>!(p.m.m4>0));
-            const zeroM7=M.ranked.filter(p=>!(p.m.m7>0));
-            if(zeroM4.length) bad("m4 all-zero for "+zeroM4.length+" players (worldRank .r bug?)");
+            const det=M.ranked.filter(p=>!p.slim);
+            const zeroM4=det.filter(p=>!(p.m.m4>0));
+            const zeroM7=det.filter(p=>!(p.m.m7>0));
             if(zeroM7.length) bad("m7 all-zero for "+zeroM7.length+" players (worldRank .r bug?)");
+            /* M4 有0.01 底噪，明细档不应出现整档归零 */
+            if(zeroM4.length) bad("m4 all-zero for "+zeroM4.length+"/"+det.length+" detail players (domScore floor missing?)");
             const elo=M.ranked.map(p=>p.eloPeak);
+            /* eloPeak 必须落在 1400-2300：m.m7 已归一化到 0–100，忘记除以 100 会算出八位数 */
             if(Math.min.apply(null,elo)<1400||Math.max.apply(null,elo)>2300) bad("eloPeak out of 1400-2300 range: "+Math.min.apply(null,elo)+"~"+Math.max.apply(null,elo));
             /* 年度前10 / 前100：此前因 ETL 未产出 yearRank 而恒为 0 */
             if(!M.ranked.some(p=>p.yTop10>0)) bad("yTop10 all zero (annual ranking missing)");

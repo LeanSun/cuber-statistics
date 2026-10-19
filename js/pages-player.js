@@ -473,7 +473,7 @@
     const rk = mc ? mc.rk : null;
     const m4raw = rk && rk.length ? rk.reduce(function (a, x) { return a + x[2] * x[3]; }, 0) /
       rk.reduce(function (a, x) { return a + x[3]; }, 0) : (byKey.m4 ? byKey.m4.raw * (mx.m4 || 1) : 0);
-    h += row('m4', 'M₄ = Σ[名次积分 D(r) × 项目权重 w_e] ÷ Σ w_e（D: 第1=1.00，前3=0.85，前10线性0.70→0.15，前50→0）', rk && rk.length ? rk.slice(0, 8).map(function (x) {
+    h += row('m4', 'M₄ = Σ[名次积分 D(r) × 项目权重 w_e] ÷ Σ w_e（D: 第1=1.00，前3=0.85，前10线性0.70→0.15，前100缓降至0.02，更靠后记0.01底噪）', rk && rk.length ? rk.slice(0, 8).map(function (x) {
       return [evName(M.EV[x[0]]) + ' ' + t('mc.rk') + ' No.' + x[1], 'D=' + f2(x[2]) + ' × w=' + f2(x[3])];
     }) : null, m4raw);
 

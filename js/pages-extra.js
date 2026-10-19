@@ -784,8 +784,8 @@
         'Current ranking is not used: it penalises players who stop competing and is collinear with the achievement modules. Instead the ranking is integrated over time.'],
       f: ['$$M_{4}=B_{D}\\sum_{e}\\int_{0}^{T}S_{e}(t)\\,r_{p,e}(t)^{-\\lambda_{D}}\\,\\mathrm{d}t$$'],
       detail: [
-        ['第 1 名满额、第 10 名 0.32、第 100 名 0.10。指数单独取 0.5（比主函数的 1.1 平缓），因为长期稳居第 5 与第 1 的差距不该放大到 11 倍。无成绩即为 0，全程不需要判断是否退役。',
-          'Rank 1 scores in full, rank 10 gets 0.32, rank 100 gets 0.10. The exponent is 0.5 so the gap between 5 and 1 is not amplified elevenfold. No result means zero.'],
+        ['第 1 名满额 1.00，前 3 名 0.85，第 10 名 0.15，第 100 名 0.02，100 名以外保留 0.01 的底噪 —— 名次再靠后也仍有过一次成绩的痕迹，不至于让该模块对绝大多数选手恒为 0。该衰减比主函数的 1.1 次幂平缓得多：长期稳居第 5 与第 1 的差距不该被放大到十几倍。',
+          'Rank 1 scores in full (1.00), the top 3 get 0.85, rank 10 gets 0.15, rank 100 gets 0.02, and beyond that a small floor of 0.01 keeps a trace of having competed at all instead of zeroing out the module for almost everyone. This decay is far gentler than the main 1.1 power: staying near rank 5 for years should not be amplified into a tenfold gap against rank 1.'],
         ['该模块与 M5 广度可能存在重复计分风险。建模后需计算两模块相关系数，若 |ρ|>0.7 则合并或下调 M5。',
           'This module risks double-counting with M5 breadth; if |ρ| > 0.7 they are merged or M5 discounted.']
       ]

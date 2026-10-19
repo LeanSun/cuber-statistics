@@ -245,9 +245,21 @@ ok(hC.indexOf('rankCurve') < 0, '已删除「世界排名演变」板块（rankC
 ok(hC.indexOf('cmp-radar-wrap') >= 0, '七模块雷达有放大容器');
 ok(hC.indexOf('eloTip') < 0 && hC.length > 0, '核心数据带 infoTip');
 
+console.log('== 评分真实性：统治力 / 实战对战 / Elo ==');
+{
+  const det = M.ranked.filter(function (p) { return !p.slim; });
+  ok(det.length > 0, '存在明细档选手');
+  ok(det.filter(function (p) { return p.m.m7 > 0; }).length === det.length, 'M7 实战对战全部非零');
+  /* M4 保留 0.01 底噪，明细档不应整档归零 */
+  ok(det.filter(function (p) { return !(p.m.m4 > 0); }).length === 0, 'M4 统治力全部非零（有底噪）');
+  const elo = M.ranked.map(function (p) { return p.eloPeak; });
+  ok(Math.min.apply(null, elo) >= 1400 && Math.max.apply(null, elo) <= 2300,
+    'Elo 峰值落在 1400–2300（实得 ' + Math.min.apply(null, elo) + '~' + Math.max.apply(null, elo) + '）');
+  ok(M.ranked.filter(function (p) { return p.yTop10 > 0; }).length > 0, '年度前 10 名次数非零');
+}
+
 console.log('== 各模块计算过程（逐项代入） ==');
-ok(hC.indexOf('mc-card') >= 0, '有「各模块计算过程」卡片 (mc-card)');
-ok((hC.match(/class="mc-item"/g) || []).length === 7, '七个模块各有一个可展开的推导条目');
+ok(hC.indexOf('mc-card') >= 0, '有「各模块计算过程」卡片 (mc-card)');ok((hC.match(/class="mc-item"/g) || []).length === 7, '七个模块各有一个可展开的推导条目');
 ok(hC.indexOf('mc-subs') >= 0, '模块内列出代入的原始数据 (mc-subs)');
 ok(hC.indexOf('mc-norm') >= 0, '给出「原始分 ÷ 全站最高 × 100」的归一化过程');
 ok(hC.indexOf('mc-total') >= 0, '末尾汇总七模块加权求和');

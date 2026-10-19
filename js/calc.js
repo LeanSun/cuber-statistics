@@ -558,8 +558,10 @@
       p.overall = round(overall(p.career, p.peak), 1);
       p.balance = round(Math.log(Math.max(p.career, 0.01) / Math.max(p.peak, 0.01)), 3);
       if (p.hue == null && p.name) p.hue = hue(p.name);
-      /* eloPeak 兜底：明细选手由 ETL 直接给出，精简档案用 M7 反推 */
-      if (p.eloPeak == null) p.eloPeak = Math.round(1400 + (p.m.m7 || 0) * 900);
+      /* eloPeak 兜底：明细选手由 ETL 直接给出，精简档案用 M7 反推。
+         m.m7 已是归一化后的0–100 百分制，必须先除以 100 再映射到
+         1400–2300，否则会算出八位数的假分数（历史 bug：曾出现 89681）。 */
+      if (p.eloPeak == null) p.eloPeak = Math.round(1400 + ((p.m.m7 || 0) / 100) * 900);
     });
 
     var ranked = players.slice().sort(function (a, b) { return b.overall - a.overall; });
