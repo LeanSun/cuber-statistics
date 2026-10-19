@@ -59,8 +59,9 @@ jobs:
 
       - name: Run ETL (WCA export -> js/data.js)
         env:
-          # 全量导出（30 万选手 / 700 万成绩）计算峰值超过 Node 默认 4GB 堆
-          NODE_OPTIONS: --max-old-space-size=6144
+          # 全量导出（30 万选手 / 700 万成绩）计算峰值超过 Node 默认 4GB 堆；
+          # 按项目统计（evStat）让常驻结构变多，这里给到 8GB 并开启 gc 显式回收
+          NODE_OPTIONS: --max-old-space-size=8192 --expose-gc
         run: |
           node etl/build.js \
             --zip /tmp/wca_export.tsv.zip \
