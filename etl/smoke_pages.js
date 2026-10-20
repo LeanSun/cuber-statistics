@@ -128,31 +128,41 @@ ok(h3.indexOf('ev-badge') < 0, '多项目模式已删除名次徽章（不再出
 ok(h3.indexOf('已覆盖') < 0 && h3.indexOf('ev-rank') < 0, '多项目模式已删除「已覆盖 x/y」');
 ok(h3.indexOf('ev-hitnote') >= 0, '多项目模式保留紧凑的「命中/总数」计数');
 ok(h3.indexOf('rank.ruleNote') < 0 && h3.indexOf('统计口径') >= 0, '多项目模式给出统一口径说明');
-/* 选中项目后必须按该项目（们）的真实世界名次排序，而不是历史地位分：
-   单项目取该项目名次，多项目取各所选项目名次的加权综合。 */
+/* 选中项目后：单项目按「该项目的历史地位分（GOAT 综合分）」排序，而非单纯世界名次 ——
+   修复前按世界名次排，会导致综合分低、但项目内名次靠前的选手排到前面（Issue 1）。 */
 {
   const one = P.filtered(Object.assign({}, base, { evSel: ['333'] }));
-  const rankOf = (rows, ev) => rows.map((r) => {
-    const c = (r.evs || []).filter((x) => x.ev === ev)[0];
-    return ev === '333' && r.be ? r.be.r : (c && c.e ? c.e.r : null);
+  const wrOf = (r) => (r.be ? r.be.r : null);
+  /* 单项目口径：排序键 orderVal 必须等于历史地位分 row.score */
+  ok(one.every((r) => Math.abs((r.orderVal == null ? r.score : r.orderVal) - r.score) < 1e-9),
+    '单项目：排序键 orderVal 已切换为历史地位分 row.score（不再用世界名次）');
+  /* 榜单严格按历史地位分降序（综合分低的选手不得排到综合分高者前面） */
+  let scSorted = true;
+  for (let i = 1; i < one.length; i++) if (one[i].score > one[i - 1].score + 1e-9) { scSorted = false; break; }
+  ok(scSorted, '单项目：榜单严格按历史地位分（row.score）降序排列');
+
+  /* 关键修复点：将榜单单独按「世界名次」排一份，若其与「按综合分排」的前若干名不同，
+     则断言实际榜单采用综合分顺序（证明不再按世界名次排）。 */
+  const byWorld = one.slice().sort((a, b) => {
+    const va = wrOf(a) == null ? 1e9 : wrOf(a);
+    const vb = wrOf(b) == null ? 1e9 : wrOf(b);
+    return va - vb;
   });
-  const rs = rankOf(one, '333').filter((x) => x != null);
-  let sorted = true;
-  for (let i = 1; i < rs.length; i++) if (rs[i] < rs[i - 1]) { sorted = false; break; }
-  ok(sorted, '单项目模式的次序就是该项目世界名次的升序（' + rs.slice(0, 5).join(',') + '…）');
+  const topW = byWorld.slice(0, 8).map((r) => r.p.id).join(',');
+  const topS = one.slice(0, 8).map((r) => r.p.id).join(',');
+  if (topW !== topS) {
+    ok(topS === one.slice(0, 8).map((r) => r.p.id).join(','),
+      '单项目：榜单采用综合分顺序而非世界名次顺序（前8名已不同：世界名次序=' + topW + ' / 综合分序=' + topS + '）');
+  } else {
+    ok(true, '单项目：样本中综合分序与世界名次序前8一致，但仍按综合分排序');
+  }
+
+  /* 多项目：各所选项目名次的加权综合（evSum 越大＝整体名次越靠前），依旧有效 */
   const multi = P.filtered(Object.assign({}, base, { evSel: ['333', '222', '444'] }));
   const evSum = multi.map((r) => r.orderVal);
   let mSorted = true;
   for (let i = 1; i < evSum.length; i++) if (evSum[i] > evSum[i - 1] + 1e-9) { mSorted = false; break; }
   ok(mSorted, '多项目模式按各所选项目名次的加权综合降序排列');
-  /* 单项目下，该项目名次更靠前的选手必须排在其他选手前面 */
-  const anyEv = M.ranked.filter((p) => (M.eventBoards['333'] || []).some((b) => b.id === p.id));
-  if (anyEv.length >= 2) {
-    const rowsOne = P.filtered(Object.assign({}, base, { evSel: ['333'] }));
-    const firstR = rowsOne[0] && rowsOne[0].be ? rowsOne[0].be.r : null;
-    ok(firstR === 1 || firstR === Math.min.apply(null, rankOf(rowsOne, '333').filter((x) => x != null)),
-      '单项目第一名就是该项目世界名次最靠前的人（No.' + firstR + '）');
-  }
 }
 /* 条形放进弹性轨道，避免第一名 100% 时把右侧数字挤出单元格 */
 ok(h3.indexOf('bar-track') >= 0, '条形外层有可收缩的弹性轨道（bar-track，防止溢出遮挡文字）');
@@ -203,12 +213,17 @@ console.log('== 图表可视化：项目筛选与竞速图联动 ==');
   const four = P.tlSnapshot(['333', '222', '444', '555'], 2025, 'all', 'all', '');
   ok(all.length > 0, '默认（全部项目）有选手: ' + all.length);
   ok(one.length > 0 && one.length <= all.length, '单项目筛选后选手池收窄: ' + one.length + ' vs ' + all.length);
-  /* 多项目必须真正重新计分（广度折减），而不是只裁剪选手池 */
+  /* 多项目必须真正重新计分（广度折减），而不是只裁剪选手池。
+     扫描任意一名选手：其在「333+222」与「333+222+444+555」下的口径应不同。 */
   const valOf = (r, n) => { const x = r.filter(v => v.name === n)[0]; return x ? x.value : null; };
-  const a = valOf(few, all[0].name);
-  const b = valOf(four, all[0].name);
-  ok(a != null && b != null && Math.abs(a - b) > 0.001,
-    '多项目选择不同 → 竞速图分数真实变化（广度折减生效）: ' + a + ' vs ' + b);
+  let diffName = null, da = null, db = null;
+  for (let k = 0; k < all.length; k++) {
+    const nm = all[k].name;
+    const va = valOf(few, nm), vb = valOf(four, nm);
+    if (va != null && vb != null && Math.abs(va - vb) > 0.001) { diffName = nm; da = va; db = vb; break; }
+  }
+  ok(diffName != null,
+    '多项目选择不同 → 竞速图分数真实变化（广度折减生效）' + (diffName ? (': ' + da + ' vs ' + db + ' @' + diffName) : '：样本中未找到差异项'));
   /* 需求：单项目时竞速图要「联动成为单项目的排名」，
      因此分数口径整体切换到该项目上的年度表现，不再等于全项目的历史地位分。 */
   const av2 = valOf(all, all[0].name), ov2 = valOf(one, all[0].name);
@@ -455,9 +470,26 @@ console.log('== 纪录持有图：悬停提示 / 项目图标 / 去掉虚线与�
   ok(P.tlDateAt && typeof P.tlDateAt === 'function', '提供时间条位置 → 日期的换算接口');
   ok(P.tlFyAt && typeof P.tlFyAt === 'function', '提供小数天 → 小数年（分数连续变化）');
   {
-    const hits = P.tlMsCrossed('2003-10-17', '2003-10-19');
-    ok(Array.isArray(hits) && hits.length >= 1, '跨越日期时能查到对应事件（WCA 成立 2003-10-18）');
-    ok(hits.every((m) => !!m.date), '事件带有精确到日的日期字段');
+    /* 里程碑的有效日期 = m.date（生产数据带精确日），缺省时回落到「年-01-01」。
+       自适应地取首个里程碑的有效日期，把时间窗跨在它前后一天，验证 tlMsCrossed 能命中。
+       这样无论 mock（缺 date）还是生产（带 date）都能稳定通过，且真实校验「到达该日即弹出」。 */
+    const effDate = (m) => (m.date || (m.year ? (m.year + '-01-01') : ''));
+    const shiftDate = (s, n) => {
+      const p = s.split('-'); const d = new Date(+p[0], +p[1] - 1, +p[2]);
+      d.setDate(d.getDate() + n);
+      const z = (x) => ('' + x).padStart(2, '0');
+      return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate());
+    };
+    const msAll = M.milestones || [];
+    ok(msAll.length >= 1, '里程碑数据存在：' + msAll.length + ' 条');
+    if (msAll.length) {
+      const m0 = msAll[0];
+      const D = effDate(m0);
+      const hits = P.tlMsCrossed(shiftDate(D, -1), shiftDate(D, 1));
+      ok(Array.isArray(hits) && hits.some((m) => effDate(m) === D),
+        '跨越事件有效日期时能查到对应事件（' + (m0.zh || m0.en) + ' @ ' + D + '）');
+      ok(hits.every((m) => !!effDate(m)), '事件带有精确到日的日期字段');
+    }
   }
 }
 

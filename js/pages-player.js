@@ -131,6 +131,12 @@
     });
     h += '</div></div>';
 
+    /* 项目领域：按需求移到「核心数据」下方（原在页面最末），方便在看过基础数据后紧接着看项目覆盖 */
+    h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('player.coverage')) + '</h2>' +
+      infoTip(t('player.coverage.d', { n: 5000 })) + '</div>' +
+      '<p class="tiny muted" style="margin-bottom:12px">' + esc(t('player.coverage.d', { n: 5000 })) + '</p>' +
+      coverage(p) + '</div>';
+
     /* 总分构成 */
     h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('player.breakdown')) + '</h2>' +
       '<span class="tiny muted">' + esc(t('player.weight')) + ' Σ=1</span></div>';
@@ -232,11 +238,6 @@
     p.podiums.slice().sort(function (a, b) { return (b.R || 0) - (a.R || 0); }).forEach(function (r, i) { h += podRow(p, r, i); });
     h += '</div></details>';
 
-    /* 项目领域（原「项目覆盖热力」；世界排名演变板块已移除） */
-    h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('player.coverage')) + '</h2>' +
-      infoTip(t('player.coverage.d', { n: 5000 })) + '</div>' +
-      '<p class="tiny muted" style="margin-bottom:12px">' + esc(t('player.coverage.d', { n: 5000 })) + '</p>' +
-      coverage(p) + '</div>';
     return h;
   };
 
@@ -446,7 +447,9 @@
     /* M1 纪录分：单次 + 平均，WR×3 / CR×1.5 / NR(加权)×0.8 */
     const rec = mc ? mc.rec : null;
     const m1raw = rec ? (rec[0] * 3 + rec[1] * 1.5 + rec[2] * 0.8) + (rec[3] * 3 + rec[4] * 1.5 + rec[5] * 0.8) : (byKey.m1 ? byKey.m1.raw * (mx.m1 || 1) : 0);
-    h += row('m1', 'M₁ = 3·WR + 1.5·CR + 0.8·NR（单次） + 3·WR + 1.5·CR + 0.8·NR（平均）', rec ? [
+    /* M1 纪录分：单次 + 平均，WR×3 / CR×1.5 / NR(加权)×0.8，用 LaTeX 美化公式 */
+    const m1desc = tex('M_1 = 3\\cdot\\mathrm{WR} + 1.5\\cdot\\mathrm{CR} + 0.8\\cdot\\mathrm{NR}', false) + '（单次） + ' + tex('3\\cdot\\mathrm{WR} + 1.5\\cdot\\mathrm{CR} + 0.8\\cdot\\mathrm{NR}', false) + '（平均）';
+    h += row('m1', m1desc, rec ? [
       [t('mc.wrS'), rec[0]], [t('mc.crS'), rec[1]], [t('mc.nrS'), f2(rec[2])],
       [t('mc.wrA'), rec[3]], [t('mc.crA'), rec[4]], [t('mc.nrA'), f2(rec[5])]
     ] : null, m1raw);

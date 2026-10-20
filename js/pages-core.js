@@ -96,7 +96,8 @@
      预设分组 / 事件多选 / 停办项目），使全局筛选在该页同样生效 */
   function topicPool(state) {
     const pool = (state.group && state.group !== 'all') ? eventSet(state)
-      : ((state.evSel && state.evSel.length) ? state.evSel : null);
+      : ((state.evSel && state.evSel.length) ? state.evSel
+         : (state.topicEvent ? [state.topicEvent] : null));
     return M.ranked.filter(function (p) {
       if (state.geo) {
         if (state.geo.indexOf('cont:') === 0) { if (M.continentOf[p.country] !== state.geo.slice(5)) return false; }
@@ -317,13 +318,13 @@
         row.evHit = hit;
         row.evSum = sw > 0 ? sv / sw : 0;
       }
-      /* 排序键：选中项目时按该项目（们）的真实世界名次排，而不是历史地位分 ——
-         否则单项目排名靠后的选手仍会凭着其他项目的积累排在前面。
+      /* 排序键：单项目按「该项目的历史地位分（GOAT 综合分）」排，而非单纯世界名次 ——
+         否则会出现：某项目世界名次靠前、但综合历史地位分偏低的选手排到前面。
          orderVal 一律「越大越靠前」，交给 sortRows 统一处理升降序。 */
       if (sev) {
-        /* 单项目：直接取该项目的世界名次（1 = 第一） */
-        const be = row.be;
-        row.orderVal = be ? -be.r : -1e9;
+        /* 单项目：按历史地位分排序（row.score 已含广度折减，单项目恒为 1）。
+           这样「该项目历史地位排名」才由综合能力分决定，不会被项目内世界名次带偏。 */
+        row.orderVal = row.score;
       } else if (bdM) {
         /* 多项目：各所选项目名次的加权综合（evSum 越大＝整体名次越靠前） */
         row.orderVal = row.evHit ? row.evSum : -1e9;

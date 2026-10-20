@@ -75,7 +75,7 @@
   const RATE_KEY = 'goat-tlrate-v1';
   /* 默认值按「看得清又不拖沓」来定：60 天/秒约 4 分钟走完 23 年，
      换位补间 260ms 短于大部分相邻帧的累积位移，跟得上播放速度。 */
-  const RATE_DEF = { jump: 60, anim: 260, fps: 200 };
+  const RATE_DEF = { jump: 30, anim: 200, fps: 300 };
   const RATE_META = {
     jump: { min: 1, max: 365, step: 1, unit: () => (t.isEn() ? 'days/s' : ' 天/秒') },
     anim: { min: 0, max: 2500, step: 20, unit: () => 'ms' },
@@ -117,6 +117,14 @@
   P.msHiddenCount = function () { return loadHiddenMs().length; };
   P.msUnhideAll = function () { saveHiddenMs([]); };
   P.msKeyOf = msKeyOf;
+  /* 内置事件也可「编辑」（时间 / 项目 / 文字）：把覆盖写进这张映射，
+     键为事件原始键（日期|标题），渲染时套用即可，不影响原数据。 */
+  const MS_EDIT_KEY = 'goat-milestones-edit';
+  function loadEditedMs() {
+    try { var o = JSON.parse(localStorage.getItem(MS_EDIT_KEY)); return (o && typeof o === 'object') ? o : {}; }
+    catch (e) { return {}; }
+  }
+  P.loadEditedMs = loadEditedMs;
   function saveCustomMs(a) { try { localStorage.setItem(MS_KEY, JSON.stringify(a)); } catch (e) { } }
   function msSample() {
     return [
@@ -208,8 +216,16 @@
     const msBase = singleEv ? M.eventMilestones(singleEv) : M.milestones;
     const hidden = loadHiddenMs();
     const custom = loadCustomMs().map(function (m) { return Object.assign({ custom: true }, m); });
+    const edits = loadEditedMs();
     const ms = msBase.filter(function (m) { return hidden.indexOf(msKeyOf(m)) < 0; })
-      .concat(custom).sort(function (a, b) { return String(a.date || a.year).localeCompare(String(b.date || b.year)); });
+      .concat(custom)
+      .map(function (m) {
+        /* 给每个事件打上「原始键」，删除 / 编辑都按它定位，避免排序或覆盖后索引错位 */
+        m._ok = msKeyOf(m);
+        const e = edits[m._ok];
+        return e ? Object.assign({}, m, { date: e.date, year: +String(e.date).slice(0, 4), zh: e.zh, en: e.en, ev: e.ev || m.ev, edited: true }) : m;
+      })
+      .sort(function (a, b) { return String(a.date || a.year).localeCompare(String(b.date || b.year)); });
     TL_MS = ms;
     h += '<div class="tl-stage">';
     h += '<div class="chart-box tl-chart-link" id="tlChart" style="height:' + chH + 'px" data-view="' + view + '" data-mode="' + mode +
@@ -253,10 +269,14 @@
     h += '<div class="milestone-list">';
     ms.forEach(function (m, mi) {
       const isC = !!m.custom;
-      h += '<span class="ms-item' + (isC ? ' ms-custom' : '') + '"><b>' + (m.date || m.year) + '</b> ' + esc(t.isEn() ? (m.en || m.zh) : m.zh);
+      const ok = m._ok || msKeyOf(m);
+      h += '<span class="ms-item' + (isC ? ' ms-custom' : '') + (m.edited ? ' ms-edited' : '') + '"><b>' + (m.date || m.year) + '</b> ' + esc(t.isEn() ? (m.en || m.zh) : m.zh);
       if (isC) h += ' <span class="ms-tag">' + esc(t('tl.msCustom')) + '</span>';
+      if (m.edited) h += ' <span class="ms-tag ms-tag-edit">已编辑</span>';
+      /* 内置 / 自定义事件都可编辑：把原始键与时间 / 标题 / 项目带进按钮，点开即回填表单 */
+      h += ' <button class="ms-edit" data-msedit="' + esc(ok) + '" data-msedit-date="' + esc(m.date || m.year) + '" data-msedit-zh="' + esc(m.zh || m.en) + '" data-msedit-ev="' + esc(m.ev || '') + '" aria-label="编辑">✎</button>';
       /* 内置事件同样可以删除（删除＝加入隐藏列表，「恢复内置事件」可还原） */
-      h += ' <button class="ms-del" data-msdel="' + mi + '" aria-label="' + esc(t('tl.msDel')) + '">×</button>';
+      h += ' <button class="ms-del" data-msdel="' + esc(ok) + '" aria-label="' + esc(t('tl.msDel')) + '">×</button>';
       h += '</span>';
     });
     h += '</div>';
@@ -277,9 +297,11 @@
       '</select></label>';
     h += '<label class="ms-field"><span>' + esc(t('tl.msTime')) + '</span><input type="text" id="msYear" inputmode="numeric" placeholder="2019" maxlength="10"></label>';
     h += '<label class="ms-field ms-grow"><span>' + esc(t('tl.msText')) + '</span><input type="text" id="msText" placeholder="' + esc(t('tl.msText')) + '" maxlength="120"></label>';
-    h += '<button class="btn btn-primary" data-msimport>' + esc(t('tl.msAdd')) + '</button>';
+    h += '<button class="btn btn-primary" data-msimport id="msImportBtn">' + esc(t('tl.msAdd')) + '</button>';
     h += '</div>';
+    h += '<input type="hidden" id="msEditKey">';
     h += '<div class="row" style="margin-top:8px;gap:8px;flex-wrap:wrap">';
+    h += '<span class="tiny muted" id="msEditHint"></span>';
     h += '<button class="btn" data-msreset>' + esc(t('tl.msReset')) + '</button>';
     h += '</div></div>';
     return h;
@@ -343,6 +365,13 @@
     const d = new Date(+m[1], +(m[2] || 1) - 1, +(m[3] || 1));
     return Math.max(0, Math.min(TL_DAYS, Math.round((d - TL_START) / 86400000)));
   };
+  /* 小数年（fy）→ 日期串（YYYY-MM-DD），供播放时按图表真实时间精确触发里程碑 */
+  P.tlDateAtFy = function (fy) {
+    const y = Math.max(2003, Math.min(TL_END.getFullYear(), Math.floor(fy)));
+    const jan1 = new Date(y, 0, 1);
+    const d = new Date(jan1.getTime() + (fy - y) * (tlIsLeap(y) ? 366 : 365) * 86400000);
+    return tlDateLabel(d);
+  };
 
   /* 由 app.js 调用：渲染 / 更新动态图表 */
   P.drawTimeline = function (box) {
@@ -368,10 +397,12 @@
       const sameStruct = box.__tlSig === sig;
       /* 播放时每帧都在重画，换位过渡必须短于帧间隔的几倍，否则名次变化会「追不上」
          当前帧、看起来一顿一顿。动画时长滑杆直接决定这段补间的快慢。 */
-      const animMs = Math.max(0, Math.min(2500, (P.tlRate ? P.tlRate().anim : 800)));
+      /* 播放时把过渡动画设为 0，让「名次 / 姓名 / 分数」每帧同步刷新、不再有延迟感；
+         手动拖动时保留一小段过渡（按速率参数缩放），体验更顺。 */
+      const animMs = state.tlPlaying ? 0 : Math.max(0, Math.min(2500, (P.tlRate ? P.tlRate().anim : 800)));
       if (sameStruct) {
         opt.animationDuration = 0;
-        opt.animationDurationUpdate = Math.round(animMs * 0.35);
+        opt.animationDurationUpdate = state.tlPlaying ? 0 : Math.round(animMs * 0.35);
         opt.animationEasingUpdate = 'cubicInOut';
       }
       let inst = null;
@@ -549,7 +580,7 @@
       /* 泳道顺序按 WCA 官方项目顺序（M.events 的顺序），并把 ev 带给图表画项目图标 */
       const evOrder = {};
       M.events.forEach(function (e, i) { evOrder[e.id] = i; });
-      const lanes = ((state.tlLane === 'avg' ? M.lanesAvg : M.lanes) || []).slice()
+      const lanes = ((lane === 'avg' ? M.lanesAvg : M.lanes) || []).slice()
         .sort(function (a, b) {
           const ia = evOrder[a.ev] == null ? 999 : evOrder[a.ev];
           const ib = evOrder[b.ev] == null ? 999 : evOrder[b.ev];

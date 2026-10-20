@@ -462,7 +462,7 @@ tr:hover .pname .linkish,tr:hover .pname .pname-txt{
   gap:18px;flex-wrap:wrap}
 .pcard-id{display:flex;gap:16px;align-items:flex-start;flex:1;min-width:280px}
 .pcard-name{flex:1;min-width:0}
-.pcard-name h1{font-size:26px;margin-bottom:2px;letter-spacing:-.01em}
+.pcard-name h1{font-size:34px;margin-bottom:4px;letter-spacing:-.01em;line-height:1.15}
 .wca-name{display:inline-flex;align-items:center;gap:6px;color:var(--text)}
 .wca-name:hover{color:var(--accent);text-decoration:none}
 .wca-name .ic{width:15px;height:15px;color:var(--text-3);transition:color .16s ease,transform .2s cubic-bezier(.34,1.6,.5,1)}
@@ -486,7 +486,7 @@ tr:hover .pname .linkish,tr:hover .pname .pname-txt{
 .sc-mini b{display:block;font-size:16px;color:var(--text);font-variant-numeric:tabular-nums}
 .pkadd-btn{align-self:flex-end}
 /* 信息栏内的排名胶囊（世界 / 洲 / 地区 / 巅峰高度） */
-.pid-ranks{display:grid;grid-template-columns:repeat(auto-fit,minmax(178px,1fr));
+.pid-ranks{display:grid;grid-template-columns:repeat(auto-fit,minmax(178px,1fr));margin-bottom:18px}
   gap:9px;margin-top:14px;padding-top:13px;border-top:1px dashed var(--border)}
 .pid-rank{display:flex;align-items:center;gap:9px;padding:8px 12px;
   border-radius:12px;background:var(--bg-soft);border:1px solid var(--border);
@@ -668,6 +668,14 @@ tr:hover .pname .linkish,tr:hover .pname .pname-txt{
 .ms-item:hover{transform:translateY(-2px);background:var(--accent-soft);color:var(--accent)}
 .ms-item b{color:var(--accent);margin-right:5px}
 .ms-item.ms-custom{outline:1px dashed var(--accent);outline-offset:2px}
+.ms-item.ms-edited{background:var(--accent-soft)}
+.ms-tag-edit{outline:1px solid var(--accent);outline-offset:1px;color:var(--accent)}
+.ms-item .ms-edit,.ms-item .ms-del{cursor:pointer;border:none;background:transparent;
+  color:var(--text-3);font-size:13px;line-height:1;padding:0 3px;border-radius:6px;
+  transition:color .15s,background .15s}
+.ms-item .ms-edit:hover{color:var(--accent);background:var(--accent-soft)}
+.ms-item .ms-del{font-size:14px}
+.ms-item .ms-del:hover{color:#e5484d;background:rgba(229,72,77,.12)}
 .ms-tag{font-size:10px;color:var(--accent);border:1px solid var(--accent);border-radius:4px;padding:0 4px;margin-left:4px;vertical-align:middle}
 .ms-input{width:100%;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.5;padding:10px 12px;border:1px solid var(--border-2);border-radius:var(--r-md);background:var(--bg-soft);color:var(--text);resize:vertical}
 .ms-input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
@@ -1151,10 +1159,10 @@ tr[data-prow]:hover .pname .linkish,.pname:hover .linkish{
 
 /* ============ 重大事件：浮在分数竞速图右下角的可折叠弹窗 ============ */
 .tl-stage{position:relative}
-.ms-pop{position:absolute;right:10px;bottom:10px;z-index:6;max-width:min(420px,72%);
+.ms-pop{position:absolute;right:12px;bottom:12px;z-index:6;max-width:min(540px,90%);
   display:flex;flex-direction:column;align-items:flex-end;gap:6px}
-.ms-pop-tab{display:inline-flex;align-items:center;gap:7px;cursor:pointer;
-  padding:5px 11px;border-radius:999px;font-size:12px;font-weight:600;
+.ms-pop-tab{display:inline-flex;align-items:center;gap:8px;cursor:pointer;
+  padding:7px 14px;border-radius:999px;font-size:13.5px;font-weight:600;
   color:var(--text-2);background:var(--bg-elev);
   border:1px solid var(--border-2);box-shadow:var(--shadow);
   transition:color .16s,border-color .16s,background .16s}
@@ -1167,7 +1175,7 @@ tr[data-prow]:hover .pname .linkish,.pname:hover .linkish{
   font-variant-numeric:tabular-nums}
 .ms-pop-caret{font-style:normal;font-size:10px;transition:transform .2s}
 .ms-pop-tab.on .ms-pop-caret{transform:rotate(180deg)}
-.ms-pop-body{width:100%;max-height:270px;overflow:auto;padding:10px 11px;
+.ms-pop-body{width:100%;max-height:380px;overflow:auto;padding:14px 15px;
   border-radius:13px;background:var(--bg-elev);
   border:1px solid var(--border-2);box-shadow:0 10px 30px rgba(0,0,0,.20);
   animation:msPopIn .22s cubic-bezier(.34,1.3,.64,1)}
@@ -1181,8 +1189,8 @@ tr[data-prow]:hover .pname .linkish,.pname:hover .linkish{
 /* 时间轴推进到某个事件的日期时，在右下角弹出的提示卡 */
 .ms-toast{position:absolute;right:0;bottom:38px;z-index:7;
   display:flex;flex-direction:column;align-items:flex-end;gap:7px;pointer-events:none}
-.ms-toast-card{display:flex;align-items:flex-start;gap:9px;max-width:320px;
-  padding:9px 13px 9px 11px;border-radius:13px;
+.ms-toast-card{display:flex;align-items:flex-start;gap:11px;max-width:440px;
+  padding:13px 18px 13px 14px;border-radius:15px;
   background:linear-gradient(135deg,var(--bg-elev),var(--bg-soft-2));
   border:1px solid var(--border-2);
   box-shadow:0 12px 34px rgba(0,0,0,.24);
@@ -1193,9 +1201,9 @@ tr[data-prow]:hover .pname .linkish,.pname:hover .linkish{
 .ms-toast-ic{display:inline-flex;flex:none;margin-top:1px;color:var(--accent)}
 .ms-toast-ic svg,.ms-toast-ic .ic{width:15px;height:15px}
 .ms-toast-b{display:flex;flex-direction:column;gap:2px;min-width:0}
-.ms-toast-b b{font-size:11px;font-weight:700;color:var(--accent);
+.ms-toast-b b{font-size:13px;font-weight:800;color:var(--accent);
   font-variant-numeric:tabular-nums;letter-spacing:.02em}
-.ms-toast-b span{font-size:12.5px;font-weight:600;color:var(--text);line-height:1.35}
+.ms-toast-b span{font-size:15px;font-weight:700;color:var(--text);line-height:1.4}
 @keyframes msToastIn{
   from{opacity:0;transform:translateX(22px) scale(.94)}
   to{opacity:1;transform:none}

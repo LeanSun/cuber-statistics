@@ -104,6 +104,9 @@
     topicTab: 'rec', topicStat: '', otherTab: 'king', nationMetric: 'total', counterZero: 'wr', topicBoard: ''
   };
 
+  /* 播放原点（天索引 / 起始毫秒），供拖动时间轴实时跳转而保留连续播放 */
+  let tlPlayIdx = 0, tlPlayMs = 0;
+
   /* ---------- 数字跳动动画（首页统计） ---------- */
   function countUp(el) {
     if (!el) return;
@@ -316,26 +319,30 @@
       h += '<button class="chip' + (on ? ' on' : '') + '" data-group="' + g.id + '">' + esc(t.isEn() ? g.en : g.zh) + '</button>';
     });
     h += '</div>';
-    h += '<div class="ev-strip" id="fgEvents" role="group" aria-label="' + esc(t('f.events')) + '">';
-    const evSel = state.evSel || [];
-    const gids = (P.groupEventIds ? P.groupEventIds(state) : null);
-    const inSet = function (id) { return evSel.indexOf(id) >= 0 || (gids && gids.indexOf(id) >= 0); };
-    const activeEv = M.events.filter(function (e) { return !e.retired; });
-    const retiredEv = M.events.filter(function (e) { return e.retired; });
-    h += '<div class="ev-row">';
-    activeEv.forEach(function (e) {
-      const on = inSet(e.id);
-      h += '<button class="ev-tab' + (on ? ' on' : '') + '" data-evtab="' + e.id + '" title="' + esc(t.isEn() ? e.en : e.zh) + '">' + window.Icons.event(e.id) + '</button>';
-    });
-    h += '</div>';
-    h += '<div class="ev-row ev-row-retired">';
-    retiredEv.forEach(function (e) {
-      const on = inSet(e.id);
-      const dis = !state.retired;
-      h += '<button class="ev-tab' + (on ? ' on' : '') + (dis ? ' disabled' : '') + '" data-evtab="' + e.id + '" title="' + esc(t.isEn() ? e.en : e.zh) + '">' + window.Icons.event(e.id) + '</button>';
-    });
-    h += '</div>';
-    h += '</div>';
+    if (route !== 'topics') {
+      /* 另类统计页用页面内的「项目筛选」(data-topicev) 作为唯一项目筛选，
+         顶部不再重复渲染项目图标条，避免上下两套互相打架。 */
+      h += '<div class="ev-strip" id="fgEvents" role="group" aria-label="' + esc(t('f.events')) + '">';
+      const evSel = state.evSel || [];
+      const gids = (P.groupEventIds ? P.groupEventIds(state) : null);
+      const inSet = function (id) { return evSel.indexOf(id) >= 0 || (gids && gids.indexOf(id) >= 0); };
+      const activeEv = M.events.filter(function (e) { return !e.retired; });
+      const retiredEv = M.events.filter(function (e) { return e.retired; });
+      h += '<div class="ev-row">';
+      activeEv.forEach(function (e) {
+        const on = inSet(e.id);
+        h += '<button class="ev-tab' + (on ? ' on' : '') + '" data-evtab="' + e.id + '" title="' + esc(t.isEn() ? e.en : e.zh) + '">' + window.Icons.event(e.id) + '</button>';
+      });
+      h += '</div>';
+      h += '<div class="ev-row ev-row-retired">';
+      retiredEv.forEach(function (e) {
+        const on = inSet(e.id);
+        const dis = !state.retired;
+        h += '<button class="ev-tab' + (on ? ' on' : '') + (dis ? ' disabled' : '') + '" data-evtab="' + e.id + '" title="' + esc(t.isEn() ? e.en : e.zh) + '">' + window.Icons.event(e.id) + '</button>';
+      });
+      h += '</div>';
+      h += '</div>';
+    }
     h += '</div>';
 
     /* ---------- 国家 / 大洲 合并为单一下拉（总榜 + 图表可视化 + 另类统计；已移除 WCA 地区分组） ---------- */
@@ -576,7 +583,9 @@
       function setFyFromRange(rg) {
         const idx = +rg.value;
         const info = P.tlIdxToInfo(idx, state.tlStep);
-        const curDate = P.tlDateAt ? P.tlDateAt(idx, state.tlStep) : null;
+        /* 播放中拖动 / 点击时间轴：把播放原点重置到当前位置，播放从这一刻继续（可实时跳转） */
+        if (state.tlPlaying) { tlPlayIdx = idx; tlPlayMs = (window.performance && performance.now) ? performance.now() : Date.now(); }
+        const curDate = P.tlDateAtFy ? P.tlDateAtFy(info.fy) : (P.tlDateAt ? P.tlDateAt(idx, state.tlStep) : null);
         if (lastMsDate && curDate && curDate !== lastMsDate) msToastFor(lastMsDate, curDate);
         if (curDate) lastMsDate = curDate;
         state.tlFy = info.fy;
@@ -594,16 +603,17 @@
            · 日期标签每天变一次（整数天跨过去才更新）；
            · 图表拿小数天去算分数，因此条形长度是连续变化的，不再一格一格跳；
            · 名次换位时图表自己用很短的过渡补间，不会拖慢整体速度。
-           此前用 setInterval + 200ms 节流重绘，日期每 200ms 跳 6 天、条形靠 800ms
-           动画追赶，既跳又卡，参数怎么调都不顺。 */
-        const rate = (P.tlRate ? P.tlRate() : { jump: 30, anim: 800, fps: 200 });
+           播放原点（tlPlayIdx / tlPlayMs）独立保存，拖动时间轴时实时重置，
+           因此播放中也能点击 / 拖动滑块跳到任意时间点并继续播放。 */
+        const rate = (P.tlRate ? P.tlRate() : { jump: 30, anim: 200, fps: 300 });
         const daysPerSec = Math.max(0.5, rate.jump || 30);
-        const startIdx = +range.value;
-        const startMs = (window.performance && performance.now) ? performance.now() : Date.now();
-        let lastIdx = startIdx;
+        tlPlayIdx = +range.value;
+        tlPlayMs = (window.performance && performance.now) ? performance.now() : Date.now();
+        lastMsDate = P.tlDateAtFy ? P.tlDateAtFy(P.tlIdxToInfo(tlPlayIdx, state.tlStep).fy) : null;
+        let lastIdx = tlPlayIdx;
         function frame(nowMs) {
-          const elapsed = (nowMs - startMs) / 1000;
-          const pos = startIdx + elapsed * daysPerSec;
+          const elapsed = (nowMs - tlPlayMs) / 1000;
+          const pos = tlPlayIdx + elapsed * daysPerSec;
           const sl = P.tlSlider(state.tlStep, state.tlFy);
           const idx = Math.min(sl.max, Math.floor(pos));
           const frac = Math.max(0, Math.min(0.999, pos - idx));
@@ -612,15 +622,16 @@
             range.value = idx;
             const info = P.tlIdxToInfo(idx, state.tlStep);
             if (lab) lab.textContent = info.label;
-            const curDate = P.tlDateAt ? P.tlDateAt(idx, state.tlStep) : null;
-            if (lastMsDate && curDate && curDate !== lastMsDate) msToastFor(lastMsDate, curDate);
-            if (curDate) lastMsDate = curDate;
             if (P.tlHighlightRail) P.tlHighlightRail(info.fy);
           }
           /* 小数天：让分数在两天之间连续插值 */
           const fy = P.tlFyAt ? P.tlFyAt(idx, frac, state.tlStep) : (P.tlIdxToInfo(idx, state.tlStep).fy);
           state.tlFy = fy;
           if (box) { box.setAttribute('data-fy', fy); P.drawTimeline(box); }
+          /* 每帧按图表真实时间（小数年→日期）精确检测里程碑跨越，弹窗时间与竞速图严格对应 */
+          const curDate = P.tlDateAtFy ? P.tlDateAtFy(fy) : (P.tlDateAt ? P.tlDateAt(idx, state.tlStep) : null);
+          if (lastMsDate && curDate && curDate !== lastMsDate) msToastFor(lastMsDate, curDate);
+          if (curDate) lastMsDate = curDate;
           if (pos >= sl.max) { stopPlay(); return; }
           tlRaf = requestAnimationFrame(frame);
         }
@@ -647,7 +658,7 @@
         }
       }
       function applyRate(key, raw, fromNumber) {
-        const r = (P.tlRate ? P.tlRate() : { jump: 30, anim: 800, fps: 200 });
+        const r = (P.tlRate ? P.tlRate() : { jump: 30, anim: 200, fps: 300 });
         const val = (P.tlClampRate ? P.tlClampRate(key, raw) : parseInt(raw, 10));
         if (isNaN(val)) return;
         r[key] = val;
@@ -864,11 +875,29 @@
     if (!text || !ym) { toast(t('tl.msEmpty')); return; }
     const y = parseInt(ym[1], 10);
     const date = ym[2] ? (ym[1] + '-' + (ym[2].length < 2 ? '0' + ym[2] : ym[2]) + (ym[3] ? '-' + (ym[3].length < 2 ? '0' + ym[3] : ym[3]) : '-01')) : (ym[1] + '-01-01');
-    const list = msList();
     const evId = (ev && ev.value) || '';
     const evNameTxt = evId && M.EV[evId] ? (t.isEn() ? M.EV[evId].en : M.EV[evId].zh) : '';
     const zh = evNameTxt ? evNameTxt + ' · ' + text : text;
     const en = evId && M.EV[evId] ? M.EV[evId].en + ' · ' + text : text;
+    /* 编辑模式：把覆盖写进 goat-milestones-edit（按原始键定位），渲染时套用 */
+    const ek = document.getElementById('msEditKey');
+    const editKey = ek ? ek.value : '';
+    if (editKey) {
+      const o = (function () { try { return JSON.parse(localStorage.getItem('goat-milestones-edit')) || {}; } catch (e) { return {}; } })();
+      o[editKey] = { date: date, zh: zh, en: en, ev: evId || '' };
+      try { localStorage.setItem('goat-milestones-edit', JSON.stringify(o)); } catch (e) { }
+      if (ek) ek.value = '';
+      const hint = document.getElementById('msEditHint');
+      if (hint) hint.textContent = '';
+      const addBtn = document.getElementById('msImportBtn');
+      if (addBtn) addBtn.textContent = t('tl.msAdd');
+      if (tx) tx.value = '';
+      if (yr) yr.value = '';
+      if (ev) ev.value = '';
+      toast(t('tl.msOk'));
+      render(true); return;
+    }
+    const list = msList();
     list.push({ year: y, date: date, zh: zh, en: en, ev: evId || '' });
     try { localStorage.setItem(MS_KEY, JSON.stringify(list)); } catch (e) { }
     if (tx) tx.value = '';
@@ -876,7 +905,28 @@
     toast(t('tl.msOk'));
     render(true);
   }
-  function msReset() { try { localStorage.removeItem(MS_KEY); } catch (e) { } toast(t('tl.msReset')); render(true); }
+  function msReset() { try { localStorage.removeItem(MS_KEY); localStorage.removeItem('goat-milestones-edit'); } catch (e) { } toast(t('tl.msReset')); render(true); }
+  /* 编辑内置 / 自定义事件：把原始键与当前时间 / 标题 / 项目回填到表单，进入编辑模式 */
+  function msEdit(btn) {
+    const key = btn.getAttribute('data-msedit');
+    const ev = btn.getAttribute('data-msedit-ev') || '';
+    const ym = btn.getAttribute('data-msedit-date') || '';
+    const zh = btn.getAttribute('data-msedit-zh') || '';
+    const evSel = document.getElementById('msEv');
+    const yr = document.getElementById('msYear');
+    const tx = document.getElementById('msText');
+    const ek = document.getElementById('msEditKey');
+    if (evSel) evSel.value = ev;
+    if (yr) yr.value = ym;
+    if (tx) tx.value = zh;
+    if (ek) ek.value = key || '';
+    const hint = document.getElementById('msEditHint');
+    if (hint) hint.textContent = '编辑中：' + zh + '（保存后覆盖原事件）';
+    const addBtn = document.getElementById('msImportBtn');
+    if (addBtn) addBtn.textContent = t('tl.msSaveEdit') || '保存修改';
+    const box = document.getElementById('tlChart');
+    if (box && window.Charts) { try { P.drawTimeline(box); } catch (e) { } }
+  }
   /* 内置事件的隐藏列表（让默认事件也能删除 / 恢复） */
   const MS_HIDE_KEY = 'goat-milestones-hidden';
   function msHidden() { try { const a = JSON.parse(localStorage.getItem(MS_HIDE_KEY)); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
@@ -988,27 +1038,23 @@
     }
     if (el.hasAttribute('data-msimport')) { msImport(); return; }
     if (el.hasAttribute('data-msreset')) { msReset(); return; }
+    if (el.hasAttribute('data-msedit')) { msEdit(el); return; }
     if (el.hasAttribute('data-msunhide')) {
       if (P.msUnhideAll) P.msUnhideAll();
       toast(t('tl.msRestored')); render(true); return;
     }
     if (el.hasAttribute('data-msdel')) {
-      const i = parseInt(el.getAttribute('data-msdel'), 10);
-      /* 索引是「内置（已过滤隐藏项） + 自定义」合并后的序号：
-         落在内置区间就是删除一个内置事件（记进隐藏列表），否则删自定义项。 */
+      const key = el.getAttribute('data-msdel');
+      /* 按「原始键」定位，避免排序 / 覆盖后索引错位（内置事件进隐藏列表，自定义项直接删） */
       const evSel = state.evSel || [];
       const singleEv = evSel.length === 1 ? evSel[0] : (state.group && M.EV[state.group] ? state.group : '');
       const baseAll = singleEv ? M.eventMilestones(singleEv) : M.milestones;
       const hidden = msHidden();
-      const baseShown = baseAll.filter(function (m) { return hidden.indexOf(P.msKeyOf(m)) < 0; });
-      if (i >= 0 && i < baseShown.length) {
-        hidden.push(P.msKeyOf(baseShown[i]));
-        msSaveHidden(hidden);
-        toast(t('tl.msDelOk')); render(true); return;
-      }
-      const customIdx = i - baseShown.length;
+      const builtin = baseAll.filter(function (m) { return P.msKeyOf(m) === key; })[0];
+      if (builtin) { hidden.push(key); msSaveHidden(hidden); toast(t('tl.msDelOk')); render(true); return; }
       const list = msList();
-      if (customIdx >= 0 && customIdx < list.length) { list.splice(customIdx, 1); try { localStorage.setItem(MS_KEY, JSON.stringify(list)); } catch (e) { } render(true); }
+      const ci = list.findIndex ? list.findIndex(function (m) { return P.msKeyOf(m) === key; }) : -1;
+      if (ci >= 0) { list.splice(ci, 1); try { localStorage.setItem(MS_KEY, JSON.stringify(list)); } catch (e) { } render(true); }
       return;
     }
 
@@ -1128,7 +1174,7 @@
     if (el.hasAttribute('data-tlmetric')) { state.tlMetric = el.getAttribute('data-tlmetric'); render(true); return; }
     if (el.hasAttribute('data-tllane')) { state.tlLane = el.getAttribute('data-tllane'); render(true); return; }
     if (el.hasAttribute('data-topic')) { state.topicTab = el.getAttribute('data-topic'); state.topicBoard = ''; render(true); return; }
-    if (el.hasAttribute('data-topicev')) { state.topicEvent = el.getAttribute('data-topicev'); render(true); return; }
+    if (el.hasAttribute('data-topicev')) { state.topicEvent = el.getAttribute('data-topicev'); state.evSel = []; render(true); return; }
     if (el.hasAttribute('data-topicboard')) { state.topicBoard = el.getAttribute('data-topicboard'); render(true); return; }
     if (el.hasAttribute('data-other')) { state.otherTab = el.getAttribute('data-other'); render(true); return; }
     if (el.hasAttribute('data-nation')) { state.nationMetric = el.getAttribute('data-nation'); render(true); return; }
