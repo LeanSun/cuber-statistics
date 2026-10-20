@@ -89,9 +89,26 @@
     if (!el || !has()) return null;
     let inst = null;
     try { inst = window.echarts.getInstanceByDom(el); } catch (e) { }
-    if (!inst) inst = window.echarts.init(el, null, { renderer: 'canvas' });
+    if (!inst) {
+      /* init 也可能失败（容器被销毁 / 非法尺寸），不要让它把整页渲染带崩 */
+      try { inst = window.echarts.init(el, null, { renderer: 'canvas' }); } catch (e) { inst = null; }
+    }
+    if (!inst) return null;
     const notMerge = opts.notMerge !== false; /* 默认整图替换；仅当显式 notMerge:false 时做增量合并 */
     inst.setOption(option, notMerge);
+    /* 容器在初始化时若尚不可见（宽高为 0，例如刚切到该视图 / 父级布局未稳定），
+       首帧会画出一张 0 尺寸的空白图。下一帧补一次 resize，让图表按真实尺寸重绘，
+       避免「图表区域空白、需手动缩放窗口才出现」这类问题。 */
+    if ((!el.clientWidth && !el.offsetWidth) || (!el.clientHeight && !el.offsetHeight)) {
+      requestAnimationFrame(function () { try { inst.resize(); } catch (e) { } });
+    }
+    /* 尺寸变化（含从隐藏变可见）时自动重绘一次：仅靠 window.resize 兜不住 Tab / 视图切换 */
+    if (window.ResizeObserver && !el.__ecRO) {
+      try {
+        el.__ecRO = new window.ResizeObserver(function () { try { inst.resize(); } catch (e) { } });
+        el.__ecRO.observe(el);
+      } catch (e) { }
+    }
     if (!el.__ecResized) {
       el.__ecResized = true;
       window.addEventListener('resize', function () { try { inst.resize(); } catch (e) { } });

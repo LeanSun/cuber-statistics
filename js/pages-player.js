@@ -93,7 +93,6 @@
     h += '<span class="tag" title="' + esc(tt('首次参赛到最近参赛的年份区间', 'Years from your first to your latest competition')) + '">' + esc(t('player.career')) + ' ' + p.start + '–' + p.end + '</span>';
     h += '<span class="tag" title="' + esc(tt('你参加过的 WCA 比赛总场次', 'Total WCA competitions you have entered')) + '">' + esc(t('player.comps')) + ' ' + p.comps + '</span>';
     h += '<span class="tag" title="' + esc(tt('你参加过的 WCA 项目数量', 'Number of distinct WCA events you have entered')) + '">' + esc(t('player.events')) + ' ' + p.events.length + '</span>';
-    h += '<span class="tag" title="' + esc(tt('综合得分最高的项目', 'The event contributing most to your score')) + '">' + esc(t('player.mainEvent')) + ' ' + esc(evName(M.EV[p.mainEvent])) + '</span>';
     h += '</div>';
     /* 次级分数（生涯/ 巅峰 / 均衡）+ PK 按钮 */
     h += '<div class="pcard-sub">';
@@ -110,13 +109,13 @@
        做成信息栏下方的一排紧凑胶囊，不再单独占据一个区块。 */
     const peakRank = M.ranked.filter(function (x) { return scoreOf(x).peak > sc.peak; }).length + 1;
     h += '<div class="pid-ranks">';
-    h += rankPill(t('player.rankWorld'), rk.world, M.ranked.length, 'globe', '',
+    h += rankPill(t('player.rankWorld'), rk.world, (M.meta && M.meta.players) || M.ranked.length, 'globe', '',
       tt('你在全球所有选手中的综合排名', 'Your overall rank among all players worldwide'));
     h += rankPill(contName(rk.contName) + t('player.rankSuffix'), rk.continent, rk.continentOf, 'globe', '',
       tt('你所在大洲（' + contName(rk.contName) + '）内的综合排名', 'Your rank within your continent (' + contName(rk.contName) + ')'));
     h += rankPill(t('player.rankNation'), rk.nation, rk.nationOf, 'flag', countryName(p.country),
       tt('你所在国家（' + countryName(p.country) + '）内的综合排名', 'Your rank within your country (' + countryName(p.country) + ')'));
-    h += rankPill(t('player.rankPeak') + t('player.rankSuffix'), peakRank, M.ranked.length, 'globe', '',
+    h += rankPill(t('player.rankPeak') + t('player.rankSuffix'), peakRank, (M.meta && M.meta.players) || M.ranked.length, 'globe', '',
       tt('按巅峰高度（最佳连续 12 个月）在世界范围内的排名 —— 与「世界排名」的综合能力口径互为补充：综合能力偏生涯厚度，巅峰高度只看最尖的那一段。',
         'Your rank by peak height (best rolling 12 months) worldwide — a complement to the world rank: combined ability leans on career volume, peak height looks only at the sharpest stretch.'));
     h += '</div>';

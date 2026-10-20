@@ -109,6 +109,17 @@
      「恢复内置事件」时清空即可。此前只能删除自己新增的事件。 */
   const MS_HIDE_KEY = 'goat-milestones-hidden';
   function msKeyOf(m) { return String(m.date || m.year) + '|' + String(m.zh || m.en || ''); }
+  /* 事件标题的存储格式是「项目名 · 内容」。编辑时要把项目名前缀剥掉再回填输入框，
+     否则点「保存修改」时会再拼一次前缀，得到「三阶 · 三阶 · 内容」。
+     抽成纯函数便于冒烟测试直接覆盖这一条。 */
+  P.msSplitText = function (zh, evId) {
+    const s = String(zh || '');
+    if (!evId || !M.EV || !M.EV[evId]) return s;
+    const evTxt = t.isEn() ? (M.EV[evId].en || M.EV[evId].zh) : (M.EV[evId].zh || M.EV[evId].en);
+    if (!evTxt) return s;
+    const pre = evTxt + ' · ';
+    return s.indexOf(pre) === 0 ? s.slice(pre.length) : s;
+  };
   function loadHiddenMs() {
     try { var a = JSON.parse(localStorage.getItem(MS_HIDE_KEY)); return Array.isArray(a) ? a : []; }
     catch (e) { return []; }
@@ -374,6 +385,11 @@
   };
 
   /* 由 app.js 调用：渲染 / 更新动态图表 */
+  /* 播放态读取：state 由 app.js 在脚本顶层定义，这里容错读取 ——
+     早期直接写 state.tlPlaying，一旦作用域不同（例如冒烟环境 / 未来模块化）就会抛错，
+     而外层 try 会把异常吞掉，表现为「图表一片空白且控制台无提示」。 */
+  function tlIsPlaying() { try { return !!state.tlPlaying; } catch (e) { return false; } }
+
   P.drawTimeline = function (box) {
     if (!box || !window.Charts || !window.Charts.has()) return null;
     const view = box.getAttribute('data-view');
@@ -387,6 +403,25 @@
     const evs = (box.getAttribute('data-ev') || '').split(',').filter(Boolean);
     const gender = box.getAttribute('data-gender') || '';
     const rtype = box.getAttribute('data-type') || 'all';
+    /* 容器尚不可见（刚切视图 / 父级尚未布局完成）时宽高为 0，此时 init 出来的画布是 0×0，
+       之后即使 DOM 有了尺寸也只会显示空白。先等尺寸就绪再画，最多重试 12 帧（约 200ms），
+       超过后仍画一次，保证不会因为容器一直隐藏而彻底不画。 */
+    if (!box.clientHeight && !box.offsetHeight && !box.__tlRetry) {
+      box.__tlRetry = 0;
+      const wait = function () {
+        box.__tlRetry++;
+        if ((box.clientHeight || box.offsetHeight) || box.__tlRetry > 12) {
+          box.__tlRetry = 0;
+          P.drawTimeline(box);
+        } else if (window.requestAnimationFrame) {
+          window.requestAnimationFrame(wait);
+        } else {
+          setTimeout(wait, 16);
+        }
+      };
+      if (window.requestAnimationFrame) window.requestAnimationFrame(wait); else setTimeout(wait, 16);
+      return null;
+    }
     try {
       const opt = tlOption(view, mode, fy, smooth, metric, region, country, lane, evs, gender, rtype);
       if (!opt) return null;
@@ -399,17 +434,29 @@
          当前帧、看起来一顿一顿。动画时长滑杆直接决定这段补间的快慢。 */
       /* 播放时把过渡动画设为 0，让「名次 / 姓名 / 分数」每帧同步刷新、不再有延迟感；
          手动拖动时保留一小段过渡（按速率参数缩放），体验更顺。 */
-      const animMs = state.tlPlaying ? 0 : Math.max(0, Math.min(2500, (P.tlRate ? P.tlRate().anim : 800)));
+      const animMs = tlIsPlaying() ? 0 : Math.max(0, Math.min(2500, (P.tlRate ? P.tlRate().anim : 800)));
       if (sameStruct) {
         opt.animationDuration = 0;
-        opt.animationDurationUpdate = state.tlPlaying ? 0 : Math.round(animMs * 0.35);
+        opt.animationDurationUpdate = tlIsPlaying() ? 0 : Math.round(animMs * 0.35);
         opt.animationEasingUpdate = 'cubicInOut';
       }
       let inst = null;
       try { inst = window.Charts.render(box, opt, { notMerge: !sameStruct }); } catch (e) { inst = null; }
       box.__tlSig = sig;
+      if (inst) { box.removeAttribute('data-ec-fail'); }
       return inst;
-    } catch (e) { return null; }
+    } catch (e) {
+      /* 早期这里把异常整个吞掉，结果线上只看到一块空白图表、控制台也没有线索。
+         现在至少留下可排查的痕迹：控制台报错 + 容器里给出可读提示。 */
+      try { console.error('[timeline] 图表绘制失败:', view, e && e.message, e); } catch (e2) { }
+      try {
+        if (!box.getAttribute('data-ec-fail')) {
+          box.setAttribute('data-ec-fail', '1');
+          box.innerHTML = '<div class="chart-fail">图表绘制失败：' + String((e && e.message) || e) + '</div>';
+        }
+      } catch (e3) { }
+      return null;
+    }
   };
 
   function inScope(p, region, country, gender, evs) {

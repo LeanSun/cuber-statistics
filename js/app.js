@@ -905,27 +905,38 @@
     toast(t('tl.msOk'));
     render(true);
   }
-  function msReset() { try { localStorage.removeItem(MS_KEY); localStorage.removeItem('goat-milestones-edit'); } catch (e) { } toast(t('tl.msReset')); render(true); }
+  function msReset() { try { localStorage.removeItem(MS_KEY); localStorage.removeItem('goat-milestones-edit'); localStorage.removeItem('goat-milestones-hidden'); } catch (e) { } toast(t('tl.msReset')); render(true); }
   /* 编辑内置 / 自定义事件：把原始键与当前时间 / 标题 / 项目回填到表单，进入编辑模式 */
   function msEdit(btn) {
     const key = btn.getAttribute('data-msedit');
     const ev = btn.getAttribute('data-msedit-ev') || '';
     const ym = btn.getAttribute('data-msedit-date') || '';
     const zh = btn.getAttribute('data-msedit-zh') || '';
+    /* 事件标题在存储时是「项目名 · 内容」的合成串，回填时要把项目名前缀剥掉，
+       否则再次保存会二次拼接，变成「三阶 · 三阶 · 内容」。 */
+    const txt = (P.msSplitText ? P.msSplitText(zh, ev) : zh);
     const evSel = document.getElementById('msEv');
     const yr = document.getElementById('msYear');
     const tx = document.getElementById('msText');
     const ek = document.getElementById('msEditKey');
     if (evSel) evSel.value = ev;
     if (yr) yr.value = ym;
-    if (tx) tx.value = zh;
+    if (tx) tx.value = txt;
     if (ek) ek.value = key || '';
     const hint = document.getElementById('msEditHint');
-    if (hint) hint.textContent = '编辑中：' + zh + '（保存后覆盖原事件）';
+    if (hint) hint.textContent = '编辑中：' + zh + '（改完点「保存修改」覆盖原事件）';
     const addBtn = document.getElementById('msImportBtn');
     if (addBtn) addBtn.textContent = t('tl.msSaveEdit') || '保存修改';
-    const box = document.getElementById('tlChart');
-    if (box && window.Charts) { try { P.drawTimeline(box); } catch (e) { } }
+    /* 表单在页面下方，点 ✎ 后必须让用户看见「确实进入了编辑态」：
+       滚动到表单并聚焦内容框，同时给表单加一层高亮。 */
+    const form = evSel && evSel.closest ? evSel.closest('.ms-form') : null;
+    if (form) {
+      try { form.classList.add('ms-editing'); } catch (e) { }
+      try { form.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { }
+      setTimeout(function () { try { form.classList.remove('ms-editing'); } catch (e) { } }, 1800);
+    }
+    if (tx && tx.focus) { try { tx.focus(); } catch (e) { } }
+    toast(t('tl.msEditing'));
   }
   /* 内置事件的隐藏列表（让默认事件也能删除 / 恢复） */
   const MS_HIDE_KEY = 'goat-milestones-hidden';
@@ -1012,7 +1023,7 @@
   }
 
   /* ---------- 全局事件委托 ---------- */
-  const DELEGATE = '[data-sort],[data-page],[data-expand],[data-prow],[data-tab],[data-type],[data-pkadd],[data-pkrm],[data-pktrayrm],[data-pktrayclear],[data-toggle],[data-expandall],[data-goto],[data-group],[data-gender],[data-retired],[data-tlmode],[data-tlview],[data-tlstep],[data-tlmetric],[data-tllane],[data-topic],[data-topicev],[data-topicboard],[data-other],[data-nation],[data-scope],[data-continent],[data-evpick],[data-evtab],[data-evtoggle],[data-evall],[data-evnone],[data-evsave],[data-gload],[data-gdel],[data-reclevel],[data-rectype],[data-podtier],[data-mdanchor],[data-mdsec],[data-msimport],[data-msreset],[data-msdel],[data-msjump],[data-modcolor]';
+  const DELEGATE = '[data-sort],[data-page],[data-expand],[data-prow],[data-tab],[data-type],[data-pkadd],[data-pkrm],[data-pktrayrm],[data-pktrayclear],[data-toggle],[data-expandall],[data-goto],[data-group],[data-gender],[data-retired],[data-tlmode],[data-tlview],[data-tlstep],[data-tlmetric],[data-tllane],[data-topic],[data-topicev],[data-topicboard],[data-other],[data-nation],[data-scope],[data-continent],[data-evpick],[data-evtab],[data-evtoggle],[data-evall],[data-evnone],[data-evsave],[data-gload],[data-gdel],[data-reclevel],[data-rectype],[data-podtier],[data-mdanchor],[data-mdsec],[data-msimport],[data-msreset],[data-msdel],[data-msedit],[data-msunhide],[data-msjump],[data-modcolor]';
 
   document.addEventListener('click', function (e) {
     const el = e.target.closest ? e.target.closest(DELEGATE) : null;

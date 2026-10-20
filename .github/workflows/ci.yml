@@ -22,7 +22,7 @@ jobs:
         run: python3 etl/make_sample.py
       - name: Run ETL against sample & verify output shape
         run: |
-          node etl/build.js --dir etl/sample --out ./_sample_data.js --date 2026-10-18 --ver v2.0.2 --detail-max 20 --slim-max 20
+          node etl/build.js --dir etl/sample --out ./_sample_data.js --date 2026-10-18 --ver v2.0.2 --detail-max 20 --slim-max 20 --no-roster
           node -e '
             const fs=require("fs"); const Calc=require("./js/calc.js");
             global.window={Calc:Calc,U:Calc.U}; global.Calc=Calc; global.U=Calc.U;

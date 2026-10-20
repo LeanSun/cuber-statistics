@@ -133,28 +133,21 @@ ok(h3.indexOf('rank.ruleNote') < 0 && h3.indexOf('统计口径') >= 0, '多项�
 {
   const one = P.filtered(Object.assign({}, base, { evSel: ['333'] }));
   const wrOf = (r) => (r.be ? r.be.r : null);
-  /* 单项目口径：排序键 orderVal 必须等于历史地位分 row.score */
-  ok(one.every((r) => Math.abs((r.orderVal == null ? r.score : r.orderVal) - r.score) < 1e-9),
-    '单项目：排序键 orderVal 已切换为历史地位分 row.score（不再用世界名次）');
-  /* 榜单严格按历史地位分降序（综合分低的选手不得排到综合分高者前面） */
-  let scSorted = true;
-  for (let i = 1; i < one.length; i++) if (one[i].score > one[i - 1].score + 1e-9) { scSorted = false; break; }
-  ok(scSorted, '单项目：榜单严格按历史地位分（row.score）降序排列');
-
-  /* 关键修复点：将榜单单独按「世界名次」排一份，若其与「按综合分排」的前若干名不同，
-     则断言实际榜单采用综合分顺序（证明不再按世界名次排）。 */
-  const byWorld = one.slice().sort((a, b) => {
-    const va = wrOf(a) == null ? 1e9 : wrOf(a);
-    const vb = wrOf(b) == null ? 1e9 : wrOf(b);
-    return va - vb;
-  });
-  const topW = byWorld.slice(0, 8).map((r) => r.p.id).join(',');
-  const topS = one.slice(0, 8).map((r) => r.p.id).join(',');
-  if (topW !== topS) {
-    ok(topS === one.slice(0, 8).map((r) => r.p.id).join(','),
-      '单项目：榜单采用综合分顺序而非世界名次顺序（前8名已不同：世界名次序=' + topW + ' / 综合分序=' + topS + '）');
-  } else {
-    ok(true, '单项目：样本中综合分序与世界名次序前8一致，但仍按综合分排序');
+  /* 单项目口径：排序键 orderVal 必须来自「该项目自身的世界名次」（be.r），
+     名次越靠前（r 越小）orderVal 越大，榜单顶部＝该项目最强者，而非综合历史地位分更高者。 */
+  ok(one.every((r) => (r.be ? r.orderVal === -r.be.r : r.orderVal === -1e9)),
+    '单项目：排序键 orderVal 已切换为「该项目世界名次」（orderVal = -be.r）');
+  /* 榜单严格按该项目世界名次升序排列（r 不增） */
+  let evSorted = true;
+  for (let i = 1; i < one.length; i++) {
+    const a = wrOf(one[i - 1]), b = wrOf(one[i]);
+    if (a != null && b != null && b < a - 1e-9) { evSorted = false; break; }
+  }
+  ok(evSorted, '单项目：榜单严格按所筛选项目的世界名次升序排列');
+  /* 榜首必须是该项目世界名次 r=1 的选手（若存在） */
+  if (one.length) {
+    const top = one[0].be;
+    ok(!top || top.r === 1, '单项目：榜首为该项目世界第 1（r=1）: ' + (top ? top.r : 'n/a'));
   }
 
   /* 多项目：各所选项目名次的加权综合（evSum 越大＝整体名次越靠前），依旧有效 */
@@ -305,6 +298,80 @@ ok(hC.indexOf('cov-rank') >= 0, '项目领域内有真实世界名次（cov-rank
 ok(hC.indexOf('rankCurve') < 0, '已删除「世界排名演变」板块（rankCurve）');
 ok(hC.indexOf('cmp-radar-wrap') >= 0, '七模块雷达有放大容器');
 ok(hC.indexOf('eloTip') < 0 && hC.length > 0, '核心数据带 infoTip');
+
+/* —— 选手页排名胶囊 / 主项：三项曾反复回归的问题，这里加死断言 ——
+   1) 「主项」被输出两次（早期 pages-player.js 有两处重复渲染）；
+   2) 排名胶囊外框消失（css 里 .pid-ranks 规则被改成孤立声明，浏览器整条丢弃）；
+   3) 分母误用 M.ranked.length（明细档 60000），应统计全部选手。 */
+console.log('== 选手页：排名胶囊外框 / 分母 / 主项唯一 ==');
+{
+  ok((hC.match(/class="tag acc"/g) || []).length === 1, '「主项」标签只出现 1 次（实得 ' + (hC.match(/class="tag acc"/g) || []).length + '）');
+  ok(hC.indexOf('class="pid-ranks"') >= 0, '排名胶囊容器 pid-ranks 存在');
+  const pillN = (hC.match(/class="pid-rank"/g) || []).length;
+  ok(pillN === 4, '排名胶囊 4 枚（世界 / 洲 / 国家 / 巅峰），实得 ' + pillN);
+  /* 世界 + 巅峰两枚的分母必须是全部选手数 */
+  const allN = U.num((M.meta && M.meta.players) || M.ranked.length);
+  const denoms = (hC.match(/<i>\/ [^<]*<\/i>/g) || []).map(function (s) { return s.replace(/<\/?i>/g, '').replace('/ ', ''); });
+  ok(denoms.length === 4, '四枚胶囊都带 / 总数 分母，实得 ' + denoms.length);
+  ok(denoms[0] === allN && denoms[3] === allN,
+    '世界/巅峰分母 = 全部选手 ' + allN + '（实得 ' + denoms[0] + ' / ' + denoms[3] + '）');
+  /* 洲 / 国家分母必须来自全量聚合，不能等于「当前候选池」大小 */
+  const contCode = M.continentOf && M.continentOf[M.ranked[0].country];
+  const contAll = (M.meta && M.meta.continentTotals && contCode) ? M.meta.continentTotals[contCode] : null;
+  const natAll = (M.meta && M.meta.nationTotals && M.meta.nationTotals[M.ranked[0].country]) || null;
+  if (contAll != null) ok(denoms[1] === U.num(contAll), '洲分母 = 该洲全量人数 ' + U.num(contAll) + '（实得 ' + denoms[1] + '）');
+  else ok(true, '样本无 continentTotals，跳过洲分母校验');
+  if (natAll != null) ok(denoms[2] === U.num(natAll), '国家分母 = 该国全量人数 ' + U.num(natAll) + '（实得 ' + denoms[2] + '）');
+  else ok(true, '样本无 nationTotals，跳过国家分母校验');
+}
+
+console.log('== 样式与事件委托：防回归静态检查 ==');
+{
+  const css = fs.readFileSync(path.join(ROOT, 'css/style.css'), 'utf8');
+  /* 规则体 = .pid-ranks 到最近一个 }；曾被截断成两行导致外框丢失 */
+  const m = css.match(/\.pid-ranks\s*\{([^}]*)\}/);
+  ok(!!m, '存在合法的 .pid-ranks 规则（未被截断成孤立声明）');
+  if (m) {
+    ok(/grid-template-columns/.test(m[1]), '.pid-ranks 含 grid 布局');
+    ok(/border-top/.test(m[1]), '.pid-ranks 含分隔线 border-top（外框可见）');
+  }
+  const mp = css.match(/\.pid-rank\s*\{([^}]*)\}/);
+  ok(!!mp && /border/.test(mp[1]), '.pid-rank 单枚胶囊有 border（外框）');
+
+  /* 重大事件编辑 / 恢复：按钮 selector 必须进全局委托表，否则点击永不到达处理函数 */
+  const app = fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8');
+  const dl = (app.match(/DELEGATE\s*=\s*'([^']*)'/) || [])[1] || '';
+  ok(/\[data-msedit\]/.test(dl), 'data-msedit（编辑重大事件）在全局委托选择器内');
+  ok(/\[data-msunhide\]/.test(dl), 'data-msunhide（恢复内置事件）在全局委托选择器内');
+  const resetBody = (app.match(/function msReset\s*\(\)\s*\{[^}]*\}/) || [])[0] || '';
+  ok(/goat-milestones-hidden/.test(resetBody), 'msReset 会清掉隐藏列表 goat-milestones-hidden');
+  ok(/goat-milestones-edit/.test(resetBody), 'msReset 会清掉编辑覆盖 goat-milestones-edit');
+
+  /* 「恢复内置事件」按钮只应在有隐藏项时出现，且事件必须真的被清空 */
+  const pe = fs.readFileSync(path.join(ROOT, 'js/pages-extra.js'), 'utf8');
+  ok(/data-msunhide/.test(pe), '页面里有「恢复内置事件」按钮（data-msunhide）');
+  ok(/P\.msUnhideAll\s*=\s*function\s*\(\)\s*\{\s*saveHiddenMs\(\[\]\)/.test(pe), 'msUnhideAll 会把隐藏列表写回空数组');
+  ok(/data-msedit-date=/.test(pe) && /data-msedit-zh=/.test(pe) && /data-msedit-ev=/.test(pe),
+    '编辑按钮带齐 原始键 / 日期 / 标题 / 项目，点开才能回填表单');
+  ok(/id="msEditKey"/.test(pe) && /id="msText"/.test(pe) && /id="msYear"/.test(pe) && /id="msEv"/.test(pe),
+    '自定义 / 编辑表单四个控件齐全（msEditKey / msEv / msYear / msText）');
+
+  /* 编辑回填：标题里的「项目名 · 」前缀必须被剥掉，否则保存会二次拼接成「三阶 · 三阶 · …」 */
+  if (typeof P.msSplitText === 'function') {
+    const evId = M.ranked[0] && M.ranked[0].events && M.ranked[0].events[0] ? M.ranked[0].events[0] : (M.events[0] && M.events[0].id);
+    const evTxt = M.EV[evId] ? (t.isEn() ? M.EV[evId].en : M.EV[evId].zh) : '';
+    if (evTxt) {
+      ok(P.msSplitText(evTxt + ' · 首届世界锦标赛', evId) === '首届世界锦标赛',
+        'msSplitText 剥掉一次「项目名 · 」前缀');
+      ok(P.msSplitText('首届世界锦标赛', evId) === '首届世界锦标赛',
+        'msSplitText 对无前缀的标题不改动（不会误删正文）');
+      ok(P.msSplitText(evTxt + ' · ' + evTxt + ' · 内容', evId) === evTxt + ' · 内容',
+        'msSplitText 只剥一层，历史脏数据也只修正一层');
+    }
+  } else {
+    ok(false, '缺少 P.msSplitText（编辑回填去前缀）');
+  }
+}
 
 console.log('== 评分真实性：统治力 / 实战对战 / Elo ==');
 {
@@ -524,6 +591,68 @@ console.log('== 竞速图序号 ==');
     ok(d.length === 3 && d[0].no === 1 && d[1].no === 2, '竞速图数据带 1..N 排名序号');
     ok(d[0].id === undefined || d[0].no === 1, '序号与数据一一对应');
   }
+}
+
+/* == 时间轴真正「画」出来 == 
+   此前冒烟只校验了 P.timeline 返回的 HTML，从未真正执行 drawTimeline ——
+   而 drawTimeline 内部把所有异常都 catch 掉了，于是「页面空白、测试全绿」两者可以同时成立。
+   这里用桩 echarts 走一遍真实绘制路径，确认两块图（竞速图 / 纪录持有图）都真的把 option 交给了 ECharts。 */
+console.log('== 时间轴绘制（桩 echarts，验证 setOption 真的被调用）==');
+{
+  const calls = [];
+  win.echarts = {
+    getInstanceByDom: function () { return null; },
+    init: function () { return { setOption: function (o) { calls.push(o); }, resize: function () { }, dispose: function () { } }; }
+  };
+  global.echarts = win.echarts;
+  global.state = { tlPlaying: false };
+  function mkBox(view) {
+    const attrs = {
+      'data-view': view, 'data-mode': 'cumulative', 'data-fy': '2026', 'data-metric': 'overall',
+      'data-lane': 'single', 'data-smooth': '0', 'data-region': '', 'data-country': '', 'data-ev': '',
+      'data-gender': 'all', 'data-type': 'all'
+    };
+    const box = {
+      clientWidth: 900, clientHeight: 600, offsetWidth: 900, offsetHeight: 600, style: {},
+      getAttribute: function (k) { return attrs[k] !== undefined ? attrs[k] : null; },
+      setAttribute: function (k, v) { attrs[k] = v; }, removeAttribute: function (k) { delete attrs[k]; },
+      innerHTML: ''
+    };
+    return box;
+  }
+  ok(typeof P.drawTimeline === 'function', 'P.drawTimeline 存在');
+  if (typeof P.drawTimeline === 'function') {
+    calls.length = 0;
+    const b1 = mkBox('race');
+    const i1 = P.drawTimeline(b1);
+    ok(!!i1, '竞速图 drawTimeline 返回了实例（不是 null）');
+    ok(calls.length === 1, '竞速图 setOption 被调用 1 次（实得 ' + calls.length + '）');
+    const o1 = calls[0] || {};
+    ok(!!(o1.series && o1.series.length), '竞速图 option 带 series');
+    ok(!!(o1.series && o1.series[0] && (o1.series[0].data || []).length > 0),
+      '竞速图首系列有数据点（实得 ' + ((o1.series && o1.series[0] && (o1.series[0].data || []).length) || 0) + '）');
+    ok(b1.innerHTML === '', '竞速图绘制成功，容器里没有失败提示');
+
+    calls.length = 0;
+    const b2 = mkBox('lane');
+    const i2 = P.drawTimeline(b2);
+    ok(!!i2, '纪录持有图 drawTimeline 返回了实例');
+    const o2 = calls[0] || {};
+    ok(!!(o2.series && o2.series[0] && (o2.series[0].data || []).length > 0),
+      '纪录持有图首系列有数据点（实得 ' + ((o2.series && o2.series[0] && (o2.series[0].data || []).length) || 0) + '）');
+    ok(!!(o2.yAxis && o2.yAxis.data && o2.yAxis.data.length), '纪录持有图 y 轴有项目泳道');
+    ok(b2.innerHTML === '', '纪录持有图绘制成功，容器里没有失败提示');
+
+    /* 容器 0 尺寸时必须延后绘制，而不是 init 出一张 0×0 的空白图 */
+    let deferred = false;
+    const b3 = mkBox('race');
+    b3.clientHeight = 0; b3.offsetHeight = 0;
+    calls.length = 0;
+    P.drawTimeline(b3);
+    if (!calls.length) deferred = true;
+    ok(deferred, '容器高度为 0 时先不绘制（等尺寸就绪再画）');
+  }
+  delete win.echarts; delete global.echarts; delete global.state;
 }
 
 console.log(fail ? ('\n❌ 失败 ' + fail + ' 项') : '\n✅ 全部通过');

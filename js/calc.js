@@ -360,11 +360,11 @@
     p.ranks = {
       world: p.rank,
       continent: inC.filter(function (x) { return x.overall > p.overall; }).length + 1,
-      continentOf: inC.length,
+      continentOf: (ctx.continentTotals && ctx.continentTotals[cont] != null) ? ctx.continentTotals[cont] : inC.length,
       region: inR.filter(function (x) { return x.overall > p.overall; }).length + 1,
-      regionOf: inR.length,
+      regionOf: (ctx.regionTotals && ctx.regionTotals[reg] != null) ? ctx.regionTotals[reg] : inR.length,
       nation: inN.filter(function (x) { return x.overall > p.overall; }).length + 1,
-      nationOf: inN.length,
+      nationOf: (ctx.nationTotals && ctx.nationTotals[p.country] != null) ? ctx.nationTotals[p.country] : inN.length,
       contName: cont, regName: reg
     };
     return p.ranks;
@@ -609,7 +609,20 @@
     var lanes = cfg.lanes || makeLanes(events.map(function (e) { return e.id; }), 0, players);
     var lanesAvg = cfg.lanesAvg || makeLanes(events.map(function (e) { return e.id; }), 2, players);
 
-    var ctx = { ranked: ranked, continentOf: continentMap, regionOf: regionOf };
+    /* 大洲 → 地区是多对一，所以「地区全量人数」可以直接由全量大洲人数累加得出，
+       不必让 ETL 再多存一份（regionOf 缺失时也不会误用 6 万人的候选池当分母）。 */
+    var regionTotals = cfg.regionTotals || null;
+    if (!regionTotals && cfg.continentTotals) {
+      regionTotals = {};
+      Object.keys(cfg.continentTotals).forEach(function (c) {
+        var rg = regionOf[c];
+        if (rg) regionTotals[rg] = (regionTotals[rg] || 0) + cfg.continentTotals[c];
+      });
+      if (!Object.keys(regionTotals).length) regionTotals = null;
+    }
+
+    var ctx = { ranked: ranked, continentOf: continentMap, regionOf: regionOf,
+      continentTotals: cfg.continentTotals || null, regionTotals: regionTotals, nationTotals: cfg.nationTotals || null };
     evStatCtx = function (p, ev) { return p.evS ? decodeEvStat(p, ev) : (p.evStat ? p.evStat[ev] : null); };
 
     /* ETL 输出的按项目统计为紧凑字符串，这里按需解码（用完即弃，不常驻内存） */

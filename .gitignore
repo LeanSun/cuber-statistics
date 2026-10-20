@@ -33,3 +33,8 @@ temp/
 
 # WorkBuddy 项目数据（内存 / 缓存，不入库）
 .workbuddy/
+
+# ETL 样本构建产物（CI / 本地验证用，勿入库）
+_sample_data.js
+_sample_roster.js
+etl/_sample_data.js

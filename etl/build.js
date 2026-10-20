@@ -1025,6 +1025,19 @@ function buildEventMilestones() {
     if (p.overall > n.best) { n.best = p.overall; n.bestName = p.name; }
   });
 
+  /* 全量洲 / 国总人数（用于选手页「世界 / 洲 / 国家」排名分母 = 全部 WCA 选手，
+     而非下发的前 6 万名头部）。
+     注意：名单里的 country 是原始 country_id（老版本导出是 ISO3，如 AUS），
+     而前端选手对象的 country 已被 Calc.isoNorm 归一为 ISO2（AU）——
+     分母表的键必须跟前端一致用 ISO2，否则查表恒落空、分母会静默退化。 */
+  const continentTotals = {}, nationTotals = {};
+  list.forEach((p) => {
+    const iso = Calc.isoNorm(p.country) || p.country;
+    const c = continentShort[iso] || continentShort[p.country] || '';
+    if (c) continentTotals[c] = (continentTotals[c] || 0) + 1;
+    nationTotals[iso] = (nationTotals[iso] || 0) + 1;
+  });
+
   /* 年度前10 / 前100 名次数：annualTop 里每个 (年,项目) 只留前 200 名，
      因此名次≤100 的选手必然在榜内，可直接计数（无需为每位选手存完整年度名次表）。 */
   const yTop10 = {}, yTop100 = {};
@@ -1054,7 +1067,8 @@ function buildEventMilestones() {
     players: list.length, events: events.size, comps: comps.size,
     wr: totWR, records: totRec, podiums: totPod, nations: Object.keys(NATIONS_RAW).length,
     modMax: MOD_MAX,
-    emitted: emit.length, detailMax: DETAIL_MAX, slimMax: SLIM_MAX
+    emitted: emit.length, detailMax: DETAIL_MAX, slimMax: SLIM_MAX,
+    continentTotals: continentTotals, nationTotals: nationTotals
   };
 
   const base = (p) => ({
@@ -1155,6 +1169,7 @@ function buildEventMilestones() {
   const AS_OF = arg('--date', '') || new Date().toISOString().slice(0, 10);
   const CFG = {
     countries: countryName, continentOf: continentShort, meta: meta,
+    continentTotals: continentTotals, nationTotals: nationTotals,
     years: (function () { const a = []; for (let y = 2003; y <= new Date().getFullYear(); y++) a.push(y); return a; })(),
     milestones: Calc.MILESTONES, eventMilestonesMap: buildEventMilestones(),
     lanes: buildLanes(wrSingleG, AS_OF), lanesAvg: buildLanes(wrAvgG, AS_OF),
