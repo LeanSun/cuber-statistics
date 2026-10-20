@@ -319,14 +319,11 @@
         row.evSum = sw > 0 ? sv / sw : 0;
       }
       /* 排序键（orderVal 一律「越大越靠前」，升降序交给 sortRows 统一处理）：
-         · 单项目：按「所筛选项目本身的世界名次」排序 —— 项目世界第 1 的排榜首，
-           而不是综合历史地位分更高、但该项目并非最强的人。这样榜单顺序与行内
-           显示的 No.{r} 完全一致，用户看到的「名次」和「排序」不会再打架。
-         · 多项目：按各所选项目名次的加权综合（evSum）排序。
-         · 未筛项目 / 全部项目：保持历史地位分排序（orderVal 初值即 score）。 */
-      if (sev) {
-        row.orderVal = row.be ? -row.be.r : -1e9;
-      } else if (bdM) {
+         · 单项目 / 未筛 / 全部项目：一律按「历史地位分（GOAT 分）」排序。
+           单项目下命中必然为 1/1，广度折减恒等于 1，因此与「只看该项目」的
+           历史地位分完全相同；行内条尾展示的也是这把分数，名次与排序一致。
+         · 多项目：按各所选项目名次的加权综合（evSum）排序，作为横向参考。 */
+      if (bdM) {
         /* 多项目：各所选项目名次的加权综合（evSum 越大＝整体名次越靠前） */
         row.orderVal = row.evHit ? row.evSum : -1e9;
       }
@@ -371,7 +368,7 @@
     /* 仅统计前 1000 名（排序已在 filtered 内完成，这里截断） */
     const rowsAll = allRows.length > RANK_TOP ? allRows.slice(0, RANK_TOP) : allRows;
     const rt = state.recType || 'all';
-    const per = 50;
+    const per = 20;
     const evMode = rowsAll.length ? (rowsAll[0].ev || '') : '';
     const firstRow = rowsAll[0] || null;
     const multiMode = !!(firstRow && firstRow.evs && firstRow.evs.length >= 2);
@@ -461,14 +458,14 @@
           '<span class="bar-total">' + U.fmt(score, 1) + '</span>' +
           '<span class="ev-hitnote">' + row.evHit + '/' + evsShown.length + '</span></div></td>';
       } else if (evMode) {
-        /* 单项目：按该项目的世界名次排序，条长＝名次越靠前条越长；
-           条尾依次给出该项目的成绩（单次 / 平均）与「No.名次」。 */
+        /* 单项目：按「历史地位分（GOAT 分）」排序，条长＝分数占比；
+           条尾给出分数（与排序同一把尺子），并以 No. 标注该项目的世界名次作为参考。 */
         const be = row.be;
-        const w = be ? evBarPct(be.r, row.bdLen) : 6;
         h += '<td class="barcell bars-full"><div class="bar-row evmode"><div class="bar-track">' +
-          '<div class="bar-grow" style="width:' + w.toFixed(1) + '%">' + miniStack(p, modTab, rt) + '</div></div>' +
-          '<span class="ev-res">' + (be ? esc(be.s) + (be.af ? ' <i>/</i> ' + esc(be.af) : '') : '<span class="muted">—</span>') + '</span>' +
-          '<span class="bar-total ev-rank"' + (be ? ' title="' + esc(t('player.rankWorld')) + '">No.' + be.r : ' class="bar-total muted">—') + '</span></div></td>';
+          '<div class="bar-grow" style="width:' + bw.toFixed(1) + '%">' + miniStack(p, modTab, rt) + '</div></div>' +
+          '<span class="bar-total">' + U.fmt(score, 1) + '</span>' +
+          (be ? '<span class="ev-rank" title="' + esc(t('player.rankWorld')) + '">No.' + be.r + '</span>' : '') +
+          '</div></td>';
       } else {
         h += '<td class="barcell bars-full"><div class="bar-row"><div class="bar-track">' +
           '<div class="bar-grow" style="width:' + bw.toFixed(1) + '%">' + miniStack(p, modTab, rt) + '</div></div>' +

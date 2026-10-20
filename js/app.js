@@ -310,17 +310,17 @@
     fbEl.hidden = false;
     let h = '<div class="filterbar-inner">';
 
-    /* ---------- 预设分组（快速筛选） + 事件图标多选 ---------- */
-    h += '<div class="fgroup ev-fgroup">';
-    h += '<div class="fctl presets" id="fgGroup">';
-    const presets = [{ id: 'all', zh: t('f.all'), en: t('f.all') }].concat(M.presetGroups.filter(function (g) { return g.id !== 'all'; }));
-    presets.forEach(function (g) {
-      const on = state.group === g.id && !(state.evSel && state.evSel.length);
-      h += '<button class="chip' + (on ? ' on' : '') + '" data-group="' + g.id + '">' + esc(t.isEn() ? g.en : g.zh) + '</button>';
-    });
-    h += '</div>';
+    /* ---------- 预设分组（快速筛选） + 事件图标多选（仅总榜 / 图表可视化；趣味统计页用页面内筛选） ---------- */
     if (route !== 'topics') {
-      /* 另类统计页用页面内的「项目筛选」(data-topicev) 作为唯一项目筛选，
+      h += '<div class="fgroup ev-fgroup">';
+      h += '<div class="fctl presets" id="fgGroup">';
+      const presets = [{ id: 'all', zh: t('f.all'), en: t('f.all') }].concat(M.presetGroups.filter(function (g) { return g.id !== 'all'; }));
+      presets.forEach(function (g) {
+        const on = state.group === g.id && !(state.evSel && state.evSel.length);
+        h += '<button class="chip' + (on ? ' on' : '') + '" data-group="' + g.id + '">' + esc(t.isEn() ? g.en : g.zh) + '</button>';
+      });
+      h += '</div>';
+      /* 趣味统计页用页面内的「项目筛选」(data-topicev) 作为唯一项目筛选，
          顶部不再重复渲染项目图标条，避免上下两套互相打架。 */
       h += '<div class="ev-strip" id="fgEvents" role="group" aria-label="' + esc(t('f.events')) + '">';
       const evSel = state.evSel || [];
@@ -342,8 +342,8 @@
       });
       h += '</div>';
       h += '</div>';
+      h += '</div>';
     }
-    h += '</div>';
 
     /* ---------- 国家 / 大洲 合并为单一下拉（总榜 + 图表可视化 + 另类统计；已移除 WCA 地区分组） ---------- */
     if (route === 'rank' || route === 'timeline' || route === 'topics') {
@@ -422,19 +422,32 @@
   function updateSummary(route) {
     const el = document.getElementById('fgSummary');
     if (!el) return;
-    /* 无筛选时展示 WCA 全量选手数；有筛选时展示当前条件下的可用选手数 */
-    let n = M.ranked.length;
+    /* 透明化计数：把「WCA 全量注册人数」与「评分体系实际收录并参与排名的人数」两个口径都摆出来，
+       避免用户误以为我们只统计了其中一部分。排名榜单始终只覆盖「评分体系收录」的选手，
+       因为只有这部分选手拥有可计算 GOAT 分的完整成绩；WCA 全量 30 万+ 人里绝大多数只有零星参赛记录。 */
+    const total = (M.meta && M.meta.players) || M.ranked.length;   // WCA 全量注册
+    const rated = M.ranked.length;                                  // 评分体系收录并参与排名
+    const allEvents = Object.keys(M.EV || {});
+    const evAll = (state.evSel && state.evSel.length) ? state.evSel.length >= allEvents.length : true;
     const noFilt = !state.geo && (!state.gender || state.gender === 'all') && !state.y0 && !state.y1
-      && (!state.evSel || !state.evSel.length) && (!state.group || state.group === 'all') && !state.retired;
-    if (route === 'rank' || route === 'timeline') n = noFilt ? ((M.meta && M.meta.players) || n) : P.filtered(state).length;
-    else if (route === 'topics') n = P.util.topicPool(state).length;
+      && evAll && (!state.group || state.group === 'all') && !state.retired;
+    let matched = rated;
+    if (route === 'rank' || route === 'timeline') matched = noFilt ? rated : P.filtered(state).length;
+    else if (route === 'topics') matched = P.util.topicPool(state).length;
     let geoLabel = '';
     if (state.region) geoLabel = P.util.regionName(state.region);
     else if (state.geo) {
       if (state.geo.indexOf('cont:') === 0) geoLabel = P.util.contName(state.geo.slice(5));
       else geoLabel = P.util.countryName(state.geo) || state.geo;
     }
-    el.textContent = (geoLabel ? geoLabel + ' · ' : '') + t('f.summary', { n: n });
+    let main, note;
+    if (noFilt && (route === 'rank' || route === 'timeline')) {
+      main = t('f.summaryAll', { n: U.num(total), rated: U.num(rated) });
+    } else {
+      main = t('f.summary', { n: U.num(matched) });
+      note = t('f.summaryNote', { rated: U.num(rated), total: U.num(total) });
+    }
+    el.innerHTML = (geoLabel ? '<b>' + esc(geoLabel) + '</b> · ' : '') + esc(main) + (note ? ' <span class="muted">' + esc(note) + '</span>' : '');
   }
 
   /* ---------- 主渲染 ---------- */
@@ -668,8 +681,9 @@
           const num = document.getElementById('tlRate' + key);
           if (num && document.activeElement === num) num.value = val;
         }
-        /* 动画时长变化需要立即重画；跳跃/刷新间隔在下次点播放时生效即可 */
-        if (key === 'anim' && box) P.drawTimeline(box);
+        /* 任一参数变化都立即重绘当前帧（播放时下一帧也会自然采用新参数），
+           不再需要手动刷新页面才生效 */
+        if (box) P.drawTimeline(box);
       }
       ['jump', 'anim', 'fps'].forEach(function (key) {
         const cap = document.getElementById('tlRate' + key + 'Cap');
@@ -748,55 +762,33 @@
       if (rs) rs.addEventListener('click', function () { Pm.reset(); render(true); toast(t('ui.ok')); });
       const mcr = document.getElementById('mColorReset');
       if (mcr) mcr.addEventListener('click', function () { Pm.resetColors(); render(true); toast(t('ui.ok')); });
-      document.querySelectorAll('input[data-modcolor]').forEach(function (c) {
-        c.addEventListener('input', function () {
-          if (Pm.setColor) { Pm.setColor(c.getAttribute('data-modcolor'), c.value); }
-          /* 同步同一行的 16 进制输入框 */
-          const hex = c.parentNode.querySelector('input[data-modhex]');
-          if (hex && document.activeElement !== hex) hex.value = c.value;
+      /* 模块配色：点击色块弹出取色菜单（RGB 滑杆 + 16 进制 + 取消/确认），确认才写入 */
+      document.querySelectorAll('[data-cmod]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          const k = btn.getAttribute('data-cmod');
+          openColorPopup({
+            current: (Pm.colors && Pm.colors()[k]) || '#000000',
+            label: btn.getAttribute('data-cmod-label') || k,
+            anchor: btn,
+            onConfirm: function (hex) {
+              if (Pm.setColor) { Pm.setColor(k, hex); btn.style.background = hex; toast(t('md.colorsOk')); }
+            }
+          });
         });
-        c.addEventListener('change', function () { render(true); toast(t('md.colorsOk')); });
       });
-      /* 模块配色的 16 进制输入框：可直接粘贴 #RRGGBB（也接受 #RGB 与不带 # 的写法） */
-      document.querySelectorAll('input[data-modhex]').forEach(function (hex) {
-        function commit() {
-          const k = hex.getAttribute('data-modhex');
-          const v = hexVal(hex.value);
-          if (!v || !Pm.setColor) { hex.value = Pm.colors()[k] || ''; return; }
-          Pm.setColor(k, v);
-          hex.value = v;
-          const picker = hex.parentNode.querySelector('input[data-modcolor]');
-          if (picker) picker.value = v;
-        }
-        hex.addEventListener('change', commit);
-        hex.addEventListener('blur', commit);
-        hex.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); commit(); hex.blur(); } });
-      });
-      /* 国家配色：改色即时写入localStorage 并同步旁边的 16 进制输入框，
-         图表在下一次渲染/重绘时生效（避免每拖一次就重算全部图表）。 */
-      document.querySelectorAll('input[data-ccolor]').forEach(function (c) {
-        c.addEventListener('input', function () {
-          const iso = c.getAttribute('data-ccolor');
-          if (!P.setCountryColor) return;
-          P.setCountryColor(iso, c.value);
-          const hex = c.parentNode.querySelector('input[data-cchex]');
-          if (hex && document.activeElement !== hex) hex.value = c.value;
+      /* 国家配色：同样点击色块弹窗编辑 */
+      document.querySelectorAll('[data-ccmod]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          const iso = btn.getAttribute('data-ccmod');
+          openColorPopup({
+            current: (P.countryColor ? P.countryColor(iso) : '#000000'),
+            label: (countryName(iso) || iso),
+            anchor: btn,
+            onConfirm: function (hex) {
+              if (P.setCountryColor) { P.setCountryColor(iso, hex); btn.style.background = hex; toast(t('md.countryColorsOk')); }
+            }
+          });
         });
-        c.addEventListener('change', function () { render(true); toast(t('md.countryColorsOk')); });
-      });
-      document.querySelectorAll('input[data-cchex]').forEach(function (hex) {
-        function commit() {
-          const iso = hex.getAttribute('data-cchex');
-          const v = hexVal(hex.value);
-          if (!v || !P.setCountryColor) { hex.value = P.countryColor(iso); return; }
-          P.setCountryColor(iso, v);
-          hex.value = v;
-          const picker = hex.parentNode.querySelector('input[data-ccolor]');
-          if (picker) picker.value = v;
-        }
-        hex.addEventListener('change', commit);
-        hex.addEventListener('blur', commit);
-        hex.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); commit(); hex.blur(); } });
       });
       const ccR = document.getElementById('ccReset');
       if (ccR) ccR.addEventListener('click', function () {
@@ -951,6 +943,88 @@
     if (!/^#[0-9a-fA-F]{6}$/.test(s)) return '';
     return s.toLowerCase();
   }
+  /* 自定义取色弹窗：点击颜色色块后弹出，内含 RGB 三滑杆、16 进制输入框（位于 RGB 下方）
+     以及「取消 / 确认」按钮（位于最下方）。确认才写入，取消不改动。 */
+  function rgbToHex(r, g, b) {
+    function h(n) { const s = Math.max(0, Math.min(255, Math.round(n))).toString(16); return s.length === 1 ? '0' + s : s; }
+    return '#' + h(r) + h(g) + h(b);
+  }
+  let _colorPop = null;
+  function ensureColorPopup() {
+    if (_colorPop) return _colorPop;
+    const pop = document.createElement('div');
+    pop.className = 'color-pop';
+    pop.hidden = true;
+    pop.innerHTML =
+      '<div class="cp-head"><span class="cp-label"></span><button type="button" class="cp-close" aria-label="关闭">×</button></div>' +
+      '<div class="cp-preview"><span class="cp-prev"></span><b class="cp-hexprev"></b></div>' +
+      '<div class="cp-rgb">' +
+      ['R', 'G', 'B'].map(function (c, i) {
+        return '<div class="cp-ch"><label>' + c + '</label>' +
+          '<input type="range" min="0" max="255" class="cp-sl" data-ch="' + i + '">' +
+          '<input type="number" min="0" max="255" class="cp-num" data-ch="' + i + '"></div>';
+      }).join('') +
+      '</div>' +
+      '<div class="cp-hexrow"><label>HEX</label><input type="text" class="cp-hex" maxlength="7" spellcheck="false" placeholder="#RRGGBB"><span class="cp-hexerr"></span></div>' +
+      '<div class="cp-actions"><button type="button" class="btn btn-ghost cp-cancel">' + esc(t('ui.cancel')) + '</button>' +
+      '<button type="button" class="btn btn-primary cp-ok">' + esc(t('ui.confirm')) + '</button></div>';
+    document.body.appendChild(pop);
+    _colorPop = pop;
+    const prev = pop.querySelector('.cp-prev');
+    const hexPrev = pop.querySelector('.cp-hexprev');
+    const hexIn = pop.querySelector('.cp-hex');
+    const hexErr = pop.querySelector('.cp-hexerr');
+    const sliders = [0, 1, 2].map(function (i) { return pop.querySelector('.cp-sl[data-ch="' + i + '"]'); });
+    const nums = [0, 1, 2].map(function (i) { return pop.querySelector('.cp-num[data-ch="' + i + '"]'); });
+    let onConfirm = null;
+    function paint() {
+      const rgb = [+sliders[0].value, +sliders[1].value, +sliders[2].value];
+      const hex = rgbToHex(rgb[0], rgb[1], rgb[2]);
+      prev.style.background = hex; hexPrev.textContent = hex;
+      hexIn.value = hex; hexErr.textContent = '';
+    }
+    function fromHex(v) {
+      const hx = hexVal(v);
+      if (!hx) { hexErr.textContent = '格式应为 #RRGGBB'; return; }
+      const r = parseInt(hx.slice(1, 3), 16), g = parseInt(hx.slice(3, 5), 16), b = parseInt(hx.slice(5, 7), 16);
+      sliders.forEach(function (s, i) { s.value = [r, g, b][i]; });
+      nums.forEach(function (n, i) { n.value = [r, g, b][i]; });
+      prev.style.background = hx; hexPrev.textContent = hx; hexErr.textContent = '';
+    }
+    sliders.forEach(function (s, i) { s.addEventListener('input', function () { nums[i].value = s.value; paint(); }); });
+    nums.forEach(function (n, i) { n.addEventListener('input', function () { const v = Math.max(0, Math.min(255, +n.value || 0)); sliders[i].value = v; paint(); }); });
+    hexIn.addEventListener('input', function () { fromHex(hexIn.value); });
+    function closePop() { pop.hidden = true; onConfirm = null; }
+    pop.querySelector('.cp-cancel').addEventListener('click', closePop);
+    pop.querySelector('.cp-close').addEventListener('click', closePop);
+    pop.querySelector('.cp-ok').addEventListener('click', function () { if (onConfirm) onConfirm(hexIn.value); closePop(); });
+    document.addEventListener('mousedown', function (e) {
+      if (!_colorPop || _colorPop.hidden) return;
+      if (_colorPop.contains(e.target)) return;
+      if (e.target.closest && e.target.closest('[data-cmod],[data-ccmod]')) return;
+      closePop();
+    });
+    _colorPop._open = function (opts) {
+      onConfirm = opts.onConfirm || null;
+      pop.querySelector('.cp-label').textContent = opts.label || '';
+      fromHex(hexVal(opts.current) || '#000000');
+      pop.hidden = false;
+      const a = opts.anchor;
+      if (a) {
+        const r = a.getBoundingClientRect();
+        const pw = pop.offsetWidth || 250, ph = pop.offsetHeight || 260;
+        let left = window.scrollX + r.left;
+        if (left + pw > window.scrollX + document.documentElement.clientWidth - 8) left = window.scrollX + document.documentElement.clientWidth - pw - 8;
+        left = Math.max(8, left);
+        let top = window.scrollY + r.bottom + 6;
+        if (top + ph > window.scrollY + document.documentElement.clientHeight - 8) top = window.scrollY + r.top - ph - 6;
+        pop.style.left = left + 'px';
+        pop.style.top = Math.max(8, top) + 'px';
+      }
+    };
+    return pop;
+  }
+  function openColorPopup(opts) { ensureColorPopup()._open(opts); }
   function msSampleFill() { }
 
   /* ---------- 自定义设置（速率 / 宽度 / 颜色） ---------- */
@@ -1023,7 +1097,7 @@
   }
 
   /* ---------- 全局事件委托 ---------- */
-  const DELEGATE = '[data-sort],[data-page],[data-expand],[data-prow],[data-tab],[data-type],[data-pkadd],[data-pkrm],[data-pktrayrm],[data-pktrayclear],[data-toggle],[data-expandall],[data-goto],[data-group],[data-gender],[data-retired],[data-tlmode],[data-tlview],[data-tlstep],[data-tlmetric],[data-tllane],[data-topic],[data-topicev],[data-topicboard],[data-other],[data-nation],[data-scope],[data-continent],[data-evpick],[data-evtab],[data-evtoggle],[data-evall],[data-evnone],[data-evsave],[data-gload],[data-gdel],[data-reclevel],[data-rectype],[data-podtier],[data-mdanchor],[data-mdsec],[data-msimport],[data-msreset],[data-msdel],[data-msedit],[data-msunhide],[data-msjump],[data-modcolor]';
+  const DELEGATE = '[data-sort],[data-page],[data-expand],[data-prow],[data-tab],[data-type],[data-pkadd],[data-pkrm],[data-pktrayrm],[data-pktrayclear],[data-toggle],[data-expandall],[data-goto],[data-group],[data-gender],[data-retired],[data-tlmode],[data-tlview],[data-tlstep],[data-tlmetric],[data-tllane],[data-topic],[data-topicev],[data-topicboard],[data-other],[data-nation],[data-scope],[data-continent],[data-evpick],[data-evtab],[data-evtoggle],[data-evall],[data-evnone],[data-evsave],[data-gload],[data-gdel],[data-reclevel],[data-rectype],[data-podtier],[data-mdanchor],[data-mdsec],[data-msimport],[data-msreset],[data-msdel],[data-msedit],[data-msunhide],[data-msjump]';
 
   document.addEventListener('click', function (e) {
     const el = e.target.closest ? e.target.closest(DELEGATE) : null;
@@ -1042,11 +1116,6 @@
     if (!el) return;
     if (el.hasAttribute('data-goto')) { location.hash = el.getAttribute('data-goto'); return; }
 
-    if (el.hasAttribute('data-modcolor')) {
-      const k = el.getAttribute('data-modcolor');
-      if (window.Params && window.Params.setColor) { window.Params.setColor(k, el.value); toast(t('md.colorsOk')); }
-      return;
-    }
     if (el.hasAttribute('data-msimport')) { msImport(); return; }
     if (el.hasAttribute('data-msreset')) { msReset(); return; }
     if (el.hasAttribute('data-msedit')) { msEdit(el); return; }

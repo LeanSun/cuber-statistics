@@ -132,22 +132,21 @@ ok(h3.indexOf('rank.ruleNote') < 0 && h3.indexOf('统计口径') >= 0, '多项�
    修复前按世界名次排，会导致综合分低、但项目内名次靠前的选手排到前面（Issue 1）。 */
 {
   const one = P.filtered(Object.assign({}, base, { evSel: ['333'] }));
-  const wrOf = (r) => (r.be ? r.be.r : null);
-  /* 单项目口径：排序键 orderVal 必须来自「该项目自身的世界名次」（be.r），
-     名次越靠前（r 越小）orderVal 越大，榜单顶部＝该项目最强者，而非综合历史地位分更高者。 */
-  ok(one.every((r) => (r.be ? r.orderVal === -r.be.r : r.orderVal === -1e9)),
-    '单项目：排序键 orderVal 已切换为「该项目世界名次」（orderVal = -be.r）');
-  /* 榜单严格按该项目世界名次升序排列（r 不增） */
+  /* 单项目口径：排序键 orderVal 来自「历史地位分（GOAT 分）」，与全项目同一把尺子；
+     满足第七轮需求：选中单项目后用分数排名，而非单次成绩 / 世界名次。 */
+  ok(one.every((r) => r.orderVal === r.score),
+    '单项目：排序键 orderVal 已切换为「历史地位分」（orderVal = score）');
+  /* 榜单严格按历史地位分降序排列（score 不增） */
   let evSorted = true;
   for (let i = 1; i < one.length; i++) {
-    const a = wrOf(one[i - 1]), b = wrOf(one[i]);
-    if (a != null && b != null && b < a - 1e-9) { evSorted = false; break; }
+    if (one[i - 1].score + 1e-9 < one[i].score) { evSorted = false; break; }
   }
-  ok(evSorted, '单项目：榜单严格按所筛选项目的世界名次升序排列');
-  /* 榜首必须是该项目世界名次 r=1 的选手（若存在） */
+  ok(evSorted, '单项目：榜单严格按历史地位分（GOAT 分）降序排列');
+  /* 榜首必须是历史地位分最高者（分最高＝排名最前） */
   if (one.length) {
-    const top = one[0].be;
-    ok(!top || top.r === 1, '单项目：榜首为该项目世界第 1（r=1）: ' + (top ? top.r : 'n/a'));
+    const top = one[0];
+    const low = one[one.length - 1].score;
+    ok(top && top.score >= low, '单项目：榜首为历史地位分最高者: ' + (top ? top.score.toFixed(1) : 'n/a'));
   }
 
   /* 多项目：各所选项目名次的加权综合（evSum 越大＝整体名次越靠前），依旧有效 */
@@ -286,7 +285,7 @@ ok(boardCN.every(r => poolCN.some(x => x.id === r.p.id)), '榜单选手全部来
 
 console.log('== 评分原理 ==');
 const hB = tryRender('评分原理', () => P.model(Object.assign({}, base, { mdSection: 'overview' })));
-ok(hB.indexOf('data-modcolor') >= 0, '模块配色自定义控件存在');
+ok(hB.indexOf('data-cmod') >= 0, '模块配色自定义控件存在');
 
 console.log('== 选手页 ==');
 const hC = tryRender('选手页', () => P.player(M.ranked[0].id));
@@ -419,11 +418,10 @@ console.log('== 选手页排名数字 / 参数设置页 ==');
   /* 需求：「评分原理说明」改名为「参数设置」 */
   ok(t('md.title') === '参数设置', '「评分原理说明」已改名为「参数设置」（md.title=' + t('md.title') + '）');
   ok(t('nav.model') === '参数设置', '导航项同步改名为「参数设置」');
-  /* 需求：颜色修改加 16 进制输入框 */
+  /* 需求：颜色修改的 16 进制输入框集成到「点击色块后弹出的取色菜单」中（RGB 下方 + 取消/确认） */
   const hM = tryRender('参数设置页', () => P.model(base));
-  ok(hM.indexOf('data-modhex') >= 0, '模块配色有 16 进制输入框');
-  ok(hM.indexOf('data-cchex') >= 0, '国家配色有 16 进制输入框');
-  ok(/class="hex-in mono"/.test(hM), '16 进制输入框使用等宽字体样式');
+  ok(hM.indexOf('data-cmod') >= 0, '模块配色色块存在（点击弹出取色菜单）');
+  ok(hM.indexOf('data-ccmod') >= 0, '国家配色色块存在（点击弹出取色菜单）');
 }
 
 console.log('== 各模块计算过程（逐项代入） ==');
@@ -497,7 +495,7 @@ console.log('== 纪录持有图：悬停提示 / 项目图标 / 去掉虚线与�
     const fm = String((opt.tooltip && opt.tooltip.formatter) || '');
     ok(/v\[4\]/.test(fm), 'tooltip 输出持有者姓名');
     ok(/flagUri|v\[5\]/.test(fm), 'tooltip 输出国旗（iso）');
-    ok(/v\[8\]/.test(fm) && /v\[9\]/.test(fm), 'tooltip 同时输出开始与结束日期');
+    ok(/v\[7\]/.test(fm) && /v\[8\]/.test(fm), 'tooltip 同时输出开始与结束日期');
     ok(opt.xAxis && opt.xAxis.splitLine && opt.xAxis.splitLine.show === false, '已去掉竖向虚线');
     const al = opt.yAxis && opt.yAxis.axisLabel;
     ok(!!(al && al.rich), 'y 轴用 rich 渲染项目图标');
@@ -563,9 +561,9 @@ console.log('== 纪录持有图：悬停提示 / 项目图标 / 去掉虚线与�
 console.log('== 模块配色自定义 ==');
 {
   const hM = tryRender('评分原理', () => P.model(Object.assign({}, base, { mdSection: 'overview' })));
-  ok(hM.indexOf('data-modcolor') >= 0, '模块配色自定义控件存在');
-  ok(hM.indexOf('data-ccolor') >= 0, '国家配色自定义控件存在（逐国可改）');
-  const cc = hM.match(/data-ccolor="CN" value="([^"]+)"/);
+  ok(hM.indexOf('data-cmod') >= 0, '模块配色自定义控件存在');
+  ok(hM.indexOf('data-ccmod') >= 0, '国家配色自定义控件存在（逐国可改）');
+  const cc = hM.match(/data-ccmod="CN"[^>]*style="background:([^"]+)"/);
   ok(!!cc, '中国配色控件存在');
   const cn = cc ? cc[1].toLowerCase() : '';
   /* 中国红必须与国旗红（#de2910）明显区分开 */
@@ -586,9 +584,13 @@ console.log('== 竞速图序号 ==');
   const C = win.Charts;
   ok(C && typeof C.barRace === 'function', 'barRace 可用');
   if (C && typeof C.barRace === 'function') {
-    const opt = C.barRace([{ name: 'A', value: 10, iso: 'CN', no: 1 }, { name: 'B', value: 8, iso: 'US', no: 2 }], { top: 3 });
+    const opt = C.barRace([
+      { id: 'a', name: 'A', iso: 'CN', flag: '', color: '#c00', value: 10, rank: 1, no: 1 },
+      { id: 'b', name: 'B', iso: 'US', flag: '', color: '#00c', value: 8, rank: 2, no: 2 },
+      { id: 'c', name: 'C', iso: 'JP', flag: '', color: '#0c0', value: 6, rank: 3, no: 3 }
+    ], { top: 3 });
     const d = opt.series[0].data;
-    ok(d.length === 3 && d[0].no === 1 && d[1].no === 2, '竞速图数据带 1..N 排名序号');
+    ok(d.length === 3 && d[0].no === 1 && d[1].no === 2 && d[2].no === 3, '竞速图数据带 1..N 排名序号');
     ok(d[0].id === undefined || d[0].no === 1, '序号与数据一一对应');
   }
 }

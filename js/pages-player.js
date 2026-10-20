@@ -99,7 +99,7 @@
     h += '<div class="sc-row">';
     h += '<div class="sc-mini"><span>' + esc(t('rank.tab.career')) + '</span><b>' + U.fmt(sc.career, 1) + '</b></div>';
     h += '<div class="sc-mini"><span>' + esc(t('rank.tab.peak')) + '</span><b>' + U.fmt(sc.peak, 1) + '</b></div>';
-    h += '<div class="sc-mini"><span>' + esc(t('col.balance')) + '</span><b>' + U.fmt(sc.balance, 2) + '</b></div>';
+    h += '<div class="sc-mini" title="' + esc(tt('均衡度 = ln(生涯累计分 ÷ 巅峰高度分)：>0 说明生涯厚度更强、长青型；<0 说明巅峰更强、爆发型；≈0 说明两者均衡。', 'Balance = ln(career score ÷ peak score): >0 long-career type, <0 peak type, ≈0 balanced.')) + '"><span>' + esc(t('col.balance')) + '</span><b>' + U.fmt(sc.balance, 2) + '</b></div>';
     h += '</div>';
     h += '<button class="btn btn-primary pkadd-btn" data-pkadd="' + p.id + '">' + Ic.glyph('pk') + ' ' + esc(t('player.compare')) + '</button>';
     h += '</div>';

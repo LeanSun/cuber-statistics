@@ -35,6 +35,11 @@
     }
     return obj;
   }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
   function theme() {
     const dark = document.documentElement.getAttribute('data-theme') === 'dark';
     return {
@@ -244,72 +249,85 @@
     });
   }
 
-  /* ---------- 条形竞赛（custom 渲染：国旗 + 姓名 + 分数，支持点击跳转） ---------- */
+  /* ---------- 条形竞赛（value 型 Y 轴 + 按选手 id 键控，名次变化时条形与姓名/国旗整体滑动） ---------- */
   function barRace(items, opts) {
     opts = opts || {};
     const T = pal();
     const n = opts.top || 15;
-    const data = items.slice(0, n);
-    /* 补齐到固定条数，保证增量合并时序列身份稳定、平滑换位 */
-    while (data.length < n) data.push({ name: '', value: 0 });
-    function fmtD(dn) {
-      const s = String(dn || '');
-      return s.length === 8 ? (s.slice(0, 4) + '-' + s.slice(4, 6) + '-' + s.slice(6, 8)) : '';
-    }
-    return Object.assign(base({ stagger: 0, duration: opts.duration == null ? 720 : opts.duration }), {
-      /* 左侧留出固定空位放排名序号：序号画在条形外侧，条形再短也不会盖住它 */
-      grid: { left: 30, right: 78, top: 6, bottom: 6, containLabel: false },
+    const dur = opts.duration == null ? 720 : opts.duration;
+    /* items：已包含稳定 id 与预计算 rank（1..n 为可见名次，>n 为屏幕外占位）。
+       Y 轴改用「数值坐标」（= 名次），名次变化时 y 在帧间连续插值，
+       于是条形、姓名、国旗、分数会作为一个整体上下滑动，而不再是「槽位固定、名字瞬跳」。 */
+    const data = items.slice();
+    return Object.assign(base({ stagger: 0, duration: dur }), {
+      grid: { left: 34, right: 80, top: 6, bottom: 6, containLabel: false },
       xAxis: Object.assign({ type: 'value', max: function (v) { return Math.max(v.max, 1) * 1.05; } }, axisCommon()),
-      yAxis: Object.assign({ type: 'category', inverse: true, data: data.map(function (d) { return d.name; }) }, axisCommon(), { splitLine: { show: false }, axisLabel: { show: false } }),
-      tooltip: Object.assign({ trigger: 'axis', axisPointer: { type: 'shadow' } }, base().tooltip),
+      yAxis: Object.assign(axisCommon(), {
+        type: 'value', inverse: true, min: 0.5, max: n + 0.5, interval: 1,
+        axisLabel: { color: T.text3, fontSize: 11, formatter: function (v) { return '#' + Math.round(v); } },
+        axisLine: { lineStyle: { color: T.border }, show: false },
+        axisTick: { show: false },
+        splitLine: { show: false }
+      }),
+      tooltip: Object.assign({
+        trigger: 'item', axisPointer: { type: 'shadow' },
+        formatter: function (p) {
+          const d = p.data || {};
+          if (!d || !d.id || !d.name) return '';
+          const v = (d.value && d.value[0]) || 0;
+          return '<b>' + esc(d.name) + '</b><br/>' + esc(d.iso || '') + ' · ' + (Math.round(v * 10) / 10);
+        }
+      }, base().tooltip),
       series: [{
         type: 'custom',
+        clip: true,
         renderItem: function (params, api) {
-          const catIdx = api.value(1);
+          const rank = api.value(1);
           const val = Math.max(0, api.value(0));
-          const it = data[catIdx];
-          if (!it || !it.name) return;
-          const y0 = api.coord([0, catIdx])[1];
-          const x0 = api.coord([0, catIdx])[0];
-          const x1 = api.coord([val, catIdx])[0];
+          const d = data[params.dataIndex];
+          if (!d || !d.id || !d.name) return;   /* 屏幕外占位：不画 */
+          const yc = api.coord([0, rank])[1];
+          const x0 = api.coord([0, rank])[0];
+          const x1 = api.coord([val, rank])[0];
           const h = Math.max(10, Math.min(24, api.size([0, 1])[1] * 0.68));
           const w = Math.max(2, x1 - x0);
           const kids = [{
-            type: 'rect', transition: ['shape'], shape: { x: x0, y: y0 - h / 2, width: w, height: h, r: 5 },
-            style: { fill: it.color || T.m[0], stroke: T.elev, lineWidth: 1 }
+            type: 'rect', transition: ['shape'],
+            shape: { x: x0, y: yc - h / 2, width: w, height: h, r: 5 },
+            style: { fill: d.color || T.m[0], stroke: T.elev, lineWidth: 1 }
           }];
           let tx = x0 + 6;
-          /* 排名序号 1–15：画在条形左端「外侧」，条形再长也压不到它 */
+          /* 排名序号：画在条形左端外侧；名次变化时随条形一起上下滑动 */
           kids.push({
-            type: 'text', style: {
-              text: it.no ? String(it.no) : '', x: x0 - 10, y: y0,
+            type: 'text', transition: ['style'], style: {
+              text: String(d.no != null ? d.no : Math.round(rank)), x: x0 - 12, y: yc,
               fill: T.text2 || '#888', font: '800 12px "Segoe UI",system-ui,sans-serif',
               textVerticalAlign: 'middle', textBaseline: 'middle', align: 'right'
             }
           });
-          const uri = it.flag || flagUri(it.iso);
+          const uri = d.flag || flagUri(d.iso);
           if (uri) {
-            kids.push({ type: 'image', style: { image: uri, x: tx, y: y0 - 5, width: 15, height: 11 } });
+            kids.push({ type: 'image', transition: ['style'], style: { image: uri, x: tx, y: yc - 5, width: 15, height: 11 } });
             tx += 20;
           }
           const room = x0 + w - tx - 6;
           const per = 7.2;
-          let txt = it.name;
+          let txt = d.name;
           const maxc = Math.max(1, Math.floor(room / per));
           if (txt.length > maxc) txt = maxc > 1 ? txt.slice(0, maxc - 1) + '…' : txt.slice(0, maxc);
           if (txt) {
             kids.push({
-              type: 'text', style: {
-                text: txt, x: tx, y: y0, fill: '#fff',
+              type: 'text', transition: ['style'], style: {
+                text: txt, x: tx, y: yc, fill: '#fff',
                 font: '600 11.5px "Segoe UI",system-ui,sans-serif',
                 textVerticalAlign: 'middle', textBaseline: 'middle'
               }
             });
           }
-          /* 条尾分数 */
+          /* 条尾分数：随条形右端 x1 一起左右滑动，并与名次一起上下滑动 */
           kids.push({
-            type: 'text', style: {
-              text: val > 0 ? String(Math.round(val * 10) / 10) : '', x: x1 + 6, y: y0,
+            type: 'text', transition: ['style'], style: {
+              text: val > 0 ? String(Math.round(val * 10) / 10) : '', x: x1 + 6, y: yc,
               fill: T.text2, font: '600 11.5px "Segoe UI",system-ui,sans-serif',
               textVerticalAlign: 'middle', textBaseline: 'middle'
             }
@@ -317,7 +335,13 @@
           return { type: 'group', children: kids };
         },
         encode: { x: 0, y: 1 },
-        data: data.map(function (d, i) { return { value: [round(d.value), i], id: d.id, iso: d.iso, name: d.name, no: d.no || i + 1 }; }),
+        data: data.map(function (d, i) {
+          return {
+            value: [round(d.value || 0), d.rank != null ? d.rank : (i + 1)],
+            id: d.id, name: d.name, iso: d.iso, flag: d.flag, color: d.color,
+            no: d.no != null ? d.no : (d.rank != null ? d.rank : i + 1)
+          };
+        }),
         itemStyle: { opacity: 0.96 },
         emphasis: { itemStyle: { opacity: 1 } }
       }]
@@ -473,26 +497,26 @@
       }
       return { type: 'group', children: kids };
     }
-    /* y 轴项目名：图标 + 名称（图标来自 cubing_icons.css，探测成 data URI 后用 rich 渲染） */
+    /* y 轴项目名：图标 + 名称（图标来自 cubing_icons.css，探测成 data URI 后用 rich 渲染；
+       图标与文字都放大，更易辨识；顺序由调用方按 WCA 默认项目顺序排好 */
     const rich = {
-      nm: { color: T.text2, fontSize: 11.5, padding: [0, 0, 0, 2] }
+      nm: { color: T.text2, fontSize: 13, padding: [0, 0, 0, 3] }
     };
     laneData.forEach(function (L, li) {
       const uri = eventIconUri(L.ev, T.text);
-      if (uri) rich['ic' + li] = { height: 15, width: 15, backgroundColor: { image: uri } };
+      if (uri) rich['ic' + li] = { height: 20, width: 20, padding: [0, 4, 0, 0], backgroundColor: { image: uri } };
     });
 
     return Object.assign(base({ stagger: 8 }), {
       grid: { left: 6, right: 16, top: 22, bottom: 6, containLabel: true },
       xAxis: Object.assign({ type: 'value', min: y0, max: y1, interval: 2 }, axisCommon(), {
-        /* 需求：竖向虚线（每年一条的分割线）不好看，去掉 */
         axisLabel: { color: T.text3, fontSize: 10.5, formatter: function (v) { return v; } },
         splitLine: { show: false }
       }),
       yAxis: Object.assign({ type: 'category', data: cats, inverse: true }, axisCommon(), {
         splitLine: { show: false },
         axisLabel: {
-          color: T.text2, fontSize: 11.5,
+          color: T.text2, fontSize: 13,
           formatter: function (v, i) { return rich['ic' + i] ? '{ic' + i + '|}{nm|' + v + '}' : '{nm|' + v + '}'; },
           rich: rich
         }
@@ -510,7 +534,7 @@
           function fd(dn) { const s = String(dn || ''); return s.length === 8 ? s.slice(0, 4) + '-' + s.slice(4, 6) + '-' + s.slice(6, 8) : (LANE_I18N.now || '至今'); }
           const flagTag = iso ? '<img src="' + flagUri(iso) + '" style="width:15px;height:11px;vertical-align:-1px;margin-right:4px" alt="">' : '';
           return '<div style="display:flex;align-items:center;gap:2px">' + flagTag + '<b>' + v[4] + '</b></div>' +
-            '<div style="margin-top:3px;font-size:11.5px;opacity:.85">' + fd(v[8]) + ' → ' + fd(v[9]) + '</div>' +
+            '<div style="margin-top:3px;font-size:11.5px;opacity:.85">' + fd(v[7]) + ' → ' + fd(v[8]) + '</div>' +
             '<div style="margin-top:2px;font-size:11.5px"><b>' + days + '</b> ' + (LANE_I18N.day || '天') + '</div>';
         }
       },

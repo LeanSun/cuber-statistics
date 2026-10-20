@@ -19,6 +19,8 @@
     'f.gender': '性别', 'f.gender.all': '不限', 'f.gender.m': '男', 'f.gender.f': '女',
     'f.period': '时间区间', 'f.retired': '停办项目', 'f.include': '计入', 'f.exclude': '不计入',
     'f.reset': '重置筛选', 'f.summary': '共 {n} 位选手符合当前条件',
+    'f.summaryAll': '共 {n} 位 WCA 注册选手（评分体系收录 {rated} 位参与排名）',
+    'f.summaryNote': '评分体系收录 {rated} 位 · WCA 全量 {total} 位',
     'f.blind': '盲拧组', 'f.speed': '速拧组', 'f.other': '异形组', 'f.fmc': '最少步', 'f.big': '高阶组', 'f.retiredGroup': '停办项目',
     'f.custom': '自定义', 'f.pickEvents': '选择项目', 'f.saveGroup': '存为分组', 'f.groupName': '分组名称',
     'f.presetGroups': '预存分组', 'f.saved': '已保存', 'f.del': '删除', 'f.selectAll': '全选', 'f.clearAll': '清空',
@@ -52,14 +54,14 @@
     'rank.peakNote': '巅峰窗口 = 生涯中任意连续 12 个月的滑动窗口，取总分最高的一段；生涯厚度项不计入。',
     'rank.balance': '均衡度',
     'rank.pager': '第 {a}–{b} 条，共 {n} 条',
-    'rank.perPage': '每页 50 条',
+    'rank.perPage': '每页 20 条',
     'rank.coverage': '本站收录 {n} / 全库 {t} 名选手（按综合能力排序，可翻页或用搜索定位）',
     'rank.topCap': '榜单只统计综合能力前 {n} 名',
     'rank.evMode': '历史地位排名 · 项目模式',
-    'rank.evScore': '项目成绩',
-    'rank.evNote': '当前按「{ev}」单独排名：整个榜单直接按该项目上的世界名次排序（No.1 在最前），条长也是名次越靠前越长；条尾依次给出该项目的成绩与世界名次。',
+    'rank.evScore': '历史地位分',
+    'rank.evNote': '当前按「{ev}」单独排名：整个榜单直接按历史地位分（GOAT 分）排序，条长＝分数占比；条尾给出该项目的分数，并以「No.世界名次」标注其在该项目上的世界排名作为参考。',
     'rank.evMultiNote': '多项目模式：整个榜单按各所选项目上世界名次的加权综合排序；色块＝各项目名次的相对位置（越满＝名次越靠前），右侧「命中/总数」表示所选项目中该选手有成绩的几个。',
-    'rank.ruleNote': '统计口径：选中项目时，榜单直接按该项目（们）的世界名次排序 —— 单项目取该项目的世界名次，多项目取各所选项目名次的加权综合，谁在这些项目上更强谁排前面。未选项目时按历史地位分（综合能力）排序。条尾的历史地位分仅供参考，不参与排序。',
+    'rank.ruleNote': '统计口径：选中单个项目时，榜单直接按历史地位分（GOAT 分）排序，条尾给出的也是这把分数（并以 No. 标注该项目的世界名次作参考）；选中多个项目时，按各所选项目世界名次的加权综合排序（色块＝各项目名次相对位置，右侧「命中/总数」表示有成绩的项目数）。未选项目时按历史地位分（综合能力）排序。',
     'rank.contribution': '七模块加权贡献',
     'rank.type': '成绩口径', 'rank.type.all': '总计', 'rank.type.single': '单次', 'rank.type.avg': '平均',
     'rank.type.d': '切换纪录分（M1）按单次 / 平均 / 合计计入；世界纪录与洲际纪录同口径拆分。',
@@ -194,8 +196,8 @@
     'tl.holder': '持有者', 'tl.days': '保持', 'tl.events': '重大事件',
     'tl.rail': '事件轨道',
     'tl.rail.d': '点击任一事件可跳到对应日期；播放经过时事件会高亮。',
-    'tl.msWhy': '分数竞速图的横轴是分数而非时间，竖线无处安放，因此重大事件改在下方的「事件轨道」中呈现（可点击跳转）；纪录持有图的横轴是时间，里程碑仍以竖线标注。',
-    'tl.msEdit': '自定义重大事件', 'tl.msGuide': '填入「项目 / 时间 / 事件内容」三项后点「添加」即可。事件会出现在下方事件轨道（可点击跳转），纪录持有图中也会以竖线标注。时间填 4 位年份或 YYYY-MM-DD，可留空（默认取当年 1 月 1 日）。', 'tl.msImport': '添加', 'tl.msAdd': '添加', 'tl.msEv': '项目', 'tl.msTime': '时间', 'tl.msText': '事件内容', 'tl.msEvAll': '（全部项目）', 'tl.msDel': '删除', 'tl.msEmpty': '请填写事件内容与年份', 'tl.msReset': '恢复默认', 'tl.msSample': '填充示例', 'tl.msCustom': '自定义', 'tl.msOk': '已导入重大事件', 'tl.msHidden': '已隐藏 {n} 条内置事件', 'tl.msRestore': '恢复内置事件', 'tl.msEditing': '已进入编辑模式：修改后点「保存修改」覆盖原事件', 'tl.msRestored': '已恢复全部内置事件', 'tl.msDelOk': '已删除该事件', 'tl.msErr': '格式错误：需为 JSON 数组，每项含 year（数字）与 zh（文字）',
+    'tl.msWhy': '重大事件仅在「分数竞速图」中呈现：右下角「事件轨道」可点击跳转，播放经过时右下角会弹出提示卡（弹入/淡出动效）。纪录持有图保持纯净，不再叠加任何标注线或清单。',
+    'tl.msEdit': '自定义重大事件', 'tl.msSaveEdit': '保存', 'tl.msGuide': '填入「项目 / 时间 / 事件内容」三项后点「添加」即可。事件会出现在分数竞速图右下角的事件轨道（可点击跳转）。时间填 4 位年份或 YYYY-MM-DD，可留空（默认取当年 1 月 1 日）。', 'tl.msImport': '添加', 'tl.msAdd': '添加', 'tl.msEv': '项目', 'tl.msTime': '时间', 'tl.msText': '事件内容', 'tl.msEvAll': '（全部项目）', 'tl.msDel': '删除', 'tl.msEmpty': '请填写事件内容与年份', 'tl.msReset': '恢复默认', 'tl.msSample': '填充示例', 'tl.msCustom': '自定义', 'tl.msOk': '已导入重大事件', 'tl.msHidden': '已隐藏 {n} 条内置事件', 'tl.msRestore': '恢复内置事件', 'tl.msEditing': '已进入编辑模式：修改后点「保存修改」覆盖原事件', 'tl.msRestored': '已恢复全部内置事件', 'tl.msDelOk': '已删除该事件', 'tl.msErr': '格式错误：需为 JSON 数组，每项含 year（数字）与 zh（文字）',
     'tl.viewTip': '三种图怎么看',
 
     'top.title': '另类统计',
@@ -255,7 +257,7 @@
     'ui.sortAsc': '升序', 'ui.sortDesc': '降序', 'ui.noresult': '没有符合条件的结果',
     'ui.more': '展开', 'ui.less': '收起', 'ui.loading': '加载中…',
     'ui.copied': '已复制', 'ui.coming': '正式接入数据后启用', 'ui.expandAll': '全部展开', 'ui.collapseAll': '全部收起',
-    'ui.ok': '已更新', 'ui.note': '提示', 'ui.warn': '警告', 'ui.close': '关闭'
+    'ui.ok': '已更新', 'ui.note': '提示', 'ui.warn': '警告', 'ui.close': '关闭', 'ui.cancel': '取消', 'ui.confirm': '确认'
   };
 
   const EN = {
@@ -275,6 +277,8 @@
     'f.gender': 'Gender', 'f.gender.all': 'Any', 'f.gender.m': 'Male', 'f.gender.f': 'Female',
     'f.period': 'Period', 'f.retired': 'Discontinued', 'f.include': 'Include', 'f.exclude': 'Exclude',
     'f.reset': 'Reset', 'f.summary': '{n} competitors match the current filters',
+    'f.summaryAll': '{n} WCA registered competitors ({rated} indexed and ranked)',
+    'f.summaryNote': '{rated} indexed · {total} in WCA total',
     'f.blind': 'Blindfolded', 'f.speed': 'Speed', 'f.other': 'Other', 'f.fmc': 'FMC', 'f.big': 'Big cubes', 'f.retiredGroup': 'Discontinued',
     'f.custom': 'Custom', 'f.pickEvents': 'Pick events', 'f.saveGroup': 'Save as group', 'f.groupName': 'Group name',
     'f.presetGroups': 'Saved groups', 'f.saved': 'Saved', 'f.del': 'Delete', 'f.selectAll': 'All', 'f.clearAll': 'Clear',
@@ -307,17 +311,17 @@
     'rank.peakNote': 'Peak window = the best rolling 12-month window in a career; career-volume module excluded.',
     'rank.balance': 'Balance',
     'rank.pager': '{a}–{b} of {n}',
-    'rank.perPage': '50 per page',
+    'rank.perPage': '20 per page',
     'rank.evMode': 'All-time ranking · event mode',
-    'rank.evScore': 'Event result',
-    'rank.evNote': 'Ranked by {ev} alone: the order still follows the all-time ranking (combined ability), while the bar tail shows the player’s current world rank and best result in this event for comparison.',
+    'rank.evScore': 'All-time score',
+    'rank.evNote': 'Ranked by {ev} alone: the order follows the all-time score (GOAT score) and the bar length is its share; the bar tail shows the score, with a “No.” world-rank tag for reference.',
     'rank.type': 'Result type', 'rank.type.all': 'Combined', 'rank.type.single': 'Single', 'rank.type.avg': 'Average',
     'rank.type.d': 'Switch how the record module (M1) counts: singles only, averages only, or both.',
     'rank.coverage': 'Indexed {n} of {t} players (sorted by combined ability; browse pages or use search)',
     'rank.topCap': 'The list ranks the top {n} players by combined ability',
     'rank.evNote': 'Ranked by {ev} alone: the whole list follows the world rank in this event (No. 1 first) and the bar grows as the rank improves; the tail shows the result and the world rank in this event.',
     'rank.evMultiNote': 'Multi-event mode: the list is ordered by the weighted combination of world ranks across the selected events; colour blocks show how high each rank sits, and the “hit/total” figure on the right counts how many of the selected events this player has a result in.',
-    'rank.ruleNote': 'Scoring rule: when events are selected the list is ordered by world rank in those events — a single event uses its own world rank, multiple events use the weighted combination of ranks, so whoever is strongest in those events ranks first. With no event selected the list follows the all-time score (combined ability). The all-time score shown at the bar tail is reference only and never affects the order.',
+    'rank.ruleNote': 'Scoring rule: with a single event selected the list is ordered by the all-time score (GOAT score) — the number at the bar tail is that same score, with a “No.” world-rank tag for reference; with multiple events selected the list is ordered by the weighted combination of world ranks (colour blocks show each rank’s relative position, and the “hit/total” figure on the right counts events with a result). With no event selected the list follows the all-time score (combined ability).',
     'rank.contribution': 'Weighted module contribution',
     'rank.chartTitle': 'This page · weighted module contribution',
     'rank.chartNote': 'Each bar is the weighted contribution of the seven modules (β × raw); total length equals the score. Click legend entries to isolate a module.',
@@ -451,8 +455,8 @@
     'tl.holder': 'Holder', 'tl.days': 'Held', 'tl.events': 'Milestones',
     'tl.rail': 'Milestone rail',
     'tl.rail.d': 'Click any milestone to jump to its date; it highlights while playback passes it.',
-    'tl.msWhy': 'The score race plots score on the x-axis, not time, so vertical lines have nowhere to go — milestones appear in the milestone rail below (clickable). The record-holder chart plots time, so its milestones stay as vertical lines.',
-    'tl.msEdit': 'Custom milestones', 'tl.msGuide': 'Fill in event / date / description and click Add. The milestone appears in the rail below (click to jump) and as a vertical line in the record-holder chart. Date accepts a 4-digit year or YYYY-MM-DD; leaving it empty defaults to Jan 1 of that year.', 'tl.msImport': 'Add', 'tl.msAdd': 'Add', 'tl.msEv': 'Event', 'tl.msTime': 'Date', 'tl.msText': 'Description', 'tl.msEvAll': '(all events)', 'tl.msDel': 'Delete', 'tl.msEmpty': 'Please fill in the description and year', 'tl.msReset': 'Reset', 'tl.msSample': 'Fill sample', 'tl.msCustom': 'Custom', 'tl.msOk': 'Milestones imported', 'tl.msHidden': '{n} built-in milestone(s) hidden', 'tl.msRestore': 'Restore built-in', 'tl.msEditing': 'Editing mode: change the fields, then click Save to overwrite this milestone', 'tl.msRestored': 'All built-in milestones restored', 'tl.msDelOk': 'Milestone deleted', 'tl.msErr': 'Format error: need a JSON array; each item needs year (number) and zh (text)',
+    'tl.msWhy': 'Milestones appear only in the score race: the rail at bottom-right is clickable to jump, and a toast card pops in/out (fade) at bottom-right as playback passes each date. The record-holder chart stays clean with no overlay lines or lists.',
+    'tl.msEdit': 'Custom milestones', 'tl.msSaveEdit': 'Save', 'tl.msGuide': 'Fill in event / date / description and click Add. The milestone appears in the rail at bottom-right of the score race (click to jump). Date accepts a 4-digit year or YYYY-MM-DD; leaving it empty defaults to Jan 1 of that year.', 'tl.msImport': 'Add', 'tl.msAdd': 'Add', 'tl.msEv': 'Event', 'tl.msTime': 'Date', 'tl.msText': 'Description', 'tl.msEvAll': '(all events)', 'tl.msDel': 'Delete', 'tl.msEmpty': 'Please fill in the description and year', 'tl.msReset': 'Reset', 'tl.msSample': 'Fill sample', 'tl.msCustom': 'Custom', 'tl.msOk': 'Milestones imported', 'tl.msHidden': '{n} built-in milestone(s) hidden', 'tl.msRestore': 'Restore built-in', 'tl.msEditing': 'Editing mode: change the fields, then click Save to overwrite this milestone', 'tl.msRestored': 'All built-in milestones restored', 'tl.msDelOk': 'Milestone deleted', 'tl.msErr': 'Format error: need a JSON array; each item needs year (number) and zh (text)',
     'tl.viewTip': 'How to read the three charts',
 
     'top.title': 'Fun stats',
@@ -513,7 +517,7 @@
     'ui.more': 'Expand', 'ui.less': 'Collapse', 'ui.loading': 'Loading…',
     'ui.copied': 'Copied', 'ui.coming': 'Available once real data is wired in',
     'ui.expandAll': 'Expand all', 'ui.collapseAll': 'Collapse all',
-    'ui.ok': 'Updated', 'ui.note': 'Note', 'ui.warn': 'Warning', 'ui.close': 'Close'
+    'ui.ok': 'Updated', 'ui.note': 'Note', 'ui.warn': 'Warning', 'ui.close': 'Close', 'ui.cancel': 'Cancel', 'ui.confirm': 'Confirm'
   };
 
   const DICTS = { zh: ZH, en: EN };

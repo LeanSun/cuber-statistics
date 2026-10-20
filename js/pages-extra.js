@@ -274,6 +274,9 @@
     }
     h += '</div>';
 
+    /* 纪录持有图（lane 视图）下方不再罗列冗长的「重大事件」清单 —— 重大事件仅在「分数竞速图」中呈现；
+       竞速图已在右下角 ms-pop 里给出事件轨道与到达提示。 */
+    if (view !== 'lane') {
     h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('tl.events')) +
       (singleEv ? ' · ' + esc(evName(M.EV[singleEv])) : '') + '</h2>' +
       (custom.length ? '<span class="tiny muted">+' + custom.length + ' ' + esc(t('tl.msCustom')) + '</span>' : '') + '</div>';
@@ -297,6 +300,7 @@
         '<button class="btn btn-ghost" data-msunhide>' + esc(t('tl.msRestore')) + '</button></div>';
     }
     h += '</div>';
+    }
 
     /* 自定义重大事件：三个输入框（项目 / 时间 / 事件内容） */
     h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('tl.msEdit')) + '</h2></div>';
@@ -423,12 +427,12 @@
       return null;
     }
     try {
-      const opt = tlOption(view, mode, fy, smooth, metric, region, country, lane, evs, gender, rtype);
+      const opt = tlOption(view, mode, fy, smooth, metric, region, country, lane, evs, gender, rtype, box);
       if (!opt) return null;
       opt.backgroundColor = 'transparent';
       window.Charts.resolveDeep ? window.Charts.resolveDeep(opt) : (function () { })(opt);
       /* 结构（视图 / 模式 / 维度 / 单均 / 项目 / 性别）不变时做增量合并，名次与分数丝滑过渡 */
-      const sig = view + '|' + mode + '|' + metric + '|' + lane + '|' + evs.join('+') + '|' + gender + '|' + rtype;
+      const sig = view + '|' + mode + '|' + metric + '|' + lane + '|' + evs.join('+') + '|' + gender + '|' + rtype + '|' + region + '|' + country + '|' + (smooth ? 1 : 0);
       const sameStruct = box.__tlSig === sig;
       /* 播放时每帧都在重画，换位过渡必须短于帧间隔的几倍，否则名次变化会「追不上」
          当前帧、看起来一顿一顿。动画时长滑杆直接决定这段补间的快慢。 */
@@ -498,9 +502,12 @@
   }
 
   function snapshot(mode, fy, smooth, region, country, evs, gender, rtype) {
-    /* 只选中一个项目时，整张图切换成「该项目的排名演进」：
-       分数取该项目上的年度表现累计，而不是全项目的历史地位分。 */
-    const singleEv = (evs && evs.length === 1) ? evs[0] : '';
+    /* 选中项目（单项目 / 多项目）时，整张图切换成「所选项目的排名演进」，与上方筛选项目实时联动：
+       · 单项目：分数取该项目上的年度表现累计；
+       · 多项目：把所选项目的年度表现按截至 fy 的累计求和，得到「多项目综合分」，
+         排名随项目选择实时重排（上方筛选项目，下方竞速图即按多项目综合分排名）。
+       不选项目时仍用全项目历史地位分（生涯累计 × 年度比例）。 */
+    const evList = (evs && evs.length) ? evs : null;
     const key = rtype === 'single' ? 'yearlyS' : (rtype === 'avg' ? 'yearlyA' : 'yearly');
     function cum(p, y) {
       const yv = p[key] || {}; let s = 0;
@@ -516,21 +523,21 @@
     }
     const END_Y = 2026;
     const rows = [];
-    /* 单项目：分数基准换成该项目上的年度表现累计 */
-    const evY = singleEv ? {} : null;
     M.ranked.forEach(function (p) {
       if (!inScope(p, region, country, gender, evs)) return;
-      if (evY) {
-        const y = evYearlyOf(p, singleEv);
-        if (!y) return;                       /* 该项目上没有可统计的年度表现 */
-        let all = 0, cur = 0;
-        for (const k in y) { const yy = +k; all += y[k]; if (yy <= fy) cur += y[k]; }
-        if (all <= 0) return;
-        const v = cur;
-        if (v <= 0) return;
+      if (evList) {
+        /* 多项目（含单项目）：把所选项目的「年度表现」按截至 fy 的累计求和 */
+        let all = 0, cur = 0, has = false;
+        evList.forEach(function (ev) {
+          const y = evYearlyOf(p, ev);
+          if (!y) return;
+          has = true;
+          for (const k in y) { const yy = +k; all += y[k]; if (yy <= fy) cur += y[k]; }
+        });
+        if (!has || all <= 0 || cur <= 0) return;
         rows.push({
           name: p.name, country: p.country, hue: p.hue, id: p.id, iso: p.country,
-          value: v, color: countryColor(p.country), flag: window.Charts.flagUri(p.country)
+          value: cur, color: countryColor(p.country), flag: window.Charts.flagUri(p.country)
         });
         return;
       }
@@ -541,14 +548,7 @@
       const ratio = Math.max(0, Math.min(1, cf / all));
       if (ratio <= 0) return;
       const sc = P.util.scoreOf(p, rtype);
-      /* 广度折减：与总榜一致，命中所选项目越少折减越多（单项目恒为 1） */
-      let breadth = 1;
-      if (evs && evs.length) {
-        let hit = 0;
-        for (let i = 0; i < evs.length; i++) if ((p.events || []).indexOf(evs[i]) >= 0) hit++;
-        breadth = 0.45 + 0.55 * (hit / evs.length);
-      }
-      const career = sc.career * ratio * breadth;
+      const career = sc.career * ratio;
       const ratio2 = Math.max(0.05, Math.min(3, sc.peak / Math.max(sc.career, 0.01)));
       const v = career * Math.pow(ratio2, 0.4);
       if (v <= 0) return;
@@ -621,33 +621,71 @@
     };
   }
 
-  function tlOption(view, mode, fy, smooth, metric, region, country, lane, evs, gender, rtype) {
+  function tlOption(view, mode, fy, smooth, metric, region, country, lane, evs, gender, rtype, box) {
     if (window.Charts.setLaneI18n) window.Charts.setLaneI18n({ mo: (t.isEn() ? 'mo' : '个月'), y: (t.isEn() ? 'y' : '年'), day: (t.isEn() ? 'd' : '天') });
     if (view === 'lane') {
-      /* 泳道顺序按 WCA 官方项目顺序（M.events 的顺序），并把 ev 带给图表画项目图标 */
-      const evOrder = {};
-      M.events.forEach(function (e, i) { evOrder[e.id] = i; });
+      /* 泳道顺序严格按 WCA 官方项目默认顺序（正阶→单手→盲拧→最少步→异形→已停办），
+         不依赖数据里 events 数组的偶然顺序，保证纪录持有图的项目排列符合用户预期。 */
+      const WCA_ORDER = ['333', '222', '444', '555', '666', '777', '333oh', '333bf', '444bf', '555bf', '333mbf', '333fm', 'clock', 'minx', 'pyram', 'skewb', 'sq1', '333ft', 'magic', 'mmagic', '333mbo'];
+      function orderOf(ev) { const i = WCA_ORDER.indexOf(ev); return i < 0 ? 999 : i; }
       const lanes = ((lane === 'avg' ? M.lanesAvg : M.lanes) || []).slice()
-        .sort(function (a, b) {
-          const ia = evOrder[a.ev] == null ? 999 : evOrder[a.ev];
-          const ib = evOrder[b.ev] == null ? 999 : evOrder[b.ev];
-          return ia - ib;
-        })
+        .sort(function (a, b) { return orderOf(a.ev) - orderOf(b.ev); })
         .map(function (L) {
           return { ev: L.ev, label: evName(M.EV[L.ev] || { zh: L.zh, en: L.en }), segs: L.segs };
         });
       const opt = window.Charts.lanes(lanes, { y0: 2004, y1: 2026, laneH: 34 });
-      /* 里程碑竖线（横轴为年份，可标注）；挂在一条透明 line series 上 */
-      const ml = markLines();
-      if (ml.data.length) {
-        opt.series.push({ type: 'line', data: [], symbol: 'none', lineStyle: { width: 0 }, silent: true, markLine: ml, z: 5 });
-      }
+      /* 纪录持有图不再画重大事件的竖向标注线（用户反馈不好看）；重大事件仅在「分数竞速图」中以弹入/淡出动效呈现 */
       return opt;
     }
     const TOP = 15;
     const rate = loadRate();
-    const snap = snapshot(mode, fy, smooth, region, country, evs, gender, rtype).slice(0, TOP);
-    return window.Charts.barRace(snap, { top: TOP, duration: rate.anim });
+    const all = snapshot(mode, fy, smooth, region, country, evs, gender, rtype); // 已按 value 降序，带 no
+    /* 竞速图需要「按选手 id 键控」才能在名次变化时让条形与姓名一起滑动。
+       这里维护一个稳定的「选手宇宙」(box.__raceU)：首次或筛选口径变化时，用逐年采样
+       把历年进过前 N 名的选手都收进来；之后每帧只在宇宙内更新名次/分数，
+       保证 id→数据下标稳定，过渡动画连续（条形、姓名、国旗、分数整体滑动）。 */
+    const raceSig = [mode, smooth ? 1 : 0, region, country, evs.join('+'), gender, rtype].join('|');
+    let universe = (box && box.__raceU && box.__raceSig === raceSig) ? box.__raceU : null;
+    if (box && !universe) {
+      universe = buildUniverse(mode, smooth, region, country, evs, gender, rtype, TOP);
+      box.__raceU = universe;
+      box.__raceSig = raceSig;
+    }
+    let idList;
+    if (universe) {
+      idList = universe.slice();
+      all.forEach(function (r) { if (r.no <= TOP && universe.indexOf(r.id) < 0) { universe.push(r.id); idList.push(r.id); } });
+    } else {
+      idList = all.slice(0, TOP).map(function (r) { return r.id; });
+    }
+    const byId = {};
+    all.forEach(function (r) { byId[r.id] = r; });
+    const rows = idList.map(function (id) {
+      const r = byId[id];
+      if (r && r.no <= TOP) {
+        return { id: r.id, name: r.name, iso: r.iso, flag: r.flag, color: r.color, value: r.value, rank: r.no, no: r.no };
+      }
+      return { id: id, name: '', iso: '', flag: '', color: '#cfcfcf', value: 0, rank: TOP + 1, no: TOP + 1 };
+    });
+    return window.Charts.barRace(rows, { top: TOP, duration: rate.anim });
+  }
+
+  /* 构建竞速图「选手宇宙」：在若干代表年份采样，把历年进过前 N 名的选手一次性收进来，
+     使整段播放过程中名次更替都在已知 id 集合内发生，过渡动画连续。
+     只取代表性年份（而非逐年），既覆盖各时代强者，又避免对每位选手逐项目逐年扫描的过高开销。 */
+  function buildUniverse(mode, smooth, region, country, evs, gender, rtype, TOP) {
+    const ids = [], seen = {};
+    const sampleYears = evs && evs.length
+      ? [2006, 2010, 2014, 2018, 2022, 2025]
+      : [2005, 2010, 2015, 2020, 2025];
+    sampleYears.forEach(function (y) {
+      const s = snapshot(mode, y, smooth, region, country, evs, gender, rtype).slice(0, TOP + 8);
+      for (let i = 0; i < s.length; i++) {
+        const id = s[i].id;
+        if (!seen[id]) { seen[id] = 1; ids.push(id); }
+      }
+    });
+    return ids;
   }
 
   /* ================= 另类统计 ================= */
@@ -1038,11 +1076,10 @@
       esc(t('md.colors')) + '</div>' +
       '<p class="tiny muted" style="margin:6px 0 10px">' + esc(t('md.colorsHint')) + '</p><div class="md-colors-body">';
     MOD.forEach(function (k) {
-      /* 取色器 + 16 进制输入框：滑鼠选色方便，直接贴 #RRGGBB 更精确 */
-      h += '<label class="crow"><input type="color" data-modcolor="' + k + '" value="' + esc(C[k]) + '">' +
-        '<span class="cr-name">' + esc(modName(k)) + '</span>' +
-        '<input type="text" class="hex-in mono" data-modhex="' + k + '" value="' + esc(C[k]) +
-        '" maxlength="7" spellcheck="false" aria-label="' + esc(modName(k)) + ' hex"></label>';
+      /* 颜色色块：点击弹出取色菜单（RGB 滑杆 + 16 进制输入框 + 取消/确认），不再把 16 进制框直接铺在行内 */
+      h += '<div class="crow"><button type="button" class="swatch" data-cmod="' + k + '" data-cmod-label="' + esc(modName(k)) +
+        '" style="background:' + esc(C[k]) + '" aria-label="' + esc(modName(k)) + ' 配色"></button>' +
+        '<span class="cr-name">' + esc(modName(k)) + '</span></div>';
     });
     h += '<button class="btn btn-ghost" id="mColorReset">' + esc(t('md.resetDefault')) + '</button>';
     h += '</div></div>';
@@ -1055,11 +1092,10 @@
       '<p class="tiny muted" style="margin:6px 0 10px">' + esc(t('md.countryColorsHint')) + '</p>' +
       '<div class="md-colors-body cc-body" id="ccBody">';
     ccKeys.forEach(function (iso) {
-      h += '<label class="crow cc-row"><input type="color" data-ccolor="' + iso + '" value="' + esc(countryColor(iso)) + '">' +
+      h += '<div class="crow cc-row"><button type="button" class="swatch" data-ccmod="' + iso + '" style="background:' + esc(countryColor(iso)) +
+        '" aria-label="' + esc(countryName(iso) || iso) + ' 配色"></button>' +
         '<span class="cc-flag fi fi-' + iso.toLowerCase() + '"></span>' +
-        '<span class="cr-name">' + esc(countryName(iso) || iso) + '</span>' +
-        '<input type="text" class="hex-in mono" data-cchex="' + iso + '" value="' + esc(countryColor(iso)) +
-        '" maxlength="7" spellcheck="false" aria-label="' + esc(countryName(iso) || iso) + ' hex"></label>';
+        '<span class="cr-name">' + esc(countryName(iso) || iso) + '</span></div>';
     });
     h += '</div><div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap">' +
       '<button class="btn btn-ghost" id="ccReset">' + esc(t('md.resetDefault')) + '</button></div></div>';
