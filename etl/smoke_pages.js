@@ -169,10 +169,19 @@ ok(h3.indexOf('bar-track') >= 0, '条形外层有可收缩的弹性轨道（bar-
   ok(a.length === 5 && b.length > 0 && c.length > 0, '三种口径均能取到榜单');
   ok(b.every((id) => a.includes(id)) || a.some((id) => b.includes(id)),
     '多项目榜单仍以历史地位分为主序（与全项目同一把尺子）');
-  /* 单项目时广度折减应恒为 1，即分数等于纯历史地位分 */
+  /* 单项目：总分口径是 Σ(单项分×权重)，所以只选一个项目时
+     分数必须恰好等于「该项目贡献 = 100 × 名次^-γ × 权重」，且与名次严格同序。 */
   const r1 = rowsOne[0];
-  ok(r1 && Math.abs(r1.score - r1.sc.overall) < 0.001,
-    '单项目模式不做广度折减（分数＝纯历史地位分）: ' + (r1 ? r1.score + ' vs ' + r1.sc.overall : 'n/a'));
+  const _g = (M.meta && M.meta.evGamma) || 0.35;
+  const _w = ((M.EV && M.EV['333']) || {}).w || 0.8;
+  ok(!r1 || !r1.p.evRk || (r1.be && Math.abs(r1.score - 100 * Math.pow(r1.be.r, -_g) * _w) < 0.01),
+    '单项目：分数＝该项目贡献（单项分×权重）: ' +
+    (r1 && r1.be ? r1.score + ' vs ' + (100 * Math.pow(r1.be.r, -_g) * _w).toFixed(2) : 'n/a'));
+  let mono = true;
+  for (let i = 1; i < rowsOne.length; i++) {
+    if (rowsOne[i].score > rowsOne[i - 1].score + 1e-9) { mono = false; break; }
+  }
+  ok(mono, '单项目：分数随该项目世界名次单调递减（排序与名次一致）');
   /* 多项目：条尾数字必须是历史地位分，而不是 evSum */
   ok(h3.indexOf('>' + rowsMulti[0].score.toFixed(1) + '<') >= 0,
     '多项目条尾数字为历史地位分（已与全项目/单项目统一）');
@@ -202,7 +211,7 @@ console.log('== 图表可视化：项目筛选与竞速图联动 ==');
   const all = P.tlSnapshot([], 2025, 'all', 'all', '');
   const one = P.tlSnapshot(['333'], 2025, 'all', 'all', '');
   const few = P.tlSnapshot(['333', '222'], 2025, 'all', 'all', '');
-  const four = P.tlSnapshot(['333', '222', '444', '555'], 2025, 'all', 'all', '');
+  const four = P.tlSnapshot(['333', '222', '333oh'], 2025, 'all', 'all', '');
   ok(all.length > 0, '默认（全部项目）有选手: ' + all.length);
   ok(one.length > 0 && one.length <= all.length, '单项目筛选后选手池收窄: ' + one.length + ' vs ' + all.length);
   /* 多项目必须真正重新计分（广度折减），而不是只裁剪选手池。

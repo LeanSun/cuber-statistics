@@ -36,6 +36,15 @@ const OUT = arg('--out', path.join(ROOT, 'js', 'data.js'));
 const EMIT_MAX = parseInt(arg('--emit-max', '0'), 10) || 0;
 const SLIM_MAX = parseInt(arg('--slim-max', '305000'), 10) || 0;
 const DETAIL_MAX = parseInt(arg('--detail-max', '2500'), 10) || 0;
+/* ---------- 单项累加评分（新总分口径） ----------
+   总分 = Σ ( 单项分_e × 项目权重_e )
+   单项分_e = 100 × 世界名次_e ^ (-EV_GAMMA)
+   EV_GAMMA 越大，顶端区分度越强、长尾衰减越快。0.35 时：
+   第 1 名=100、第 3=68.1、第 10=44.7、第 100=20.0、第 1000=8.9。
+   口径参数（现名次 / 当年名次 / 成绩比纪录）后续可替换 sOfEvent 内部实现，
+   上层聚合与前端展示都不受影响。 */
+const EV_GAMMA = parseFloat(arg('--ev-gamma', '0.35')) || 0.35;
+function sOfEvent(rk) { return rk > 0 ? 100 * Math.pow(rk, -EV_GAMMA) : 0; }
 /* 长尾名册单独成文件（--roster-out）：全量 30 万选手若全部塞进 data.js 会到 80MB，
    浏览器首屏无法接受。data.js 保留可排名 / 有明细的头部，其余选手压缩成
    「id,姓名,国家,性别,总分,起始年,结束年,场次,项目集」一行一条，
@@ -695,6 +704,8 @@ function placeW(pos) { return pos === 1 ? 1 : (pos === 2 ? 0.6 : 0.4); }
 /* 各模块的全局最大值（归一化分母）。随 meta 下发，前端据此把
    「原始分 ÷ 全局最大值 × 100」这条归一化过程原样写给用户看。 */
 let MOD_MAX = null;
+/* 全站最高单项累加总分（下发给前端做条形图满值参考；总分数值本身不做归一）。 */
+let ESUM_MAX = 0;
 
 function computeModules() {
   log('计算七模块评分…');
@@ -725,8 +736,12 @@ function computeModules() {
        注意 worldRank 的值是对象 {r,b,a}，必须取 .r —— 早期版本直接把对象当名次传给
        domScore()，导致 NaN 传播、M4/M7 的全局最大值恒为 0，所有选手这两个模块全部归零。 */
     let m4 = 0, m4w = 0, m7sum = 0, m7n = 0;
+    /* 单项累加总分：Σ(单项分 × 项目权重)。与 M4/M7 共用同一趟 worldRank 遍历，
+       不额外多扫一遍（30 万选手 × 多项目的循环成本不低）。 */
+    let esum = 0;
+    const evPair = [];
     const wr = worldRank.get(id) || {};
-    /* 逐项目明细（供前端把 M4 / M7 的加权和完整写出来） */
+    /* 逐项目明细（供前端把 M4 / M7 / 新总分的加权和完整写出来） */
     const rkDetail = [];
     Object.keys(wr).forEach((eid) => {
       const o = wr[eid];
@@ -740,7 +755,14 @@ function computeModules() {
       const rel = Math.max(0, Math.min(1, (cnt - rk) / cnt));
       m7sum += rel; m7n++;
       rkDetail.push([eid, rk, Math.round(ds * 1000) / 1000, w, cnt, Math.round(rel * 1000) / 1000]);
+      const se = sOfEvent(rk);
+      esum += se * w;
+      /* 紧凑下发「项目:世界名次」对，前端据此复现 单项分 = 100×名次^-γ 与 贡献 = 单项分×权重 */
+      evPair.push(eid + ':' + rk);
     });
+    p.esum = Math.round(esum * 100) / 100;
+    p.evRk = evPair.join(';');
+    if (p.esum > ESUM_MAX) ESUM_MAX = p.esum;
     /* 统治力取「按权重平均」而非累加，避免「项目多」本身被当成统治力 */
     if (m4w > 0) m4 /= m4w;
     const m7 = m7n ? m7sum / m7n : 0;
@@ -795,7 +817,9 @@ function computeModules() {
     p.eloPeak = Math.round(1400 + (m.m7 / 100) * 900);
     p.career = Math.round(Calc.weighted(m) * 10) / 10;
     p.peak = Math.round(Calc.weighted(pk) * 10) / 10;
-    p.overall = Math.round(Calc.overall(p.career, p.peak) * 10) / 10;
+    /* 新总分口径：Σ(单项分 × 项目权重)，不再用 career^0.6 × peak^0.4 合成。
+       career / peak 仍保留（生涯榜、巅峰榜、均衡度仍按七模块口径展示）。 */
+    p.overall = p.esum;
 
     // 领奖台补 field / factors / R
     p.podiums.forEach((pod) => {
@@ -1067,6 +1091,8 @@ function buildEventMilestones() {
     players: list.length, events: events.size, comps: comps.size,
     wr: totWR, records: totRec, podiums: totPod, nations: Object.keys(NATIONS_RAW).length,
     modMax: MOD_MAX,
+    esumMax: ESUM_MAX,
+    evGamma: EV_GAMMA,
     emitted: emit.length, detailMax: DETAIL_MAX, slimMax: SLIM_MAX,
     continentTotals: continentTotals, nationTotals: nationTotals
   };
@@ -1074,7 +1100,7 @@ function buildEventMilestones() {
   const base = (p) => ({
     id: p.id, wcaId: p.wcaId, name: p.name, nameZh: p.nameZh, country: p.country, gender: p.gender,
     start: p.start, end: p.end, comps: p.comps, mainEvent: p.mainEvent, events: p.events, hue: p.hue,
-    m: p.m, pk: p.pk, career: p.career, peak: p.peak, overall: p.overall,
+    m: p.m, pk: p.pk, career: p.career, peak: p.peak, overall: p.overall, esum: p.esum, evRk: p.evRk,
     balance: Math.round(Math.log(Math.max(p.career, 0.01) / Math.max(p.peak, 0.01)) * 1000) / 1000,
     wr: p.wr, cr: p.cr, nr: p.nr, nrW: Math.round((p.nrW || 0) * 100) / 100,
     recTotal: p.recTotal || 0, podTotal: p.podTotal || 0,
@@ -1090,7 +1116,7 @@ function buildEventMilestones() {
      career/peak/overall/balance/eloPeak/hue/rank 均由 assemble 依 m/pk 现算，
      不再冗余存储；约 150 字节/人，可把全部约 30 万 WCA 选手随包下发、可搜索。 */
   const SLIM_KEYS = ['id', 'name', 'country', 'gender', 'start', 'end', 'comps', 'mainEvent', 'events',
-    'm', 'pk', 'wr', 'cr', 'nr', 'resultRows', 'attempts', 'solves', 'dnf', 'cities',
+    'm', 'pk', 'esum', 'evRk', 'wr', 'cr', 'nr', 'resultRows', 'attempts', 'solves', 'dnf', 'cities',
     'maxEventsPerComp', 'multiEventComp'];
   const MODK = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm1s', 'm1a'];
   const slimRows = slim.map((p) => {

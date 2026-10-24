@@ -557,7 +557,11 @@
       p.m = p.m || {}; p.pk = p.pk || {};
       p.career = round(weighted(p.m), 1);
       p.peak = round(weighted(p.pk), 1);
-      p.overall = round(overall(p.career, p.peak), 1);
+      /* 总分口径：Σ(单项分 × 项目权重)，由 ETL 预先算好随选手下发（p.esum）。
+         只有在没有 esum 的极老数据 / mock 场景下才退回旧的幂函数合成，
+         保证 assemble 对任何输入都能产出可用的 overall。 */
+      p.overall = round(p.esum != null ? p.esum : overall(p.career, p.peak), 1);
+      p.esum = p.overall;
       p.balance = round(Math.log(Math.max(p.career, 0.01) / Math.max(p.peak, 0.01)), 3);
       if (p.hue == null && p.name) p.hue = hue(p.name);
       /* eloPeak 兜底：明细选手由 ETL 直接给出，精简档案用 M7 反推。

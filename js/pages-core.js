@@ -57,7 +57,10 @@
   }
   function scoreOf(p, rt) {
     const c = Pm.weighted(modsOf(p, 'career', rt)), pk = Pm.weighted(modsOf(p, 'peak', rt));
-    return { career: c, peak: pk, overall: Pm.overall(c, pk), balance: Math.log(Math.max(c, 0.01) / Math.max(pk, 0.01)) };
+    /* 总分（overall）改由 ETL 的 Σ(单项分×权重) 直接给出，不再由 career/peak 合成；
+       career / peak 仍按七模块口径现算，供「生涯榜 / 巅峰榜」两列使用。 */
+    const ov = (p.esum != null) ? p.esum : Pm.overall(c, pk);
+    return { career: c, peak: pk, overall: ov, balance: Math.log(Math.max(c, 0.01) / Math.max(pk, 0.01)) };
   }
   function contribs(p, tab, rt) {
     const w = Pm.weights();
@@ -75,6 +78,35 @@
     });
     s += '</div>';
     return s;
+  }
+  /* 行内堆叠条（新口径：各项目对总分的贡献占比）。
+     总分 = Σ(单项分 × 项目权重)，所以色块宽度＝该项目贡献 ÷ 总分，
+     颜色按项目在 WCA 顺序里的固定位置取，保证同一项目全站同色。 */
+  const EV_IX = {};
+  (M.events || []).forEach(function (e, i) { EV_IX[e.id] = i; });
+  function evStackOf(p, tab, rt) {
+    /* 没有逐项目名次的老数据：退回七模块堆叠条，保证行内条不空着 */
+    if (!p || !p.evRk) return tab ? miniStack(p, tab, rt) : '';
+    const g = (M.meta && M.meta.evGamma) || 0.35;
+    const items = [];
+    String(p.evRk).split(';').forEach(function (seg) {
+      const i = seg.indexOf(':');
+      if (i < 0) return;
+      const eid = seg.slice(0, i), rk = parseInt(seg.slice(i + 1), 10) || 0;
+      if (!eid || rk <= 0) return;
+      const ev = M.EV[eid] || {};
+      const w = (ev.w != null) ? ev.w : 0.8;
+      items.push({ eid: eid, rk: rk, v: 100 * Math.pow(rk, -g) * w });
+    });
+    const tot = items.reduce(function (a, x) { return a + x.v; }, 0);
+    if (!(tot > 0)) return '';
+    items.sort(function (a, b) { return b.v - a.v; });
+    return '<div class="ministack" role="img" aria-label="' + esc(t('rank.contribution')) + '">' +
+      items.map(function (x) {
+        const ev = M.EV[x.eid] || { zh: x.eid, en: x.eid };
+        return '<span style="width:' + (x.v / tot * 100).toFixed(1) + '%;background:' + evColor(EV_IX[x.eid] || 0) +
+          '" title="' + esc(evName(ev)) + ' No.' + x.rk + ' · ' + U.fmt(x.v, 1) + '"></span>';
+      }).join('') + '</div>';
   }
   function ecBox(type, data, opts, h) {
     const payload = { type: type, data: data, opts: opts || {} };
@@ -259,6 +291,28 @@
   const EVCOL = ['#5b8cff', '#ff7a5c', '#3ecf8e', '#c084fc', '#f5c542', '#4dd0e1', '#ff8fb1', '#9ccc65', '#ffb74d', '#7e9cff'];
   function evColor(i) { return EVCOL[i % EVCOL.length]; }
 
+  /* 只累加指定项目集合的分：Σ(单项分 × 项目权重)，ids 为空/未给则累加全部。
+     这是「总分 = Σ 单项分 × 权重」的自然推论——筛了几个项目就只算这几项，
+     所以项目筛选不再需要额外的「广度折减」来硬凑差异，两把尺子天然一致。 */
+  function esumOf(p, ids) {
+    /* 返回 null 表示这份数据没有逐项目名次（旧版 data.js / 极老缓存），
+       调用方据此退回旧的广度折减逻辑，避免筛选后分数全变 0。 */
+    if (!p || !p.evRk) return null;
+    const g = (M.meta && M.meta.evGamma) || 0.35;
+    let sum = 0;
+    String(p.evRk).split(';').forEach(function (seg) {
+      const i = seg.indexOf(':');
+      if (i < 0) return;
+      const eid = seg.slice(0, i);
+      if (ids && ids.length && ids.indexOf(eid) < 0) return;
+      const rk = parseInt(seg.slice(i + 1), 10) || 0;
+      if (rk <= 0) return;
+      const w = (M.EV[eid] && M.EV[eid].w) || 0.8;
+      sum += 100 * Math.pow(rk, -g) * w;
+    });
+    return sum;
+  }
+
   P.filtered = function (state) {
     const pool = eventSet(state);
     const rt = state.recType || 'all';
@@ -297,7 +351,20 @@
          早前版本在多项目下会把分数整个替换成「各项目世界名次的加权平均」，
          与单项目/全项目不是同一把尺子，这里已统一。 */
       let score = sc[state.tab] || sc.overall;
-      if (state.group === 'custom' && state.customIds && state.customIds.length) {
+      const tab = state.tab || 'overall';
+      /* 总分（overall）：筛了项目就只累加所选项目的贡献——这正是
+         「总分 = Σ(单项分 × 项目权重)」的自然推论，不需要再乘广度折减。
+         生涯 / 巅峰两列仍是七模块口径，无法逐项拆开，保留旧的广度折减。 */
+      if (tab === 'overall') {
+        if (scoped) {
+          const e2 = esumOf(p, pool);
+          if (e2 != null) score = e2;
+          else {
+            const hit = p.events.filter(function (e) { return pool.indexOf(e) >= 0; }).length;
+            score = score * (0.45 + 0.55 * (hit / pool.length));
+          }
+        }
+      } else if (state.group === 'custom' && state.customIds && state.customIds.length) {
         const hit = p.events.filter(function (e) { return state.customIds.indexOf(e) >= 0; }).length;
         score = score * (0.45 + 0.55 * (hit / state.customIds.length));
       } else if (scoped && state.group !== 'custom') {
@@ -318,15 +385,8 @@
         row.evHit = hit;
         row.evSum = sw > 0 ? sv / sw : 0;
       }
-      /* 排序键（orderVal 一律「越大越靠前」，升降序交给 sortRows 统一处理）：
-         · 单项目 / 未筛 / 全部项目：一律按「历史地位分（GOAT 分）」排序。
-           单项目下命中必然为 1/1，广度折减恒等于 1，因此与「只看该项目」的
-           历史地位分完全相同；行内条尾展示的也是这把分数，名次与排序一致。
-         · 多项目：按各所选项目名次的加权综合（evSum）排序，作为横向参考。 */
-      if (bdM) {
-        /* 多项目：各所选项目名次的加权综合（evSum 越大＝整体名次越靠前） */
-        row.orderVal = row.evHit ? row.evSum : -1e9;
-      }
+      /* 排序键：一律用 row.score（＝所选项目范围内的 Σ 单项分×权重），
+         单项目 / 多项目 / 全部项目共用同一把尺子，名次与条尾数字永远一致。 */
       return row;
     });
     if (bdM) rows = rows.filter(function (r) { return r.evHit > 0; });
@@ -442,14 +502,17 @@
       if (multiMode && row.evs) {
         /* 多项目：主数字与条宽＝历史地位分（与全项目 / 单项目同一把尺子）；
            堆叠色块＝各所选项目上的世界名次相对位置（越满＝该项目名次越靠前），仅作参考。 */
-        const wSum = evsShown.reduce(function (a, ev) { return a + evWeight(ev); }, 0) || 1;
+        /* 多项目：色块宽度＝该所选项目的贡献 ÷ 所选项目贡献合计。
+           贡献 = 100 × 世界名次^(−γ) × 项目权重，与总分同一口径。 */
+        const _g = (M.meta && M.meta.evGamma) || 0.35;
+        const contr = row.evs.map(function (c) { return c.e ? 100 * Math.pow(c.e.r, -_g) * c.w : 0; });
+        const cTot = contr.reduce(function (a, b) { return a + b; }, 0) || 1;
         let segs = '';
         row.evs.forEach(function (c, ci) {
           if (!c.e) return;
-          const val = c.w * evBarPct(c.e.r, c.len) / wSum;
-          const rel = row.evSum > 0 ? val / row.evSum * 100 : 0;
+          const rel = contr[ci] / cTot * 100;
           segs += '<span style="width:' + Math.max(1.5, Math.min(100, rel)).toFixed(1) + '%;background:' + evColor(ci) + '" title="' +
-            esc(evName(M.EV[c.ev] || { zh: c.ev, en: c.ev })) + ' #' + c.e.r + '"></span>';
+            esc(evName(M.EV[c.ev] || { zh: c.ev, en: c.ev })) + ' No.' + c.e.r + ' · ' + U.fmt(contr[ci], 1) + '"></span>';
         });
         /* 各项目名次只以堆叠色块呈现（越满＝该项目名次越靠前），
            按需求不再在后面罗列「#265」这类名次徽章，也不再显示「已覆盖 x/y」。 */
@@ -462,13 +525,13 @@
            条尾给出分数（与排序同一把尺子），并以 No. 标注该项目的世界名次作为参考。 */
         const be = row.be;
         h += '<td class="barcell bars-full"><div class="bar-row evmode"><div class="bar-track">' +
-          '<div class="bar-grow" style="width:' + bw.toFixed(1) + '%">' + miniStack(p, modTab, rt) + '</div></div>' +
+          '<div class="bar-grow" style="width:' + bw.toFixed(1) + '%">' + evStackOf(p, modTab, rt) + '</div></div>' +
           '<span class="bar-total">' + U.fmt(score, 1) + '</span>' +
           (be ? '<span class="ev-rank" title="' + esc(t('player.rankWorld')) + '">No.' + be.r + '</span>' : '') +
           '</div></td>';
       } else {
         h += '<td class="barcell bars-full"><div class="bar-row"><div class="bar-track">' +
-          '<div class="bar-grow" style="width:' + bw.toFixed(1) + '%">' + miniStack(p, modTab, rt) + '</div></div>' +
+          '<div class="bar-grow" style="width:' + bw.toFixed(1) + '%">' + evStackOf(p, modTab, rt) + '</div></div>' +
           '<span class="bar-total">' + U.fmt(score, 1) + '</span></div></td>';
       }
       h += '<td class="tl exp-col"><button class="expand-btn" data-expand="' + p.id + '" aria-label="' + esc(t('ui.more')) + '">›</button></td>';

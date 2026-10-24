@@ -1062,6 +1062,24 @@
     const secId = state.mdSection || (MD[0] && MD[0].id) || 'overview';
     let h = '<div class="page-head reveal"><h1>' + esc(t('md.title')) + '</h1><p class="sub">' + esc(t('md.sub')) + '</p></div>';
 
+    /* ---- 总分口径（现行）：Σ(单项分 × 项目权重) ----
+       这里放在页面最上方，因为下面的七模块章节现在只是「辅助指标」，
+       不参与总分；不先说明会让读者以为总分仍由七模块加权而来。 */
+    const EVG = (M.meta && M.meta.evGamma) || 0.35;
+    h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('md.total.title')) + '</h2></div>' +
+      '<p class="tiny muted" style="margin-bottom:10px">' + esc(t('md.total.d', { g: U.fmt(EVG, 2) })) + '</p>' +
+      '<p class="tiny muted" style="margin-bottom:12px">\\[\\displaystyle M_{\\text{total}}=\\sum_{e} s_e\\,w_e,\\qquad s_e=100\\cdot r_e^{-\\gamma},\\quad \\gamma=' + U.fmt(EVG, 2) + '\\]</p>' +
+      '<div class="breakdown-table">' +
+      '<div class="breakdown-row bk-head"><span>' + esc(t('md.total.colR')) + '</span><span></span>' +
+      '<span class="bk-num">' + esc(t('md.total.colS')) + '</span></div>';
+    [1, 2, 3, 5, 10, 30, 100, 300, 1000, 3000].forEach(function (rk) {
+      const s = 100 * Math.pow(rk, -EVG);
+      h += '<div class="breakdown-row"><span class="bk-name">No.' + rk + '</span><span></span>' +
+        '<span class="bk-num"><b>' + U.fmt(s, 1) + '</b></span></div>';
+    });
+    h += '</div>' +
+      '<p class="tiny muted" style="margin-top:8px">' + esc(t('md.total.note')) + '</p></div>';
+
     /* 预设卡片：仅做预设切换；参数已分散到各章节（不再有单一聚合块） */
     h += '<div class="card reveal md-preset"><div class="row" style="gap:10px;flex-wrap:wrap;align-items:center">';
     h += '<select id="presetSel"><option value="">' + esc(t('md.preset')) + '</option>' +

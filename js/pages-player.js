@@ -17,6 +17,31 @@
   }
   function notation(sym) { return '\\(' + sym + '\\)'; }
 
+  /* ---------- 单项累加（总分 = Σ 单项分 × 项目权重） ---------- */
+  const EVCOL = ['#5b8cff', '#ff7a5c', '#3ecf8e', '#c084fc', '#f5c542', '#4dd0e1',
+    '#ff8fb1', '#9ccc65', '#ffb74d', '#7e9cff', '#a3e635', '#f472b6'];
+  function EVG() { return (M.meta && M.meta.evGamma) || 0.35; }
+  /* 把 ETL 下发的紧凑串 '333:22;222:90;…' 展开成逐项明细，按贡献降序。
+     单项分 = 100 × 世界名次^(−γ)，贡献 = 单项分 × 项目权重。 */
+  function evRows(p) {
+    if (!p || !p.evRk) return [];
+    const g = EVG();
+    const out = [];
+    String(p.evRk).split(';').forEach(function (seg) {
+      const i = seg.indexOf(':');
+      if (i < 0) return;
+      const eid = seg.slice(0, i);
+      const rk = parseInt(seg.slice(i + 1), 10) || 0;
+      if (!eid || rk <= 0) return;
+      const ev = (M.EV && M.EV[eid]) || {};
+      const w = (ev.w != null) ? ev.w : 0.8;
+      const s = 100 * Math.pow(rk, -g);
+      out.push({ eid: eid, name: evName(ev), rk: rk, s: s, w: w, v: s * w });
+    });
+    out.sort(function (a, b) { return b.v - a.v; });
+    return out;
+  }
+
   const ANCHOR = {
     we: 'eventweight', S: 'era', T: 'm1', K: 'm1', G: 'm1', A: 'm1', O: 'm1', z: 'era',
     V: 'rankvalue', C: 'podium', CSI: 'podium', Tpod: 'm1', m: 'podium'
@@ -136,25 +161,58 @@
       '<p class="tiny muted" style="margin-bottom:12px">' + esc(t('player.coverage.d', { n: 5000 })) + '</p>' +
       coverage(p) + '</div>';
 
-    /* 总分构成 */
+    /* 总分构成：Σ(单项分 × 项目权重) —— 新总分口径 */
+    const evr = evRows(p);
+    const evSum = evr.reduce(function (a, r) { return a + r.v; }, 0);
+    const evMax = Math.max(1, evr.length ? evr[0].v : 1);
     h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('player.breakdown')) + '</h2>' +
-      '<span class="tiny muted">' + esc(t('player.weight')) + ' Σ=1</span></div>';
-    h += '<p class="tiny muted" style="margin-bottom:12px">' + tex('M_{\\text{total}}=\\frac{1000}{100}\\sum_{m=1}^{7}\\beta_{m}\\,M_{m},\\qquad \\sum_{m}\\beta_{m}=1', true) + '</p>';
-    /* 总分计算过程：三步复现屏幕上的每个数字 */
-    h += '<div class="calc-flow"><div class="calc-flow-h">' + Ic.glyph('book') + ' ' + esc(t('player.calcFlow')) + '</div>' +
-      '<p class="tiny muted" style="margin-bottom:10px">' + esc(t('player.calcFlow.d')) + '</p><div class="calc-steps">';
-    h += '<div class="calc-step"><div class="calc-step-no">1</div><div class="calc-step-b"><b>' + esc(t('player.calcStep1t')) + '</b>' +
-      '<p class="tiny muted">' + esc(t('player.calcStep1')) + '</p><div class="calc-mods">' +
-      cs.map(function (c) { return '<span class="calc-mod"><i style="background:' + c.color + '"></i>' + esc(c.name) + ' <b>' + U.fmt(c.raw, 1) + '</b></span>'; }).join('') +
-      '</div></div></div>';
-    h += '<div class="calc-step"><div class="calc-step-no">2</div><div class="calc-step-b"><b>' + esc(t('player.calcStep2t')) + '</b>' +
-      '<p class="tiny muted">' + esc(t('player.calcStep2')) + '</p>' +
-      '<div class="calc-eq">C（' + esc(t('rank.tab.career')) + '）＝ <b>' + U.fmt(sc.career, 1) + '</b>　　P（' + esc(t('rank.tab.peak')) + '）＝ <b>' + U.fmt(sc.peak, 1) + '</b></div></div></div>';
-    h += '<div class="calc-step"><div class="calc-step-no">3</div><div class="calc-step-b"><b>' + esc(t('player.calcStep3t')) + '</b>' +
-      '<p class="tiny muted">' + esc(t('player.calcStep3')) + '</p>' +
-      '<div class="calc-eq">Overall ＝ ' + U.fmt(sc.career, 1) + '<sup>0.6</sup> × ' + U.fmt(sc.peak, 1) + '<sup>0.4</sup> ＝ <b class="grad">' + U.fmt(sc.overall, 1) + '</b></div></div></div>';
+      '<span class="tiny muted">' + U.num(evr.length) + ' ' + esc(tt('个项目', 'events')) + '</span></div>';
+    h += '<p class="tiny muted" style="margin-bottom:12px">' +
+      tex('M_{\\text{total}}=\\sum_{e} s_e\\, w_e,\\qquad s_e=100\\cdot r_e^{-\\gamma},\\quad \\gamma=' + U.fmt(EVG(), 2), true) + '</p>';
+    /* 三个步骤复现屏幕上的每一个数字 */
+    h += '<div class="calc-flow"><div class="calc-flow-h">' + Ic.glyph('book') + ' ' + esc(t('player.evFlow')) + '</div>' +
+      '<p class="tiny muted" style="margin-bottom:10px">' + esc(t('player.evFlow.d', { g: U.fmt(EVG(), 2) })) + '</p><div class="calc-steps">';
+    h += '<div class="calc-step"><div class="calc-step-no">1</div><div class="calc-step-b"><b>' + esc(t('player.evStep1t')) + '</b>' +
+      '<p class="tiny muted">' + esc(t('player.evStep1')) + '</p></div></div>';
+    h += '<div class="calc-step"><div class="calc-step-no">2</div><div class="calc-step-b"><b>' + esc(t('player.evStep2t')) + '</b>' +
+      '<p class="tiny muted">' + esc(t('player.evStep2')) + '</p></div></div>';
+    h += '<div class="calc-step"><div class="calc-step-no">3</div><div class="calc-step-b"><b>' + esc(t('player.evStep3t')) + '</b>' +
+      '<p class="tiny muted">' + esc(t('player.evStep3')) + '</p>' +
+      '<div class="calc-eq">Σ = <b class="grad">' + U.fmt(evSum, 1) + '</b></div></div></div>';
     h += '</div></div>';
-    /* 各模块计算过程：把每个模块的代入过程完整写出来（需求：总分过程要写出各个分数的计算过程） */
+    if (!evr.length) {
+      h += '<p class="tiny muted">' + esc(t('player.evEmpty')) + '</p>';
+    } else {
+      h += '<div class="breakdown-table">';
+      h += '<div class="breakdown-row bk-head"><span>' + esc(t('player.evCol.ev')) + '</span><span></span>' +
+        '<span class="bk-num">' + esc(t('player.evCol.rank')) + '</span>' +
+        '<span class="bk-num">' + esc(t('player.evCol.sub')) + '</span>' +
+        '<span class="bk-num">' + esc(t('player.evCol.w')) + '</span>' +
+        '<span class="bk-num">' + esc(t('player.evCol.con')) + '</span></div>';
+      evr.forEach(function (r, i) {
+        const col = EVCOL[i % EVCOL.length];
+        h += '<div class="breakdown-row">';
+        h += '<span class="bk-name"><i style="background:' + col + '"></i>' + esc(r.name) + '</span>';
+        h += '<span class="bk-bar"><i style="width:' + (r.v / evMax * 100).toFixed(1) + '%;background:' + col + '"></i></span>';
+        h += '<span class="bk-num">No.' + r.rk + '</span>';
+        h += '<span class="bk-num">' + U.fmt(r.s, 1) + '</span>';
+        h += '<span class="bk-num">' + U.fmt(r.w, 2) + '</span>';
+        h += '<span class="bk-num"><b>' + U.fmt(r.v, 1) + '</b></span>';
+        h += '</div>';
+      });
+      h += '<div class="breakdown-row" style="border-top:1px solid var(--border-2);font-weight:700">' +
+        '<span class="bk-name">' + esc(t('player.evTotal')) + '</span><span></span>' +
+        '<span class="bk-num"></span><span class="bk-num"></span><span class="bk-num"></span>' +
+        '<span class="bk-num grad">' + U.fmt(evSum, 1) + '</span></div>';
+      h += '</div>';
+      h += '<p class="tiny muted" style="margin-top:8px">' + esc(t('player.evNote')) + '</p>';
+    }
+    h += '</div>';
+
+    /* 辅助：七模块明细（不参与总分，作为风格/成就的补充视角） */
+    h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('player.modAux')) + '</h2>' +
+      '<span class="tiny muted">' + esc(t('player.weight')) + ' Σ=1</span></div>';
+    /* 各模块计算过程：把每个模块的代入过程完整写出来 */
     h += moduleCalc(p, cs, sc);
     h += '<div class="grid grid-2" style="align-items:start">';
     h += '<div>' + ecBox('donut', cs.map(function (c) { return { name: c.name, value: c.v, color: c.color }; }), { radius: ['48%', '74%'], legend: true }, 260) + '</div>';
