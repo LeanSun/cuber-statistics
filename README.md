@@ -1,6 +1,23 @@
 # Cuber Statistics · 魔方历史最伟大选手（GOAT）评分系统
 
-基于 **WCA 官方成绩导出** 的七模块加权评分模型，回答一个问题：**谁是魔方历史上最伟大的选手？**
+基于 **WCA 官方成绩导出** 的 **六维加权评分模型**，回答一个问题：**谁是魔方历史上最伟大的选手？**
+
+六个维度各回答一个不同的问题，先各自独立算分、按榜首归一，再加权求和：
+
+| 维度 | 名称 | 回答什么 | 权重 |
+|---|---|---|---|
+| M1 | 纪录持有 | 破的纪录守了多久 | 28% |
+| M2 | 领奖台 | 拿过多少冠亚季军 | 24% |
+| M4 | 统治力 | 保持在世界前十有多久 | 18% |
+| M3 | 大赛破纪录 | 锦标赛上突破的加成 | 12% |
+| M6 | 突破幅度 | 破纪录瞬间把人类前沿推远多少 | 10% |
+| M5 | 当前排名 | 此刻站在世界各榜什么位置 | 8% |
+
+总分 `t = Σ_d w_d · s_d`，其中维度分 `s_d` 以该维度榜首为 100 归一。
+
+> **旧版七模块模型（M1–M7，含 Elo 对战强度）已整体停用**：不再参与总分、排序、
+> 雷达图与任何页面口径，代码里的相关字段仅作历史兼容保留。历史文档已归档到
+> `docs/legacy/`，只作存档对照。
 
 本仓库包含两套数据：
 
@@ -13,43 +30,30 @@
 ## 目录结构
 
 ```
-cube-goat/
+cuber-statistics/
 ├─ index.html            外壳：导航 / 筛选条 / 页脚 / WCA 版权声明（站点根，GitHub Pages 直接托管）
+├─ sixdim.html           六维实验榜：可按单维度排名、性别筛选、as-of 年份截取
 ├─ css/style.css         主题变量（深浅双主题）+ 组件 + 响应式 + 动效
 ├─ vendor/echarts.min.js 本地 ECharts（离线可用）
 ├─ js/
 │  ├─ calc.js            共享评分/聚合层（浏览器与 ETL 共用）：Calc.assemble → window.MOCK
 │  ├─ i18n.js            中英文语言包
-│  ├─ params.js          可配置评分参数（localStorage 持久化）
+│  ├─ params.js          可配置参数（六维权重）
 │  ├─ groups.js          自定义项目分组（localStorage 持久化）
 │  ├─ mock.js            演示数据生成器（真实数据存在时自动被覆盖）
 │  ├─ data.js            真实数据（由 etl/build.js 生成，覆盖 mock；缺省则回退演示）
+│  ├─ roster.js          长尾名册（精简档之后其余选手的懒加载名册）
+│  ├─ sixdim_data.js     六维实验榜数据（由 etl/score/sixdim.js 导出）
 │  ├─ icons.js           内联 SVG 图标（WCA 项目图标 + 界面图标）
 │  ├─ charts.js          ECharts 封装（主题取色 / 自适应 / 动画）
 │  ├─ pages-core.js      首页 · 综合总榜
 │  ├─ pages-player.js    选手主页 · 选手 PK
 │  ├─ pages-extra.js     动态可视化 · 另类统计 · 评分原理说明
 │  └─ app.js             路由 / 状态 / 主题 / 语言 / 事件 / 数据模式切换
-├─ docs/                 模型文档（GOAT 评分模型公式手册）
-├─ GOAT评分模型_公式手册_v1.html  公式手册自包含网页版
-└─ etl/                  WCA 导出下载 → 清洗 → 七模块计算 → js/data.js（详见 etl/README.md）
+├─ etl/                  WCA 导出下载 → 清洗 → js/data.js（详见 etl/README.md）
+├─ etl/score/            六维模型脚本与封存文档（sixdim.js 统一引擎 = 模型真源）
+└─ docs/legacy/          旧七模块模型文档（v1.0，已停用，仅存档）
 ```
-
-## 七模块评分模型
-
-| 模块 | 含义 | 默认权重（ROC 序数定权） |
-|---|---|---|
-| M1 | 纪录（WR / CR / NR 事件） | 37.0% |
-| M2 | 大赛领奖台（世锦 / 洲锦 / 国锦） | 22.8% |
-| M7 | 对战强度（Bradley–Terry / Elo） | 15.6% |
-| M4 | 统治力（排名席位时间积分） | 10.9% |
-| M3 | 公开赛领奖台 | 7.3% |
-| M5 | 广度与全面性 | 4.4% |
-| M6 | 生涯厚度 | 2.0% |
-
-三张榜：**生涯长度 C** / **巅峰高度 P**（最佳连续 36 个月）/ **综合总榜** `Overall = C^0.6 · P^0.4`。
-
-每一条公式的数学依据见 `docs/GOAT模型_定稿_v1.0.html`，网站「评分原理说明」页提供简易版 / 详细版解释与全部可调参数。
 
 ## 本地预览
 
@@ -62,15 +66,21 @@ cube-goat/
 数据管道全部在 `etl/` 目录，详见 [`etl/README.md`](etl/README.md)。要点：
 
 ```bash
-# 1. 下载官方 v2 导出（约 364MB tsv.zip），或在已解压目录上运行
-node etl/build.js --zip WCA_export_v2_*.tsv.zip --out js/data.js --emit-max 1500
+# 1. 六维分数（需要先跑一次；产出 etl/score/sixdim_site.tsv，已随仓库入库）
+node etl/score/sixdim.js --out etl/score/sixdim_site.tsv
 
-# 2. 打开 index.html —— 横幅消失、页脚变为 WCA 真实版权声明即表示已切换
+# 2. 用官方 v2 导出构建站点数据（约 364MB tsv.zip，或在已解压目录上运行）
+node etl/build.js --zip WCA_export_v2_*.tsv.zip \
+  --out js/data.js --detail-max 2500 --slim-max 60000
+
+# 3. 打开 index.html —— 横幅消失、页脚变为 WCA 真实版权声明即表示已切换
 ```
 
 - 评分/聚合逻辑在 `js/calc.js`，浏览器与 ETL 共用，保证两套数据形状一致。
-- 默认 `--emit-max 1500`：仅输出综合榜前 1500 名以控制 `data.js` 体积；
-  七模块归一化仍基于全量选手，不影响分数含义。需要更深榜单时调大该值。
+- 六维分由 `etl/score/` 下的各维脚本离线算出，`build.js` 读取 `sixdim_site.tsv` 注入 `p.six`；
+  **缺失该文件时全站总分为 0**（不会静默回退旧模型）。
+- `--detail-max 2500`：带逐条纪录 / 领奖台明细的选手数；`--slim-max 60000`：写进
+  `js/data.js` 的选手数（其余进 `js/roster.js` 懒加载）。
 - 多盲按 WCA 新编码 `0DDTTTTTMM` 解码；最少步单次为原始步数、平均为 100×均值。
 
 ## 数据来源与授权
@@ -94,4 +104,5 @@ node etl/build.js --zip WCA_export_v2_*.tsv.zip --out js/data.js --emit-max 1500
 4. 每周自动更新由 `.github/workflows/update-data.yml` 完成：请求
    `https://www.worldcubeassociation.org/api/v0/export/public` 取最新 `tsv_url`，
    下载后重跑 `etl/build.js`，仅将聚合后的 `js/data.js` 提交回仓库。也可在
-   Actions 页面手动 `Run workflow` 并指定 `--emit-max`。
+   Actions 页面手动 `Run workflow` 并指定 `--detail-max` / `--slim-max`。
+5. CI（`.github/workflows/ci.yml`）会校验六维交付表存在、总分自洽且无旧模型回退。

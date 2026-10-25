@@ -1,0 +1,246 @@
+══ M3（破纪录加分）三选手明细 ══
+原始纪录标记数（三人，含多轮次重复）：208
+去重后计分条数：183
+
+══ Feliks Zemdegs（属地 Australia） M3 = 44.1800 分，135 条 ══
+
+  赛事级别 × 纪录级别 汇总：
+  赛事    纪录级别       条数        单条加分          小计
+  世锦赛   世界纪录     11        1.00     11.0000
+  世锦赛   洲纪录      14        0.40      5.6000
+  洲锦赛   世界纪录     10        0.60      6.0000
+  洲锦赛   洲纪录      16        0.24      3.8400
+  国锦赛   世界纪录     20        0.40      8.0000
+  国锦赛   洲纪录      59        0.16      9.4400
+  国锦赛   国家纪录      5        0.06      0.3000
+  小计：世界纪录 25.0000 / 洲纪录 18.8800 / 国家纪录 0.3000
+
+  逐条明细：
+    2023 国锦赛 洲纪录  单次 777         0.16  Australian Nationals 2023
+    2023 世锦赛 洲纪录  平均 555         0.40  Rubik's WCA World Championship 2023
+    2022 洲锦赛 洲纪录  单次 666         0.24  Rubik's WCA Oceanic Championship 2022
+    2018 洲锦赛 洲纪录  单次 777         0.24  WCA Asian Championship 2018
+    2018 洲锦赛 洲纪录  平均 777         0.24  WCA Asian Championship 2018
+    2018 国锦赛 洲纪录  单次 777         0.16  Australian Nationals 2018
+    2018 国锦赛 洲纪录  平均 777         0.16  Australian Nationals 2018
+    2018 国锦赛 洲纪录  单次 666         0.16  Australian Nationals 2018
+    2018 国锦赛 洲纪录  平均 666         0.16  Australian Nationals 2018
+    2018 国锦赛 洲纪录  单次 minx        0.16  CubingUSA Nationals 2018
+    2017 世锦赛 世界纪录 单次 555         1.00  World Rubik's Cube Championship 2017
+    2017 世锦赛 世界纪录 平均 555         1.00  World Rubik's Cube Championship 2017
+    2017 世锦赛 世界纪录 单次 666         1.00  World Rubik's Cube Championship 2017
+    2017 世锦赛 世界纪录 平均 666         1.00  World Rubik's Cube Championship 2017
+    2017 世锦赛 世界纪录 单次 777         1.00  World Rubik's Cube Championship 2017
+    2017 世锦赛 世界纪录 平均 777         1.00  World Rubik's Cube Championship 2017
+    2016 洲锦赛 洲纪录  单次 666         0.24  European Rubik's Cube Championship 2016
+    2016 洲锦赛 世界纪录 平均 666         0.60  European Rubik's Cube Championship 2016
+    2016 洲锦赛 世界纪录 单次 777         0.60  European Rubik's Cube Championship 2016
+    2016 洲锦赛 世界纪录 平均 777         0.60  European Rubik's Cube Championship 2016
+    2016 洲锦赛 洲纪录  单次 minx        0.24  European Rubik's Cube Championship 2016
+    2016 洲锦赛 洲纪录  平均 minx        0.24  European Rubik's Cube Championship 2016
+    2016 洲锦赛 世界纪录 平均 555         0.60  European Rubik's Cube Championship 2016
+    2016 洲锦赛 世界纪录 平均 333oh       0.60  European Rubik's Cube Championship 2016
+    2016 国锦赛 洲纪录  单次 333         0.16  Australian Nationals 2016
+    2015 洲锦赛 洲纪录  单次 666         0.24  China Championship 2015
+    2015 洲锦赛 世界纪录 单次 555         0.60  China Championship 2015
+    2015 洲锦赛 世界纪录 平均 555         0.60  China Championship 2015
+    2015 洲锦赛 世界纪录 单次 444         0.60  China Championship 2015
+    2015 世锦赛 洲纪录  单次 333         0.40  World Rubik's Cube Championship 2015
+    2015 世锦赛 洲纪录  平均 minx        0.40  World Rubik's Cube Championship 2015
+    2015 世锦赛 世界纪录 单次 777         1.00  World Rubik's Cube Championship 2015
+    2015 世锦赛 世界纪录 平均 777         1.00  World Rubik's Cube Championship 2015
+    2014 国锦赛 世界纪录 平均 555         0.40  Australian Nationals 2014
+    2014 国锦赛 洲纪录  平均 444         0.16  US Nationals 2014
+    2014 国锦赛 洲纪录  单次 666         0.16  US Nationals 2014
+    2014 国锦赛 洲纪录  平均 666         0.16  US Nationals 2014
+    2014 国锦赛 世界纪录 单次 555         0.40  US Nationals 2014
+    2014 国锦赛 国家纪录 单次 sq1         0.06  US Nationals 2014
+    2014 国锦赛 世界纪录 平均 777         0.40  US Nationals 2014
+    2014 国锦赛 洲纪录  单次 333fm       0.16  US Nationals 2014
+    2014 国锦赛 洲纪录  平均 333fm       0.16  US Nationals 2014
+    2014 国锦赛 洲纪录  平均 333oh       0.16  US Nationals 2014
+    2013 国锦赛 世界纪录 平均 333         0.40  Australian Nationals 2013
+    2013 国锦赛 世界纪录 平均 555         0.40  Australian Nationals 2013
+    2013 国锦赛 世界纪录 单次 555         0.40  Australian Nationals 2013
+    2013 国锦赛 洲纪录  单次 666         0.16  Australian Nationals 2013
+    2013 国锦赛 洲纪录  平均 666         0.16  Australian Nationals 2013
+    2013 国锦赛 洲纪录  单次 777         0.16  Australian Nationals 2013
+    2013 国锦赛 洲纪录  平均 777         0.16  Australian Nationals 2013
+    2013 国锦赛 世界纪录 平均 777         0.40  Australian Nationals 2013
+    2013 国锦赛 洲纪录  单次 minx        0.16  Australian Nationals 2013
+    2013 国锦赛 洲纪录  平均 minx        0.16  Australian Nationals 2013
+    2013 世锦赛 洲纪录  平均 444         0.40  World Rubik's Cube Championship 2013
+    2013 世锦赛 洲纪录  单次 666         0.40  World Rubik's Cube Championship 2013
+    2013 世锦赛 洲纪录  单次 777         0.40  World Rubik's Cube Championship 2013
+    2013 世锦赛 洲纪录  平均 777         0.40  World Rubik's Cube Championship 2013
+    2013 世锦赛 洲纪录  平均 minx        0.40  World Rubik's Cube Championship 2013
+    2013 世锦赛 洲纪录  单次 minx        0.40  World Rubik's Cube Championship 2013
+    2013 世锦赛 洲纪录  单次 333oh       0.40  World Rubik's Cube Championship 2013
+    2013 世锦赛 洲纪录  单次 333fm       0.40  World Rubik's Cube Championship 2013
+    2012 国锦赛 洲纪录  单次 444         0.16  Australian Nationals 2012
+    2012 国锦赛 世界纪录 单次 555         0.40  Australian Nationals 2012
+    2012 国锦赛 世界纪录 平均 555         0.40  Australian Nationals 2012
+    2012 国锦赛 洲纪录  平均 666         0.16  Australian Nationals 2012
+    2012 国锦赛 洲纪录  单次 777         0.16  Australian Nationals 2012
+    2012 国锦赛 洲纪录  平均 777         0.16  Australian Nationals 2012
+    2012 国锦赛 洲纪录  平均 444         0.16  Australian Nationals 2012
+    2012 国锦赛 洲纪录  单次 pyram       0.16  Australian Nationals 2012
+    2012 国锦赛 洲纪录  单次 666         0.16  Australian Nationals 2012
+    2012 国锦赛 世界纪录 单次 444         0.40  Australian Nationals 2012
+    2012 国锦赛 洲纪录  单次 222         0.16  Australian Nationals 2012
+    2012 国锦赛 世界纪录 平均 333         0.40  Australian Nationals 2012
+    2011 国锦赛 世界纪录 单次 555         0.40  Australian Nationals 2011
+    2011 国锦赛 洲纪录  平均 minx        0.16  Australian Nationals 2011
+    2011 国锦赛 洲纪录  平均 777         0.16  Australian Nationals 2011
+    2011 国锦赛 世界纪录 单次 666         0.40  Australian Nationals 2011
+    2011 国锦赛 世界纪录 平均 555         0.40  Australian Nationals 2011
+    2011 国锦赛 世界纪录 单次 444         0.40  Australian Nationals 2011
+    2011 国锦赛 洲纪录  单次 clock       0.16  Australian Nationals 2011
+    2011 国锦赛 洲纪录  平均 clock       0.16  Australian Nationals 2011
+    2011 国锦赛 洲纪录  平均 333oh       0.16  Australian Nationals 2011
+    2011 世锦赛 世界纪录 平均 444         1.00  World Rubik's Cube Championship 2011
+    2011 世锦赛 世界纪录 单次 555         1.00  World Rubik's Cube Championship 2011
+    2011 世锦赛 世界纪录 平均 555         1.00  World Rubik's Cube Championship 2011
+    2011 世锦赛 洲纪录  单次 pyram       0.40  World Rubik's Cube Championship 2011
+    2011 世锦赛 洲纪录  平均 666         0.40  World Rubik's Cube Championship 2011
+    2011 世锦赛 洲纪录  平均 777         0.40  World Rubik's Cube Championship 2011
+    2010 洲锦赛 洲纪录  单次 333fm       0.24  Asian Championship 2010
+    2010 洲锦赛 世界纪录 单次 444         0.60  Asian Championship 2010
+    2010 洲锦赛 洲纪录  单次 222         0.24  Asian Championship 2010
+    2010 洲锦赛 世界纪录 平均 222         0.60  Asian Championship 2010
+    2010 洲锦赛 洲纪录  平均 444         0.24  Asian Championship 2010
+    2010 洲锦赛 洲纪录  单次 333oh       0.24  Asian Championship 2010
+    2010 洲锦赛 洲纪录  单次 777         0.24  Asian Championship 2010
+    2010 洲锦赛 洲纪录  平均 777         0.24  Asian Championship 2010
+    2010 洲锦赛 洲纪录  单次 clock       0.24  Asian Championship 2010
+    2010 洲锦赛 洲纪录  单次 minx        0.24  Asian Championship 2010
+    2010 洲锦赛 洲纪录  平均 minx        0.24  Asian Championship 2010
+    2010 国锦赛 洲纪录  单次 777         0.16  Australian Nationals 2010
+    2010 国锦赛 洲纪录  平均 777         0.16  Australian Nationals 2010
+    2010 国锦赛 洲纪录  单次 sq1         0.16  Australian Nationals 2010
+    2010 国锦赛 洲纪录  平均 sq1         0.16  Australian Nationals 2010
+    2010 国锦赛 世界纪录 单次 555         0.40  Australian Nationals 2010
+    2010 国锦赛 世界纪录 平均 555         0.40  Australian Nationals 2010
+    2010 国锦赛 洲纪录  单次 333         0.16  Australian Nationals 2010
+    2010 国锦赛 世界纪录 平均 333oh       0.40  Australian Nationals 2010
+    2010 国锦赛 洲纪录  单次 minx        0.16  Australian Nationals 2010
+    2010 国锦赛 洲纪录  平均 minx        0.16  Australian Nationals 2010
+    2010 国锦赛 洲纪录  平均 222         0.16  Australian Nationals 2010
+    2010 国锦赛 洲纪录  单次 333mbf      0.16  Australian Nationals 2010
+    2010 国锦赛 洲纪录  平均 333oh       0.16  New Zealand Championships 2010
+    2010 国锦赛 洲纪录  平均 sq1         0.16  New Zealand Championships 2010
+    2010 国锦赛 世界纪录 单次 444         0.40  New Zealand Championships 2010
+    2010 国锦赛 洲纪录  平均 555         0.16  New Zealand Championships 2010
+    2010 国锦赛 洲纪录  单次 666         0.16  New Zealand Championships 2010
+    2010 国锦赛 洲纪录  平均 666         0.16  New Zealand Championships 2010
+    2010 国锦赛 洲纪录  平均 222         0.16  New Zealand Championships 2010
+    2010 国锦赛 洲纪录  单次 333         0.16  New Zealand Championships 2010
+    2010 国锦赛 世界纪录 平均 333         0.40  New Zealand Championships 2010
+    2009 国锦赛 洲纪录  单次 333         0.16  New Zealand Championships 2009
+    2009 国锦赛 国家纪录 单次 pyram       0.06  New Zealand Championships 2009
+    2009 国锦赛 国家纪录 平均 pyram       0.06  New Zealand Championships 2009
+    2009 国锦赛 国家纪录 单次 sq1         0.06  New Zealand Championships 2009
+    2009 国锦赛 国家纪录 平均 sq1         0.06  New Zealand Championships 2009
+    2009 国锦赛 洲纪录  单次 555         0.16  New Zealand Championships 2009
+    2009 国锦赛 洲纪录  平均 555         0.16  New Zealand Championships 2009
+    2009 国锦赛 洲纪录  单次 444         0.16  New Zealand Championships 2009
+    2009 国锦赛 洲纪录  平均 444         0.16  New Zealand Championships 2009
+    2009 国锦赛 洲纪录  单次 222         0.16  New Zealand Championships 2009
+    2009 国锦赛 洲纪录  平均 222         0.16  New Zealand Championships 2009
+    2009 国锦赛 洲纪录  单次 333bf       0.16  New Zealand Championships 2009
+    2009 国锦赛 洲纪录  平均 333         0.16  New Zealand Championships 2009
+    2009 国锦赛 洲纪录  单次 333oh       0.16  New Zealand Championships 2009
+    2009 国锦赛 洲纪录  平均 333oh       0.16  New Zealand Championships 2009
+
+══ Max Park（属地 USA） M3 = 10.7400 分，21 条 ══
+
+  赛事级别 × 纪录级别 汇总：
+  赛事    纪录级别       条数        单条加分          小计
+  世锦赛   世界纪录      4        1.00      4.0000
+  世锦赛   洲纪录       2        0.40      0.8000
+  洲锦赛   世界纪录      7        0.60      4.2000
+  洲锦赛   洲纪录       1        0.24      0.2400
+  国锦赛   世界纪录      2        0.40      0.8000
+  国锦赛   洲纪录       4        0.16      0.6400
+  国锦赛   国家纪录      1        0.06      0.0600
+  小计：世界纪录 9.0000 / 洲纪录 1.6800 / 国家纪录 0.0600
+
+  逐条明细：
+    2026 洲锦赛 洲纪录  平均 555         0.24  Rubik's WCA North American Championship 2026
+    2026 洲锦赛 世界纪录 单次 777         0.60  Rubik's WCA North American Championship 2026
+    2024 洲锦赛 世界纪录 平均 555         0.60  Rubik's WCA North American Championship 2024
+    2024 洲锦赛 世界纪录 平均 666         0.60  Rubik's WCA North American Championship 2024
+    2024 洲锦赛 世界纪录 单次 777         0.60  Rubik's WCA North American Championship 2024
+    2023 国锦赛 世界纪录 单次 555         0.40  CubingUSA Nationals 2023
+    2023 世锦赛 世界纪录 平均 666         1.00  Rubik's WCA World Championship 2023
+    2019 国锦赛 世界纪录 单次 777         0.40  CubingUSA Nationals 2019
+    2019 世锦赛 世界纪录 单次 777         1.00  WCA World Championship 2019
+    2019 世锦赛 世界纪录 平均 777         1.00  WCA World Championship 2019
+    2018 洲锦赛 世界纪录 单次 666         0.60  WCA Asian Championship 2018
+    2018 洲锦赛 世界纪录 平均 666         0.60  WCA Asian Championship 2018
+    2018 洲锦赛 世界纪录 平均 555         0.60  WCA Asian Championship 2018
+    2017 国锦赛 洲纪录  平均 444         0.16  CubingUSA Nationals 2017
+    2017 国锦赛 洲纪录  单次 555         0.16  CubingUSA Nationals 2017
+    2017 国锦赛 洲纪录  平均 555         0.16  CubingUSA Nationals 2017
+    2017 世锦赛 洲纪录  单次 555         0.40  World Rubik's Cube Championship 2017
+    2017 世锦赛 洲纪录  平均 555         0.40  World Rubik's Cube Championship 2017
+    2017 世锦赛 世界纪录 平均 333oh       1.00  World Rubik's Cube Championship 2017
+    2016 国锦赛 洲纪录  平均 444         0.16  US Nationals 2016
+    2016 国锦赛 国家纪录 平均 444         0.06  US Nationals 2016
+
+══ Tymon Kolasiński（属地 Poland） M3 = 6.1900 分，27 条 ══
+
+  赛事级别 × 纪录级别 汇总：
+  赛事    纪录级别       条数        单条加分          小计
+  世锦赛   世界纪录      1        1.00      1.0000
+  世锦赛   洲纪录       2        0.40      0.8000
+  世锦赛   国家纪录      1        0.15      0.1500
+  洲锦赛   世界纪录      1        0.60      0.6000
+  洲锦赛   洲纪录       7        0.24      1.6800
+  洲锦赛   国家纪录      4        0.09      0.3600
+  国锦赛   世界纪录      1        0.40      0.4000
+  国锦赛   洲纪录       6        0.16      0.9600
+  国锦赛   国家纪录      4        0.06      0.2400
+  小计：世界纪录 2.0000 / 洲纪录 3.4400 / 国家纪录 0.7500
+
+  逐条明细：
+    2026 洲锦赛 洲纪录  平均 777         0.24  Rubik's WCA European Championship 2026
+    2025 国锦赛 洲纪录  单次 666         0.16  Polish Championship 2025
+    2025 国锦赛 洲纪录  平均 666         0.16  Polish Championship 2025
+    2025 国锦赛 世界纪录 单次 444         0.40  Spanish Championship 2025
+    2025 世锦赛 世界纪录 平均 555         1.00  Rubik's WCA World Championship 2025
+    2025 世锦赛 洲纪录  平均 777         0.40  Rubik's WCA World Championship 2025
+    2024 洲锦赛 世界纪录 单次 555         0.60  Rubik's WCA Asian Championship 2024
+    2024 洲锦赛 国家纪录 单次 777         0.09  Rubik's WCA Asian Championship 2024
+    2024 洲锦赛 洲纪录  平均 777         0.24  Rubik's WCA Asian Championship 2024
+    2024 洲锦赛 国家纪录 单次 444         0.09  Rubik's WCA North American Championship 2024
+    2024 洲锦赛 洲纪录  平均 444         0.24  Rubik's WCA North American Championship 2024
+    2024 洲锦赛 洲纪录  单次 555         0.24  Rubik's WCA North American Championship 2024
+    2024 洲锦赛 洲纪录  平均 555         0.24  Rubik's WCA North American Championship 2024
+    2024 洲锦赛 国家纪录 单次 777         0.09  Rubik's WCA North American Championship 2024
+    2024 国锦赛 洲纪录  平均 777         0.16  Polish Championship 2024
+    2023 国锦赛 国家纪录 单次 777         0.06  Danish Championship 2023
+    2023 世锦赛 国家纪录 平均 444         0.15  Rubik's WCA World Championship 2023
+    2023 世锦赛 洲纪录  平均 555         0.40  Rubik's WCA World Championship 2023
+    2022 洲锦赛 洲纪录  单次 333         0.24  Rubik's WCA European Championship 2022
+    2022 洲锦赛 国家纪录 单次 777         0.09  Rubik's WCA European Championship 2022
+    2022 洲锦赛 洲纪录  平均 777         0.24  Rubik's WCA European Championship 2022
+    2022 国锦赛 洲纪录  平均 777         0.16  Danish Championship 2022
+    2021 国锦赛 洲纪录  单次 555         0.16  Polish Championship 2021
+    2021 国锦赛 洲纪录  平均 555         0.16  Polish Championship 2021
+    2019 国锦赛 国家纪录 单次 444         0.06  Polish Championship 2019
+    2019 国锦赛 国家纪录 平均 444         0.06  Polish Championship 2019
+    2017 国锦赛 国家纪录 单次 pyram       0.06  Polish Nationals 2017
+
+══ 三人 M3 对比 ══
+  选手                         M3分    条数   WR条   CR条   NR条
+  Feliks Zemdegs         44.1800     135      41      89       5
+  Max Park               10.7400      21      13       7       1
+  Tymon Kolasiński        6.1900      27       3      15       9
+选手                           总M3       本属地        客场   条数 本/客
+Feliks Zemdegs         44.1800   28.6800   15.5000   76/59
+    分解: NC|客场=5.9000   NC|本属地=11.8400   CC|客场=9.6000   WC|本属地=16.6000   CC|本属地=0.2400
+Max Park               10.7400    8.9400    1.8000   18/3
+    分解: NC|本属地=1.5000   WC|本属地=4.8000   CC|客场=1.8000   CC|本属地=2.6400
+Tymon Kolasiński        6.1900    3.7400    2.4500   16/11
+    分解: NC|本属地=0.9800   CC|本属地=0.8100   NC|客场=0.6200   WC|本属地=1.9500   CC|客场=1.8300

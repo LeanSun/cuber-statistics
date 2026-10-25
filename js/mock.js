@@ -195,12 +195,21 @@
     scaleC[k] = mc > 0 ? 100 / mc : 1;
     scaleP[k] = mp > 0 ? 100 / mp : 1;
   });
+  var SIXW = { m1: 0.28, m2: 0.24, m3: 0.12, m4: 0.18, m5: 0.08, m6: 0.10 };
   PLAYERS.forEach(function (p) {
     p.m = {}; p.pk = {};
     MODKEYS.forEach(function (k) {
       p.m[k] = round(clamp(p['_' + k] * scaleC[k], 0, 100), 2);
       p.pk[k] = round(clamp(p['_p' + k[1]] * scaleP[k], 0, 100), 2);
     });
+    /* 六维分（演示数据也走当前模型的唯一口径 t = Σ w_d · s_d） */
+    p.six = {};
+    var tt = 0;
+    Object.keys(SIXW).forEach(function (k) {
+      var v = round(clamp(p['_' + k] * scaleC[k], 0, 100), 2);
+      p.six[k] = v; tt += SIXW[k] * v;
+    });
+    p.six.t = round(tt, 4);
   });
 
   /* ---------- 纪录 / 领奖台明细（演示用合成） ---------- */

@@ -35,13 +35,17 @@
   }
   var U = { esc: esc, round: round, fmt: fmt, num: num, hue: hue, initials: initials };
 
-  /* ---------------- 模块与权重 ---------------- */
-  var MODKEYS = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7'];
-  var WEIGHTS = { m1: 0.370, m2: 0.228, m7: 0.156, m4: 0.109, m3: 0.073, m5: 0.044, m6: 0.020 };
-
+  /* ---------------- 模块与权重（当前模型 = 六维） ----------------
+     旧七模块（M1 纪录 / M2 锦标赛 / M3 公开赛 / M4 统治力 / M5 广度 / M6 厚度 / M7 Elo）
+     已整体停用：不再参与总分、不再参与排序、不再作为任何页面的评分依据。 */
+  var MODKEYS = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'];
+  var WEIGHTS = { m1: 0.28, m2: 0.24, m3: 0.12, m4: 0.18, m5: 0.08, m6: 0.10 };
+  function sixOf(p) { return (p && p.six) ? p.six : null; }
+  function sixTotal(p) { var s = sixOf(p); return s && s.t != null ? s.t : 0; }
+  /* 兼容旧签名：weighted(mods) 仍按六维权重求和，供历史调用点使用 */
   function weighted(m) {
     var s = 0;
-    for (var i = 0; i < MODKEYS.length; i++) { var k = MODKEYS[i]; s += (WEIGHTS[k] || 0) * (m[k] || 0); }
+    for (var i = 0; i < MODKEYS.length; i++) { var k = MODKEYS[i]; s += (WEIGHTS[k] || 0) * ((m && m[k]) || 0); }
     return s;
   }
   function overall(c, pk) {
@@ -316,8 +320,8 @@
       goldRate: round(g / Math.max(1, totalPod), 4),
       champConvert: round((podiumByTier.WC + podiumByTier.CC + podiumByTier.NC) / Math.max(1, totalPod), 4),
       yearsTop10: yrTop.t10, yearsTop100: yrTop.t100,
-      coverage: (p.events ? p.events.length : 0), dominance: round((p.eloPeak - 1400) / 900, 3),
-      lowCompHighAch: round(p.overall / Math.max(1, p.comps), 4),
+      coverage: (p.events ? p.events.length : 0), dominance: round((sixOf(p) ? (sixOf(p).m4 || 0) : 0) / 100, 3),
+      lowCompHighAch: round(sixTotal(p) / Math.max(1, p.comps), 4),
       compDensity: round(p.comps / Math.max(1, years.length), 2),
       multiEventComp: p.multiEventComp || 0,
       dnf: p.dnf || 0
@@ -341,7 +345,8 @@
     var allB = (typeof window !== 'undefined' && window.Params) ? window.Params.get('covAll') : 0.03;
     var raw = groups * perG + ((p.events || []).length >= 17 ? allB : 0);
     var items = [
-      { k: 'breadth', v: round(Math.pow(Math.max((p.m ? p.m.m5 : 1), 1), 0.7) / 12, 2) },
+      /* 跨项目广度改由「参赛项目数」直接给出（旧口径取自已停用的 M5 广度模块） */
+      { k: 'breadth', v: round(Math.pow(Math.max((p.events ? p.events.length : 1), 1), 0.7) / 4.1, 2) },
       { k: 'coverage', v: round(Math.min(raw, cap) * 100, 2) },
       { k: 'lineCount', v: ((p.events || []).indexOf('333mbf') >= 0 || (p.events || []).indexOf('333mbo') >= 0) ? round(41.4 / 100, 2) : 0 },
       { k: 'multi', v: round(Math.min((p.events || []).length, 17) / 17 * 1.6, 2) }
@@ -415,8 +420,8 @@
       goldRate: round(gold / Math.max(1, pod), 4),
       champConvert: round(((b.wc || 0) + (b.cc || 0) + (b.nc || 0)) / Math.max(1, pod), 4),
       yearsTop10: (p.yTop10 || 0), yearsTop100: (p.yTop100 || 0),
-      coverage: 1, dominance: round((p.eloPeak - 1400) / 900, 3),
-      lowCompHighAch: round((p.overall || 0) / Math.max(1, b.comps), 4),
+      coverage: 1, dominance: 0, /* 单项目口径没有 M4 统治力分项，留空让该列自动隐藏 */
+      lowCompHighAch: round((sixTotal(p) || 0) / Math.max(1, b.comps), 4),
       compDensity: round((b.comps || 0) / Math.max(1, ys.length), 2),
       dnf: b.dnf || 0
     };
@@ -555,19 +560,18 @@
 
     players.forEach(function (p) {
       p.m = p.m || {}; p.pk = p.pk || {};
-      p.career = round(weighted(p.m), 1);
-      p.peak = round(weighted(p.pk), 1);
-      /* 总分口径：Σ(单项分 × 项目权重)，由 ETL 预先算好随选手下发（p.esum）。
-         只有在没有 esum 的极老数据 / mock 场景下才退回旧的幂函数合成，
-         保证 assemble 对任何输入都能产出可用的 overall。 */
-      p.overall = round(p.esum != null ? p.esum : overall(p.career, p.peak), 1);
-      p.esum = p.overall;
-      p.balance = round(Math.log(Math.max(p.career, 0.01) / Math.max(p.peak, 0.01)), 3);
+      /* 唯一口径：六维加权总分 t = Σ_d(维度权重 × 维度分)，ETL 预置 p.six。
+         旧模型的 career / peak 两档（七模块加权）已停用，这里统一取同一个总分，
+         保证「生涯 / 巅峰」这类历史调用点不再读到旧量纲的数字。
+         没有六维分的选手记 0 —— 不回退旧 esum，否则同一张榜会出现两套量纲。 */
+      p.career = round(sixTotal(p), 1);
+      p.peak = round(sixTotal(p), 1);
+      p.overall = round(sixTotal(p), 1);
+      p.balance = 0;
       if (p.hue == null && p.name) p.hue = hue(p.name);
-      /* eloPeak 兜底：明细选手由 ETL 直接给出，精简档案用 M7 反推。
-         m.m7 已是归一化后的0–100 百分制，必须先除以 100 再映射到
-         1400–2300，否则会算出八位数的假分数（历史 bug：曾出现 89681）。 */
-      if (p.eloPeak == null) p.eloPeak = Math.round(1400 + ((p.m.m7 || 0) / 100) * 900);
+      /* eloPeak：仅作历史字段保留（页面已不再展示 Elo），缺失时给中性值 1500，
+         不再由旧 M7 反推，避免旧模块以任何形式影响展示。 */
+      if (p.eloPeak == null) p.eloPeak = 1500;
     });
 
     var ranked = players.slice().sort(function (a, b) { return b.overall - a.overall; });

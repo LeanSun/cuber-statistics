@@ -1,0 +1,59 @@
+══ greater_china 命中什么 ══
+
+championship_type 含 greater_china 的赛事：5 场
+  · ChinaChampionship2015  China Championship 2015 2015  举办国 CN  type=greater_china  → 判 CC ｜ 领奖台 54 条  ← 只有 greater_china，判 CC 存疑
+  · AsianChampionship2016  Asian Championship 2016 2016  举办国 CN  type=_Asia+greater_china  → 判 CC ｜ 领奖台 54 条  ← 另有洲标识，判 CC 正确
+  · ChinaChampionship2017  China Championship 2017 2017  举办国 CN  type=greater_china  → 判 CC ｜ 领奖台 53 条  ← 只有 greater_china，判 CC 存疑
+  · ChinaChampionship2018  China Championship 2018 2018  举办国 CN  type=greater_china  → 判 CC ｜ 领奖台 54 条  ← 只有 greater_china，判 CC 存疑
+  · ChinaChampionship2019  China Championship 2019 2019  举办国 CN  type=greater_china  → 判 CC ｜ 领奖台 54 条  ← 只有 greater_china，判 CC 存疑
+
+★ 真正有问题的只有 4 场（215 条）：China Championship 系列。
+  AsianChampionship2016 虽然也挂了 greater_china，但它同时是 _Asia，判 CC 没问题。
+
+这 215 条领奖台：按当前口径（CC）得 **8.7321** 分，占全站 217.8556 的 4.01%
+若按 NC（ρ 取中国 0.0993）重算：1.0185 分，缩水 8.5733 倍
+
+受影响的选手：96 人（在 5,146 个非零选手里）
+
+| 选手 | 现名次 | 总分 | 大中华区贡献 | 占比 | 条数 |
+|---|---|---|---|---|---|
+| Seung Hyuk Nahm (남승혁) | #4 | 3.5463 | 0.6939 | 19.57% | 111 |
+| Kaijun Lin (林恺俊) | #57 | 0.7884 | 0.4883 | 61.93% | 29 |
+| Feliks Zemdegs | #1 | 12.4753 | 0.4403 | 3.53% | 193 |
+| Antoine Cantin | #63 | 0.7513 | 0.4094 | 54.49% | 35 |
+| Mats Valk | #7 | 3.0423 | 0.3823 | 12.57% | 125 |
+| Jack Pan (潘杰康) | #116 | 0.4384 | 0.2411 | 55.00% | 6 |
+| Wong Kin Lok (黃健樂) | #218 | 0.2322 | 0.2312 | 99.60% | 12 |
+| Xuming Wang (王旭明) | #209 | 0.2388 | 0.2309 | 96.69% | 15 |
+| Yunliang Zhang (张赟量) | #126 | 0.4160 | 0.2045 | 49.16% | 6 |
+| Qijun Miao (缪其隽) | #196 | 0.2602 | 0.1880 | 72.27% | 9 |
+| Tairan Zhong (钟泰然) | #95 | 0.5470 | 0.1862 | 34.04% | 9 |
+| Yucheng Chen (陈裕铖) | #221 | 0.2302 | 0.1615 | 70.17% | 36 |
+
+反事实（这 4 场改判 NC）：总量 217.8556 → 210.1420（-3.54%）
+
+| 选手 | 现名次 | 改判后 | 变动 |
+|---|---|---|---|
+| Seung Hyuk Nahm (남승혁) | #4 | #6 | +2 |
+| Kevin Hays | #5 | #4 | -1 |
+| Sebastian Weyer | #6 | #5 | -1 |
+| Mats Valk | #7 | #8 | +1 |
+| Stanley Chapel | #8 | #7 | -1 |
+
+（只列出前 20 名里真的移动了的）
+
+反事实 II（这 4 场整类移出 M2，归 M3）：总量 209.1235（-4.01%）
+
+══ 结论 ══
+
+1. WCA 的 championship_type 有**第四类**：greater_china（大中华区）。
+   定稿文档写的是「只有三类真实取值」，这句是错的 —— 代码里 isContinentalType
+   单独为 greater_china 开了口子，但文档没记。
+2. 后果：ChinaChampionship（中国最高级别赛事）被当成**洲际赛**定价，
+   单价按「亚洲」的 ρ（0.3222）算，而真实池子是「大中华区」。
+   池子被高估，价格被高估 8.5733 倍（相对 NC）。
+3. 三个方案：
+   A 维持 CC（现状）：把「大中华区」等同于「洲」，与亚洲锦标赛同价
+   B 改判 NC：ρ 用中国 0.0993，与美/日/欧国锦赛可比，但忽略「大中华区含港澳台」
+   C 移出 M2：与多区赛（XE/XA）同一处理，因为属地不唯一
+   → 按 M2 自己的规则（6.5 节：属地不唯一的整类移出），C 最自洽。

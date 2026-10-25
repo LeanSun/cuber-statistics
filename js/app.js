@@ -138,12 +138,12 @@
     img.parentNode.replaceChild(s, img);
   };
 
-  /* ---------- 首页随机渐变彩蛋（#1 #2）：每次刷新打乱七色渐变顺序 ---------- */
+  /* ---------- 首页随机渐变彩蛋（#1 #2）：每次刷新打乱六色渐变顺序 ---------- */
   function applyGradientEgg() {
     try {
       var root = document.documentElement;
       var cs = getComputedStyle(root);
-      var keys = ['--m1', '--m2', '--m3', '--m4', '--m5', '--m6', '--m7'];
+      var keys = ['--m1', '--m2', '--m3', '--m4', '--m5', '--m6'];
       var cols = keys.map(function (k) { return cs.getPropertyValue(k).trim(); });
       for (var i = cols.length - 1; i > 0; i--) {
         var j = Math.floor(Math.random() * (i + 1));

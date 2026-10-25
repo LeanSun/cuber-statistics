@@ -23,6 +23,24 @@ const { spawn, execFileSync } = require('child_process');
 const Calc = require('../js/calc.js');
 const ROOT = path.resolve(__dirname, '..');
 
+/* ---------- 六维分数（当前模型，etl/score/sixdim.js 产出）----------
+   站点总分自此 = 六维总分（Σ 维度权重 × 维度分），取代旧的 Σ(单项分×项目权重)。
+   维度分 s_d 满足恒等：Σ_d w_d × s_d = 总分（引擎侧已逐人校验，21,363 人 0 例不符）。
+   sixdim_site.tsv 缺失时打印告警并留在旧口径，便于排查而非静默出错。 */
+const SIX_W = { m1: 0.28, m2: 0.24, m3: 0.12, m4: 0.18, m5: 0.08, m6: 0.10 };
+const SIXK = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'];
+const SIX = new Map();
+(function loadSix() {
+  const f = path.join(__dirname, 'score', 'sixdim_site.tsv');
+  if (!fs.existsSync(f)) { console.warn('⚠ 未找到 ' + f + ' —— 总分将回退 esum；请先跑 etl/score/sixdim.js'); return; }
+  const lines = fs.readFileSync(f, 'utf8').trim().split('\n');
+  for (let i = 1; i < lines.length; i++) {
+    const c = lines[i].split('\t');
+    SIX.set(c[0], { m1: +c[1], m2: +c[2], m3: +c[3], m4: +c[4], m5: +c[5], m6: +c[6], t: +c[7] });
+  }
+  console.log('六维分数载入:', SIX.size, '人');
+})();
+
 /* ---------------- 参数 ---------------- */
 const argv = process.argv.slice(2);
 function arg(name, def) {
@@ -250,20 +268,47 @@ const REC_SEQ_MAX = 2500000;   /* 纪录序列条目上限（约 20MB 内存）�
 
 /* 年度排名：'year|eventId' -> 该年度该项目成绩最好的前 ANNUAL_TOP 名（按单次成绩升序）。
    只保留前 N 名而非全部选手 —— 全量结果行上千万条，全留会再次把 ETL 打到OOM；
-   而「年度前10/前100」这类指标本来就只需要头部名次。 */
+   而「年度前10/前100」这类指标本来就只需要头部名次。
+
+   [坑] **同一选手在同一格只能占一个槽位。**
+   results.tsv 里一个选手在同一年同一项目会有多行（多轮次 × 多场比赛），
+   每行都会调用 annualOffer。若不按 pid 去重，同一人会占据多个名次槽位，
+   导致：① 「年度前100 次数」按人头重复计数，数值成倍虚高；
+        ② 下方按数组下标算名次时，后面的人被挤到 100 名之外，榜单直接错排。
+   实测（2026-10-15 快照）：Feliks yTop100 由真实的 165 被算成 975（5.91×），
+   站点 6,147 人里 87.9% 的该字段是错的，Top20 榜单错排 9 个位置。
+   2024|333 年度榜 Top10 里 Yiheng Wang 出现 4 次、2015|333 里 Feliks 出现 6 次。
+
+   修法（两阶段）：
+     阶段一（扫描时）：只收「该格该选手的最好成绩」，用 Map<pid,best> 维护，
+       不参与名次分配 —— 这一步杜绝了同一人多占槽位。
+     阶段二（扫描后）：遍历每格，按 best 升序排序后取前 ANNUAL_TOP 名，
+       此时数组下标就是真实名次，下游计数逻辑（build.js:1086 附近）无需改动。
+
+   代价：阶段一的 Map 规模 = 选手-项目-年 去重键 ≈ 209 万条，
+   比原来只存前 200 名多占约 300MB —— 换取口径正确，
+   且阶段二会立刻释放中间结构。 */
 const ANNUAL_TOP = 200;
 const annualTop = {};
+/* 阶段一：'year|eventId' -> Map<pid, best>，只记该格每人的最好成绩 */
+const annualBest = new Map();
 function annualOffer(year, eid, pid, best) {
   if (!(best > 0)) return;
   const key = year + '|' + eid;
-  let arr = annualTop[key];
-  if (!arr) { arr = annualTop[key] = []; }
-  const n = arr.length;
-  if (n >= ANNUAL_TOP && best >= arr[n - 1].best) return;
-  /* 插入排序：多数行会在上面的门槛被拒掉，真正插入的次数很少 */
-  let i = n < ANNUAL_TOP ? n - 1 : ANNUAL_TOP - 2;
-  while (i >= 0 && arr[i].best > best) { arr[i + 1] = arr[i]; i--; }
-  arr[i + 1] = { pid: pid, best: best };
+  let m = annualBest.get(key);
+  if (!m) { m = new Map(); annualBest.set(key, m); }
+  const cur = m.get(pid);
+  if (cur === undefined || best < cur) m.set(pid, best);
+}
+/* 阶段二：把每格 Map 排序成「前 ANNUAL_TOP 名」的升序数组，交给下游按下标算名次 */
+function annualFinalize() {
+  annualBest.forEach((m, key) => {
+    const arr = [];
+    m.forEach((best, pid) => { arr.push({ pid: pid, best: best }); });
+    arr.sort((a, b) => a.best - b.best);
+    annualTop[key] = arr.length > ANNUAL_TOP ? arr.slice(0, ANNUAL_TOP) : arr;
+  });
+  annualBest.clear();
 }
 
 async function loadDimensions() {
@@ -708,7 +753,7 @@ let MOD_MAX = null;
 let ESUM_MAX = 0;
 
 function computeModules() {
-  log('计算七模块评分…');
+  log('计算历史字段（旧七模块 p.m/p.k，仅存档，不参与总分）…');
   const raw = {};
   const MODALL = ['m1', 'm1s', 'm1a', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7'];
   const MAXMOD = { m1: 0, m1s: 0, m1a: 0, m2: 0, m3: 0, m4: 0, m5: 0, m6: 0, m7: 0 };
@@ -817,9 +862,12 @@ function computeModules() {
     p.eloPeak = Math.round(1400 + (m.m7 / 100) * 900);
     p.career = Math.round(Calc.weighted(m) * 10) / 10;
     p.peak = Math.round(Calc.weighted(pk) * 10) / 10;
-    /* 新总分口径：Σ(单项分 × 项目权重)，不再用 career^0.6 × peak^0.4 合成。
-       career / peak 仍保留（生涯榜、巅峰榜、均衡度仍按七模块口径展示）。 */
-    p.overall = p.esum;
+    /* 新总分口径（六维）：overall = 六维总分 t = Σ_d w_d × s_d。
+       无六维分的选手（新模型口径下无任何维度得分）记 0 —— 不混用旧 esum，
+       否则同一张榜上会出现两套量纲。旧 esum 仍随包下发，仅供对照，不参与排名。 */
+    const sd = SIX.get(p.wcaId);
+    p.six = sd || null;
+    p.overall = sd ? Math.round(sd.t * 100) / 100 : 0;
 
     // 领奖台补 field / factors / R
     p.podiums.forEach((pod) => {
@@ -833,8 +881,10 @@ function computeModules() {
       pod.R = Math.round(100 * ev.w * 1.0 * 1.0 * V * Cw * CSI * 10) / 10;
     });
     p.recTotal = p.records.length;
+    /* 纪录明细全量保留：M1 占有段按整条阶梯切段，
+       截断任何一条都会让「前一位留下的值」失真（G 被高估）或让段长被低估。
+       排序只为前端默认顺序，不参与截断。 */
     p.records.sort((a, b) => b.R - a.R);
-    if (p.records.length > 12) p.records = p.records.slice(0, 12);
     p.podTotal = p.podiums.length;
     p.podiums.sort((a, b) => b.R - a.R);
     if (p.podiums.length > 10) p.podiums = p.podiums.slice(0, 10);
@@ -1020,9 +1070,25 @@ function buildEventMilestones() {
   log('排序 …');
   /* 分层输出：DETAIL_MAX 名以内保留纪录 / 领奖台明细，
      SLIM_MAX 名以内保留可排名可筛选的精简档案（无明细），
-     其余选手不随包下发（数据量所限），但排序 / 聚合仍按全量计算。 */
+     其余选手不随包下发（数据量所限），但排序 / 聚合仍按全量计算。
+     例外：拿过纪录的选手一律进明细层 —— M1 占有段按整条阶梯切段，
+     少一个人就让那一级阶梯断一截，与名次高低无关。 */
   const detail = DETAIL_MAX > 0 ? list.slice(0, DETAIL_MAX) : list;
-  const slim = SLIM_MAX > DETAIL_MAX ? list.slice(DETAIL_MAX, SLIM_MAX) : [];
+  const detailIds = new Set(detail.map((p) => p.wcaId));
+  let backfilled = 0;
+  if (DETAIL_MAX > 0) {
+    for (const p of list) {
+      if (!p.records || !p.records.length || detailIds.has(p.wcaId)) continue;
+      detail.push(p); detailIds.add(p.wcaId); backfilled++;
+    }
+    if (backfilled) {
+      detail.sort((a, b) => b.overall - a.overall);
+      log('纪录持有者补入明细层:', backfilled, '人');
+    }
+  }
+  const slim = SLIM_MAX > DETAIL_MAX
+    ? list.slice(DETAIL_MAX, SLIM_MAX).filter((p) => !detailIds.has(p.wcaId))
+    : [];
   const emit = detail.concat(slim);
   const emitIds = new Set();
   emit.forEach((p) => emitIds.add(p.wcaId));
@@ -1063,7 +1129,10 @@ function buildEventMilestones() {
   });
 
   /* 年度前10 / 前100 名次数：annualTop 里每个 (年,项目) 只留前 200 名，
-     因此名次≤100 的选手必然在榜内，可直接计数（无需为每位选手存完整年度名次表）。 */
+     因此名次≤100 的选手必然在榜内，可直接计数（无需为每位选手存完整年度名次表）。
+     计数前必须先 annualFinalize()：把阶段一的 Map 排序成真实名次数组，
+     否则数组下标不等于名次（此前因同一人多占槽位而错排，见 annualOffer 处的坑）。 */
+  annualFinalize();
   const yTop10 = {}, yTop100 = {};
   Object.keys(annualTop).forEach((k) => {
     const arr = annualTop[k];
@@ -1084,6 +1153,10 @@ function buildEventMilestones() {
 
   let totWR = 0, totRec = 0, totPod = 0;
   list.forEach((p) => { totWR += p.wr; totRec += p.records.length; totPod += p.podiums.length; });
+  if (detail.length) {
+    const bytes = detail.reduce((a, p) => a + (p.records || []).reduce((b, r) => b + JSON.stringify(r).length + 1, 0), 0);
+    log('纪录明细: 全量', totRec.toLocaleString(), '条｜明细层', detail.length.toLocaleString(), '人｜约', (bytes / 1048576).toFixed(1), 'MB');
+  }
   const meta = {
     demo: false,
     updated: (arg('--date', '') || new Date().toISOString().slice(0, 10)),
@@ -1092,6 +1165,10 @@ function buildEventMilestones() {
     wr: totWR, records: totRec, podiums: totPod, nations: Object.keys(NATIONS_RAW).length,
     modMax: MOD_MAX,
     esumMax: ESUM_MAX,
+    /* 六维（当前模型）：权重与维度中文名，供前端贡献表 / 图例使用 */
+    sixWeights: SIX_W,
+    sixNames: { m1: '纪录持有', m2: '领奖台', m3: '大赛破纪录', m4: '统治力', m5: '当前排名', m6: '突破幅度' },
+    sixCovered: SIX.size,
     evGamma: EV_GAMMA,
     emitted: emit.length, detailMax: DETAIL_MAX, slimMax: SLIM_MAX,
     continentTotals: continentTotals, nationTotals: nationTotals
@@ -1101,6 +1178,7 @@ function buildEventMilestones() {
     id: p.id, wcaId: p.wcaId, name: p.name, nameZh: p.nameZh, country: p.country, gender: p.gender,
     start: p.start, end: p.end, comps: p.comps, mainEvent: p.mainEvent, events: p.events, hue: p.hue,
     m: p.m, pk: p.pk, career: p.career, peak: p.peak, overall: p.overall, esum: p.esum, evRk: p.evRk,
+    six: p.six || null,
     balance: Math.round(Math.log(Math.max(p.career, 0.01) / Math.max(p.peak, 0.01)) * 1000) / 1000,
     wr: p.wr, cr: p.cr, nr: p.nr, nrW: Math.round((p.nrW || 0) * 100) / 100,
     recTotal: p.recTotal || 0, podTotal: p.podTotal || 0,
@@ -1117,7 +1195,7 @@ function buildEventMilestones() {
      不再冗余存储；约 150 字节/人，可把全部约 30 万 WCA 选手随包下发、可搜索。 */
   const SLIM_KEYS = ['id', 'name', 'country', 'gender', 'start', 'end', 'comps', 'mainEvent', 'events',
     'm', 'pk', 'esum', 'evRk', 'wr', 'cr', 'nr', 'resultRows', 'attempts', 'solves', 'dnf', 'cities',
-    'maxEventsPerComp', 'multiEventComp'];
+    'maxEventsPerComp', 'multiEventComp', 'six'];
   const MODK = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm1s', 'm1a'];
   const slimRows = slim.map((p) => {
     const row = SLIM_KEYS.map((k) => {
@@ -1126,6 +1204,7 @@ function buildEventMilestones() {
         return MODK.map((mk) => round2(o[mk]));
       }
       if (k === 'events') return (p.events || []).join(',');
+      if (k === 'six') return p.six ? SIXK.map((mk) => round2(p.six[mk])).concat([round2(p.six.t)]) : null;
       return p[k];
     });
     /* 精简档案不带 evS / 纪录明细，写完即释放，控制堆峰值 */
@@ -1168,26 +1247,34 @@ function buildEventMilestones() {
      提前写出：名册不依赖 evStat / 纪录明细，写完即可释放长尾选手的重结构，
      显著降低后续 JSON.stringify(data.js) 时的堆峰值。 */
   if (!NO_ROSTER) {
-    const tail = list.slice(emit.length);
-    const lines = new Array(tail.length);
-    for (let i = 0; i < tail.length; i++) {
-      const p = tail[i];
-      lines[i] = [p.id, p.name, Calc.isoNorm(p.country) || p.country, p.gender, p.overall,
-        p.start, p.end, p.comps, (p.events || []).join(',')].join('~');
-      /* 长尾选手不参与 data.js 输出，立刻释放按项目统计 / 纪录 / 领奖台明细 */
-      p.evStat = null; p.records = null; p.podiums = null;
-      p.yearly = null; p.yearlyS = null; p.yearlyA = null;
-      p.worldRank = null; p.yearRank = null;
+    /* 不能再用 list.slice(emit.length)：明细层会把有纪录的选手从长尾里"挖"进来，
+       emit 不再是 list 的连续前缀，按长度切会漏掉恰好被顶到边界的那个人。 */
+    const tail = list.filter((p) => !emitIds.has(p.wcaId));
+    /* 长尾为空（slim-max 大到把所有选手都放进 data.js）时不要写空名册覆盖既有文件，
+       否则会把上一次构建产出的 15MB 名册清零，长尾搜索随即失效。 */
+    if (!tail.length) {
+      log('跳过名册写出：本次构建无长尾选手（全部随 data.js 下发），保留既有', ROSTER_OUT);
+    } else {
+      const lines = new Array(tail.length);
+      for (let i = 0; i < tail.length; i++) {
+        const p = tail[i];
+        lines[i] = [p.id, p.name, Calc.isoNorm(p.country) || p.country, p.gender, p.overall,
+          p.start, p.end, p.comps, (p.events || []).join(',')].join('~');
+        /* 长尾选手不参与 data.js 输出，立刻释放按项目统计 / 纪录 / 领奖台明细 */
+        p.evStat = null; p.records = null; p.podiums = null;
+        p.yearly = null; p.yearlyS = null; p.yearlyA = null;
+        p.worldRank = null; p.yearRank = null;
+      }
+      const rosterHeader = '/* AUTO-GENERATED by etl/build.js — 长尾选手名册（搜索 / 选手总数用）。请勿手动编辑。 */\n' +
+        'window.WCA_ROSTER = {\n' +
+        '  updated: ' + JSON.stringify(meta.updated) + ',\n' +
+        '  total: ' + list.length + ',\n' +
+        '  rows: ' + JSON.stringify(lines.join('\n')) + '\n' +
+        '};\n';
+      fs.writeFileSync(ROSTER_OUT, rosterHeader, 'utf8');
+      log('写出', ROSTER_OUT, '| 名册', lines.length, '条 |', (Buffer.byteLength(rosterHeader) / 1048576).toFixed(1), 'MB');
+      if (global.gc) global.gc();
     }
-    const rosterHeader = '/* AUTO-GENERATED by etl/build.js — 长尾选手名册（搜索 / 选手总数用）。请勿手动编辑。 */\n' +
-      'window.WCA_ROSTER = {\n' +
-      '  updated: ' + JSON.stringify(meta.updated) + ',\n' +
-      '  total: ' + list.length + ',\n' +
-      '  rows: ' + JSON.stringify(lines.join('\n')) + '\n' +
-      '};\n';
-    fs.writeFileSync(ROSTER_OUT, rosterHeader, 'utf8');
-    log('写出', ROSTER_OUT, '| 名册', lines.length, '条 |', (Buffer.byteLength(rosterHeader) / 1048576).toFixed(1), 'MB');
-    if (global.gc) global.gc();
   }
 
   const emitPlayers = detail.map((p) => Object.assign(base(p), { records: p.records, podiums: p.podiums, evS: encEvStat(p) }));
@@ -1207,11 +1294,13 @@ function buildEventMilestones() {
     '  var SLIM_KEYS = ' + JSON.stringify(SLIM_KEYS) + ';\n' +
     '  var SLIM = ' + JSON.stringify(slimRows) + ';\n' +
     '  var MODK = ["m1","m2","m3","m4","m5","m6","m7","m1s","m1a"];\n' +
+    '  var SIXK = ["m1","m2","m3","m4","m5","m6"];\n' +
     '  SLIM.forEach(function (a) {\n' +
     '    var o = { slim: 1, records: [], podiums: [], yearly: {}, yearlyS: {}, yearlyA: {}, nameZh: null, months1: 0, months10: 0, months100: 0, peakSpan: 0, peakAge: 0, wcGold: 0, ccGold: 0, ncGold: 0, recTotal: 0, podTotal: 0, nrW: 0 };\n' +
     '    for (var i = 0; i < SLIM_KEYS.length; i++) {\n' +
     '      var k = SLIM_KEYS[i], v = a[i];\n' +
     '      if (k === "m" || k === "pk") { var mo = {}; for (var j = 0; j < MODK.length; j++) mo[MODK[j]] = v[j]; o[k] = mo; }\n' +
+    '      else if (k === "six") { if (v) { var so = {}; for (var j2 = 0; j2 < SIXK.length; j2++) so[SIXK[j2]] = v[j2]; so.t = v[SIXK.length]; o.six = so; } else o.six = null; }\n' +
     '      else if (k === "events") { o.events = v ? String(v).split(",") : []; }\n' +
     '      else o[k] = v;\n' +
     '    }\n' +

@@ -3,8 +3,12 @@
    ============================================================ */
 (function () {
   const t = window.I18N, U = window.U, M = window.MOCK, Ic = window.Icons, Pm = window.Params;
-  const MOD = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7'];
-  const MODC = { m1: 'var(--m1)', m2: 'var(--m2)', m3: 'var(--m3)', m4: 'var(--m4)', m5: 'var(--m5)', m6: 'var(--m6)', m7: 'var(--m7)' };
+  /* 当前模型 = 六维：M1 纪录持有 / M2 领奖台 / M3 大赛破纪录 / M4 统治力 /
+     M5 当前排名 / M6 突破幅度。旧七模块（含 M7）仅作描述性统计保留，不参与总分。 */
+  const MOD = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'];
+  const MODC = { m1: 'var(--m1)', m2: 'var(--m2)', m3: 'var(--m3)', m4: 'var(--m4)', m5: 'var(--m5)', m6: 'var(--m6)' };
+  const SIXW = { m1: 0.28, m2: 0.24, m3: 0.12, m4: 0.18, m5: 0.08, m6: 0.10 };
+  function sixWeights() { return (M.meta && M.meta.sixWeights) || SIXW; }
   const esc = U.esc;
   const P = window.P || (window.P = {});
 
@@ -43,7 +47,8 @@
   function evName(e) { return t.isEn() ? e.en : e.zh; }
   function contName(c) { const o = M.continents[c]; return o ? (t.isEn() ? o.en : o.zh) : (c || '—'); }
   function regionName(r) { const o = M.regions[r]; return o ? (t.isEn() ? o.en : o.zh) : (r || '—'); }
-  function strength(p) { return Math.max(0.02, Math.min(1, (p.eloPeak - 1400) / 900)); }
+  /* 实力条（0.02~1）：改由六维的 M4 统治力维驱动（榜首=1），不再用旧 Elo 峰值。 */
+  function strength(p) { return Math.max(0.02, Math.min(1, (p.six ? (p.six.m4 || 0) : 0) / 100)); }
   /* 成绩口径：总计 / 单次 / 平均 —— 只替换 M1 纪录分，其余模块不变 */
   function modsOf(p, tab, rt) {
     const mods = tab === 'peak' ? p.pk : p.m;
@@ -55,19 +60,31 @@
     c.m1 = mods[k];
     return c;
   }
+  /* 当前模型只有一个口径：六维加权总分 t = Σ_d(维度权重 × 维度分)，由 ETL 预置 p.six。
+     旧模型的「生涯 / 巅峰 / 综合」三档拆分随七模块一并停用，
+     这里三个键返回同一个六维总分，保证任何调用方都不会再取到旧口径数字。
+     没有六维分的选手一律记 0（不回退旧 esum，避免同一张榜出现两套量纲）。 */
+  function sixT(p) { return (p && p.six && p.six.t != null) ? p.six.t : 0; }
   function scoreOf(p, rt) {
-    const c = Pm.weighted(modsOf(p, 'career', rt)), pk = Pm.weighted(modsOf(p, 'peak', rt));
-    /* 总分（overall）改由 ETL 的 Σ(单项分×权重) 直接给出，不再由 career/peak 合成；
-       career / peak 仍按七模块口径现算，供「生涯榜 / 巅峰榜」两列使用。 */
-    const ov = (p.esum != null) ? p.esum : Pm.overall(c, pk);
-    return { career: c, peak: pk, overall: ov, balance: Math.log(Math.max(c, 0.01) / Math.max(pk, 0.01)) };
+    const t = sixT(p);
+    return { career: t, peak: t, overall: t, balance: 0 };
   }
   function contribs(p, tab, rt) {
-    const w = Pm.weights();
-    const mods = modsOf(p, tab, rt);
-    return MOD.map(function (k) { return { k: k, name: modName(k), raw: mods[k] || 0, w: w[k], v: w[k] * (mods[k] || 0), color: MODC[k] }; });
+    if (p.six) {
+      const w = sixWeights();
+      return MOD.map(function (k) {
+        const raw = p.six[k] || 0;
+        return { k: k, name: (M.meta && M.meta.sixNames && M.meta.sixNames[k]) || modName(k), raw: raw, w: w[k], v: w[k] * raw, color: MODC[k] };
+      });
+    }
+    /* 没有六维分的选手（新模型口径下任一维都无得分）：六个维度一律记 0，
+       不再回退旧七模块，避免同一张榜上出现两套量纲。 */
+    const w = sixWeights();
+    return MOD.map(function (k) {
+      return { k: k, name: (M.meta && M.meta.sixNames && M.meta.sixNames[k]) || modName(k), raw: 0, w: w[k], v: 0, color: MODC[k] };
+    });
   }
-  /* 行内迷你堆叠条（七模块加权贡献） */
+  /* 行内迷你堆叠条（六维加权贡献） */
   function miniStack(p, tab, rt) {
     const cs = contribs(p, tab, rt);
     const tot = cs.reduce(function (a, c) { return a + c.v; }, 0) || 1;
@@ -85,7 +102,7 @@
   const EV_IX = {};
   (M.events || []).forEach(function (e, i) { EV_IX[e.id] = i; });
   function evStackOf(p, tab, rt) {
-    /* 没有逐项目名次的老数据：退回七模块堆叠条，保证行内条不空着 */
+    /* 没有逐项目名次的精简档案：退回六维贡献堆叠条，保证行内条不空着 */
     if (!p || !p.evRk) return tab ? miniStack(p, tab, rt) : '';
     const g = (M.meta && M.meta.evGamma) || 0.35;
     const items = [];
@@ -199,7 +216,7 @@
 
   /* ================= 综合总榜 ================= */
   /* 三榜顺序：综合能力 → 生涯累计 → 巅峰高度 */
-  const RANK_TABS = ['overall', 'career', 'peak'];
+  const RANK_TABS = ['overall'];
   /* 榜单只统计前 N 名：300227 名全量逐条渲染没有意义，
      且成绩口径/项目筛选下真正有竞争力的就是头部。 */
   const RANK_TOP = 1000;
@@ -354,7 +371,7 @@
       const tab = state.tab || 'overall';
       /* 总分（overall）：筛了项目就只累加所选项目的贡献——这正是
          「总分 = Σ(单项分 × 项目权重)」的自然推论，不需要再乘广度折减。
-         生涯 / 巅峰两列仍是七模块口径，无法逐项拆开，保留旧的广度折减。 */
+         三个 tab（生涯 / 巅峰 / 综合）现已合并为同一个六维总分。 */
       if (tab === 'overall') {
         if (scoped) {
           const e2 = esumOf(p, pool);
@@ -408,11 +425,12 @@
       case 'country': return p.country;
       case 'gender': return p.gender;
         default:
-          if (MOD.indexOf(k) >= 0) return (state.tab === 'peak' ? p.pk : p.m)[k];
+          /* 单维排名一律取六维维度分 p.six[k]（旧 p.m / p.pk 属已停用的七模块口径） */
+          if (MOD.indexOf(k) >= 0) return (p.six && p.six[k] != null) ? p.six[k] : 0;
           if (k === 'wr') return p.wr;
           if (k === 'wc') return p.wcGold;
           if (k === 'months') return p.months1;
-          if (k === 'elo') return p.eloPeak;
+          if (k === 'dom') return (p.six && p.six.m4 != null) ? p.six.m4 : 0;
           return 0;
       }
     };
@@ -561,7 +579,7 @@
     return h;
   };
 
-  /* 展开行：身份 + 三个总分 + 七模块贡献（带条形）+ 成绩速览
+  /* 展开行：身份 + 六维总分 + 六维贡献（带条形）+ 成绩速览
      布局重构为「上：身份与总分条／中：模块贡献（横向条，最直观）／下：成绩速览」三层，
      取代旧版左右两栏里数字堆叠的排布。 */
   P.expandBody = function (p, state) {
@@ -592,13 +610,14 @@
       '<span class="dot">·</span><span>' + esc(String(p.wcaId || p.id)) + '</span>' +
       '</div></div></div>';
     h += '<div class="exp-v3-scores">';
-    [['overall', sc.overall, true], ['career', sc.career, false], ['peak', sc.peak, false]].forEach(function (s) {
-      h += '<div class="exp-v3-score' + (s[2] ? ' lead' : '') + '"><span class="k">' + esc(t('rank.tab.' + s[0])) + '</span>' +
-        '<span class="v' + (s[2] ? ' grad' : '') + '">' + U.fmt(s[1], 1) + '</span></div>';
-    });
+    /* 只展示一个口径：六维加权总分（旧模型的生涯 / 巅峰拆分已停用）。 */
+    h += '<div class="exp-v3-score lead"><span class="k">' + esc(t('rank.tab.overall')) + '</span>' +
+      '<span class="v grad">' + U.fmt(sc.overall, 1) + '</span></div>';
+    h += '<div class="exp-v3-score"><span class="k">' + esc(t('player.rankWorld')) + '</span>' +
+      '<span class="v">No.' + worldNo + '</span></div>';
     h += '</div></div>';
 
-    /* ── 中部：七模块贡献（横向条） ─────────────────────────── */
+    /* ── 中部：六维贡献（横向条） ─────────────────────────── */
     h += '<div class="exp-v3-mods">';
     h += '<div class="exp-v3-mods-h"><span>' + esc(t('rank.module')) + '</span>' +
       '<span class="tiny muted">' + esc(t('player.contrib')) + ' · Σ = ' + U.fmt(tot, 2) + '</span></div>';

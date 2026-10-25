@@ -300,11 +300,11 @@ console.log('== 选手页 ==');
 const hC = tryRender('选手页', () => P.player(M.ranked[0].id));
 ok(hC.length > 100, '选手页渲染');
 ok(hC.indexOf('pid-box') >= 0, '有放大的国旗 / WCA ID / 性别外框（pid-box）');
-ok(hC.indexOf('calc-flow') >= 0, '有总分计算过程（calc-flow）');
+ok(hC.indexOf('breakdown-table') >= 0, '有六维加权贡献明细（breakdown-table）');
 ok(hC.indexOf('cov-grid') >= 0, '有「项目领域」（cov-grid）');
 ok(hC.indexOf('cov-rank') >= 0, '项目领域内有真实世界名次（cov-rank）');
 ok(hC.indexOf('rankCurve') < 0, '已删除「世界排名演变」板块（rankCurve）');
-ok(hC.indexOf('cmp-radar-wrap') >= 0, '七模块雷达有放大容器');
+ok(hC.indexOf('cmp-radar-wrap') >= 0, '六维雷达有放大容器');
 ok(hC.indexOf('eloTip') < 0 && hC.length > 0, '核心数据带 infoTip');
 
 /* —— 选手页排名胶囊 / 主项：三项曾反复回归的问题，这里加死断言 ——
@@ -316,13 +316,13 @@ console.log('== 选手页：排名胶囊外框 / 分母 / 主项唯一 ==');
   ok((hC.match(/class="tag acc"/g) || []).length === 1, '「主项」标签只出现 1 次（实得 ' + (hC.match(/class="tag acc"/g) || []).length + '）');
   ok(hC.indexOf('class="pid-ranks"') >= 0, '排名胶囊容器 pid-ranks 存在');
   const pillN = (hC.match(/class="pid-rank"/g) || []).length;
-  ok(pillN === 4, '排名胶囊 4 枚（世界 / 洲 / 国家 / 巅峰），实得 ' + pillN);
+  ok(pillN === 3, '排名胶囊 3 枚（世界 / 洲 / 国家），实得 ' + pillN);
   /* 世界 + 巅峰两枚的分母必须是全部选手数 */
   const allN = U.num((M.meta && M.meta.players) || M.ranked.length);
   const denoms = (hC.match(/<i>\/ [^<]*<\/i>/g) || []).map(function (s) { return s.replace(/<\/?i>/g, '').replace('/ ', ''); });
-  ok(denoms.length === 4, '四枚胶囊都带 / 总数 分母，实得 ' + denoms.length);
-  ok(denoms[0] === allN && denoms[3] === allN,
-    '世界/巅峰分母 = 全部选手 ' + allN + '（实得 ' + denoms[0] + ' / ' + denoms[3] + '）');
+  ok(denoms.length === 3, '三枚胶囊都带 / 总数 分母，实得 ' + denoms.length);
+  ok(denoms[0] === allN && (denoms[1] === allN || true),
+    '世界分母 = 全部选手 ' + allN + '（实得 ' + denoms[0] + '）');
   /* 洲 / 国家分母必须来自全量聚合，不能等于「当前候选池」大小 */
   const contCode = M.continentOf && M.continentOf[M.ranked[0].country];
   const contAll = (M.meta && M.meta.continentTotals && contCode) ? M.meta.continentTotals[contCode] : null;
@@ -381,16 +381,39 @@ console.log('== 样式与事件委托：防回归静态检查 ==');
   }
 }
 
-console.log('== 评分真实性：统治力 / 实战对战 / Elo ==');
+console.log('== 评分真实性：六维总分（当前模型唯一口径） ==');
 {
   const det = M.ranked.filter(function (p) { return !p.slim; });
   ok(det.length > 0, '存在明细档选手');
-  ok(det.filter(function (p) { return p.m.m7 > 0; }).length === det.length, 'M7 实战对战全部非零');
-  /* M4 保留 0.01 底噪，明细档不应整档归零 */
-  ok(det.filter(function (p) { return !(p.m.m4 > 0); }).length === 0, 'M4 统治力全部非零（有底噪）');
-  const elo = M.ranked.map(function (p) { return p.eloPeak; });
-  ok(Math.min.apply(null, elo) >= 1400 && Math.max.apply(null, elo) <= 2300,
-    'Elo 峰值落在 1400–2300（实得 ' + Math.min.apply(null, elo) + '~' + Math.max.apply(null, elo) + '）');
+  /* 六维：有得分的选手必须带 six，且总分 t = Σ w_d · s_d */
+  const sixP = M.ranked.filter(function (p) { return p.six; });
+  if (!sixP.length) {
+    /* 样例数据没有六维分（真实六维由 etl/score/sixdim.js 产出后随 data.js 下发），此处只做结构校验 */
+    console.log('  · 本次数据无六维分（样例数据），跳过六维数值断言');
+    ok(M.ranked.every(function (p) { return !(p.overall > 0); }), '无六维分时总分一律为 0（不回退旧 esum）');
+  } else {
+    ok(sixP.length > 0, '存在带六维分的选手（' + sixP.length + ' 人）');
+    const W = (M.meta && M.meta.sixWeights) || { m1: 0.28, m2: 0.24, m3: 0.12, m4: 0.18, m5: 0.08, m6: 0.10 };
+    let badT = 0, maxDiff = 0;
+    sixP.forEach(function (p) {
+      let s = 0;
+      ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'].forEach(function (k) { s += (W[k] || 0) * (p.six[k] || 0); });
+      const d = Math.abs(s - p.six.t);
+      if (d > maxDiff) maxDiff = d;
+      if (d > 0.05) badT++;
+    });
+    ok(badT === 0, '六维总分 t = Σ w_d·s_d 自洽（' + sixP.length + ' 人，最大偏差 ' + maxDiff.toFixed(4) + '）');
+    ok(M.ranked.filter(function (p) { return !p.six && p.overall > 0; }).length === 0,
+      '总分一律取自六维（无六维分者记 0，不回退旧 esum）');
+    ok(M.ranked.filter(function (p) { return p.overall > 0; }).length <= sixP.length,
+      '有总分的选手不会多于有六维分的选手');
+  }
+  /* 排序必须按六维总分单调不增 */
+  let mono = true;
+  for (let i = 1; i < Math.min(M.ranked.length, 200); i++) {
+    if (M.ranked[i].overall > M.ranked[i - 1].overall + 1e-9) { mono = false; break; }
+  }
+  ok(mono, '总榜按六维总分降序排列');
   ok(M.ranked.filter(function (p) { return p.yTop10 > 0; }).length > 0, '年度前 10 名次数非零');
 }
 
@@ -433,27 +456,21 @@ console.log('== 选手页排名数字 / 参数设置页 ==');
   ok(hM.indexOf('data-ccmod') >= 0, '国家配色色块存在（点击弹出取色菜单）');
 }
 
-console.log('== 各模块计算过程（逐项代入） ==');
-ok(hC.indexOf('mc-card') >= 0, '有「各模块计算过程」卡片 (mc-card)');ok((hC.match(/class="mc-item"/g) || []).length === 7, '七个模块各有一个可展开的推导条目');
-ok(hC.indexOf('mc-subs') >= 0, '模块内列出代入的原始数据 (mc-subs)');
-ok(hC.indexOf('mc-norm') >= 0, '给出「原始分 ÷ 全站最高 × 100」的归一化过程');
-ok(hC.indexOf('mc-total') >= 0, '末尾汇总七模块加权求和');
-ok(hC.indexOf('mc-sub-k') >= 0, '代入明细带中文标签');
-/* 归一化分母必须来自 meta.modMax，而不是写死的1 */
-ok(M.meta && M.meta.modMax && M.meta.modMax.m1 > 0, 'meta 下发各模块全站最高值 modMax');
+console.log('== 六维加权贡献（逐项代入） ==');
+ok(hC.indexOf('exp-v3-mod') >= 0 || hC.indexOf('breakdown-table') >= 0, '有六维贡献明细表');
+ok(hC.indexOf('六维') >= 0 || (M.meta && M.meta.sixNames), '页面/数据带六维名称');
+ok(M.meta && M.meta.sixWeights && M.meta.sixWeights.m1 > 0, 'meta 下发六维权重 sixWeights');
+ok(M.meta && M.meta.sixNames && Object.keys(M.meta.sixNames).length === 6, 'meta 下发六维名称 sixNames');
 {
   const pl = M.ranked[0];
-  ok(!!pl.mCalc, '明细档选手带 mCalc 计算过程数据');
-  const mc = pl.mCalc || {};
-  ok(Array.isArray(mc.rec) && mc.rec.length === 6, 'mCalc.rec 给出单次/平均各自的 WR/CR/NR');
-  ok(Array.isArray(mc.pod) && mc.pod.length === 12, 'mCalc.pod 给出各赛级金/银/铜分布');
-  ok(Array.isArray(mc.rk) && mc.rk.length > 0 && mc.rk[0].length === 6, 'mCalc.rk 给出逐项目名次/积分/权重/参赛人数');
-  ok(typeof mc.ev === 'number' && typeof mc.span === 'number' && typeof mc.comps === 'number', 'mCalc 给出项目数/年限/场次（供 M5 M6 展开）');
-  /* 前端算出的 M5 应与 ETL 归一化后的 m5 一致（校验代入过程没有算错） */
-  const rawM5 = (mc.ev / 21) * 0.7 + Math.min(mc.ev / 17, 1) * 0.3;
-  const mx5 = M.meta.modMax.m5 || 1;
-  const expectM5 = Math.min(100, rawM5 / mx5 * 100);
-  ok(Math.abs(expectM5 - pl.m.m5) < 0.02, 'M5 前端代入值与 ETL 归一化结果一致 (' + expectM5.toFixed(2) + ' vs ' + pl.m.m5 + ')');
+  ok(!!pl.six, '榜首选手带六维分');
+  let s = 0;
+  const W2 = M.meta.sixWeights;
+  ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'].forEach(function (k) { s += (W2[k] || 0) * (pl.six[k] || 0); });
+  ok(Math.abs(s - pl.six.t) < 0.05, '榜首六维加权求和自洽 (' + s.toFixed(2) + ' vs ' + pl.six.t + ')');
+  /* 旧七模块必须彻底停用：页面上不再出现 M7 / Elo 对战 */
+  ok(hC.indexOf('elo对战') < 0 && hC.indexOf('Elo 峰值') < 0 && hC.indexOf('mc-card') < 0,
+    '选手页不再出现旧七模块（Elo 对战 / 逐项代入卡片）');
 }
 
 console.log('== 项目领域：No.排名格式与名称完整显示 ==');

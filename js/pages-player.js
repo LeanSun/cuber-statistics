@@ -119,20 +119,19 @@
     h += '<span class="tag" title="' + esc(tt('你参加过的 WCA 比赛总场次', 'Total WCA competitions you have entered')) + '">' + esc(t('player.comps')) + ' ' + p.comps + '</span>';
     h += '<span class="tag" title="' + esc(tt('你参加过的 WCA 项目数量', 'Number of distinct WCA events you have entered')) + '">' + esc(t('player.events')) + ' ' + p.events.length + '</span>';
     h += '</div>';
-    /* 次级分数（生涯/ 巅峰 / 均衡）+ PK 按钮 */
+    /* 次级分数：两个最能说明「状态」的维度分（M4 统治力 / M5 当前排名）。
+       旧模型的「生涯 / 巅峰 / 均衡」三档已随七模块停用。 */
     h += '<div class="pcard-sub">';
     h += '<div class="sc-row">';
-    h += '<div class="sc-mini"><span>' + esc(t('rank.tab.career')) + '</span><b>' + U.fmt(sc.career, 1) + '</b></div>';
-    h += '<div class="sc-mini"><span>' + esc(t('rank.tab.peak')) + '</span><b>' + U.fmt(sc.peak, 1) + '</b></div>';
-    h += '<div class="sc-mini" title="' + esc(tt('均衡度 = ln(生涯累计分 ÷ 巅峰高度分)：>0 说明生涯厚度更强、长青型；<0 说明巅峰更强、爆发型；≈0 说明两者均衡。', 'Balance = ln(career score ÷ peak score): >0 long-career type, <0 peak type, ≈0 balanced.')) + '"><span>' + esc(t('col.balance')) + '</span><b>' + U.fmt(sc.balance, 2) + '</b></div>';
+    h += '<div class="sc-mini"><span>' + esc(t('m4.name')) + '</span><b>' + U.fmt((p.six && p.six.m4) || 0, 1) + '</b></div>';
+    h += '<div class="sc-mini"><span>' + esc(t('m5.name')) + '</span><b>' + U.fmt((p.six && p.six.m5) || 0, 1) + '</b></div>';
     h += '</div>';
     h += '<button class="btn btn-primary pkadd-btn" data-pkadd="' + p.id + '">' + Ic.glyph('pk') + ' ' + esc(t('player.compare')) + '</button>';
     h += '</div>';
     h += '</div>';
 
-    /* 世界 / 洲 / 地区 / 巅峰高度 排名：按需求移入「选手信息板块」内部，
+    /* 世界 / 洲 / 国家 排名：按需求移入「选手信息板块」内部，
        做成信息栏下方的一排紧凑胶囊，不再单独占据一个区块。 */
-    const peakRank = M.ranked.filter(function (x) { return scoreOf(x).peak > sc.peak; }).length + 1;
     h += '<div class="pid-ranks">';
     h += rankPill(t('player.rankWorld'), rk.world, (M.meta && M.meta.players) || M.ranked.length, 'globe', '',
       tt('你在全球所有选手中的综合排名', 'Your overall rank among all players worldwide'));
@@ -140,17 +139,14 @@
       tt('你所在大洲（' + contName(rk.contName) + '）内的综合排名', 'Your rank within your continent (' + contName(rk.contName) + ')'));
     h += rankPill(t('player.rankNation'), rk.nation, rk.nationOf, 'flag', countryName(p.country),
       tt('你所在国家（' + countryName(p.country) + '）内的综合排名', 'Your rank within your country (' + countryName(p.country) + ')'));
-    h += rankPill(t('player.rankPeak') + t('player.rankSuffix'), peakRank, (M.meta && M.meta.players) || M.ranked.length, 'globe', '',
-      tt('按巅峰高度（最佳连续 12 个月）在世界范围内的排名 —— 与「世界排名」的综合能力口径互为补充：综合能力偏生涯厚度，巅峰高度只看最尖的那一段。',
-        'Your rank by peak height (best rolling 12 months) worldwide — a complement to the world rank: combined ability leans on career volume, peak height looks only at the sharpest stretch.'));
     h += '</div>';
     h += '</div>';
 
-    /* 核心数据：按需求上移到「选手信息」下方、「总分构成 · 七模块加权」上方 */
+    /* 核心数据：按需求上移到「选手信息」下方、「六维加权贡献」上方 */
     h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('player.coreStats')) + '</h2></div><div class="grid grid-4">';
     [['col.wr', p.wr, ''], ['rec.level.CR', p.cr, t('player.crTip')], ['rec.level.NR', p.nr, ''], ['col.wc', p.wcGold, ''],
     ['pod.level.CC', p.ccGold, ''], ['pod.level.NC', p.ncGold, ''], ['col.months', p.months1, ''],
-    ['col.elo', p.eloPeak, t('player.eloTip')], ['stat.podiumTotal', st.podiumTotal, ''], ['player.comps', p.comps, '']].forEach(function (s) {
+    ['col.m4', (p.six && p.six.m4) || 0, ''], ['stat.podiumTotal', st.podiumTotal, ''], ['player.comps', p.comps, '']].forEach(function (s) {
       h += '<div class="stat"><div class="k">' + esc(t(s[0])) + (s[2] ? ' ' + infoTip(s[2]) : '') + '</div><div class="v">' + U.num(s[1]) + '</div></div>';
     });
     h += '</div></div>';
@@ -161,59 +157,10 @@
       '<p class="tiny muted" style="margin-bottom:12px">' + esc(t('player.coverage.d', { n: 5000 })) + '</p>' +
       coverage(p) + '</div>';
 
-    /* 总分构成：Σ(单项分 × 项目权重) —— 新总分口径 */
-    const evr = evRows(p);
-    const evSum = evr.reduce(function (a, r) { return a + r.v; }, 0);
-    const evMax = Math.max(1, evr.length ? evr[0].v : 1);
-    h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('player.breakdown')) + '</h2>' +
-      '<span class="tiny muted">' + U.num(evr.length) + ' ' + esc(tt('个项目', 'events')) + '</span></div>';
-    h += '<p class="tiny muted" style="margin-bottom:12px">' +
-      tex('M_{\\text{total}}=\\sum_{e} s_e\\, w_e,\\qquad s_e=100\\cdot r_e^{-\\gamma},\\quad \\gamma=' + U.fmt(EVG(), 2), true) + '</p>';
-    /* 三个步骤复现屏幕上的每一个数字 */
-    h += '<div class="calc-flow"><div class="calc-flow-h">' + Ic.glyph('book') + ' ' + esc(t('player.evFlow')) + '</div>' +
-      '<p class="tiny muted" style="margin-bottom:10px">' + esc(t('player.evFlow.d', { g: U.fmt(EVG(), 2) })) + '</p><div class="calc-steps">';
-    h += '<div class="calc-step"><div class="calc-step-no">1</div><div class="calc-step-b"><b>' + esc(t('player.evStep1t')) + '</b>' +
-      '<p class="tiny muted">' + esc(t('player.evStep1')) + '</p></div></div>';
-    h += '<div class="calc-step"><div class="calc-step-no">2</div><div class="calc-step-b"><b>' + esc(t('player.evStep2t')) + '</b>' +
-      '<p class="tiny muted">' + esc(t('player.evStep2')) + '</p></div></div>';
-    h += '<div class="calc-step"><div class="calc-step-no">3</div><div class="calc-step-b"><b>' + esc(t('player.evStep3t')) + '</b>' +
-      '<p class="tiny muted">' + esc(t('player.evStep3')) + '</p>' +
-      '<div class="calc-eq">Σ = <b class="grad">' + U.fmt(evSum, 1) + '</b></div></div></div>';
-    h += '</div></div>';
-    if (!evr.length) {
-      h += '<p class="tiny muted">' + esc(t('player.evEmpty')) + '</p>';
-    } else {
-      h += '<div class="breakdown-table">';
-      h += '<div class="breakdown-row bk-head"><span>' + esc(t('player.evCol.ev')) + '</span><span></span>' +
-        '<span class="bk-num">' + esc(t('player.evCol.rank')) + '</span>' +
-        '<span class="bk-num">' + esc(t('player.evCol.sub')) + '</span>' +
-        '<span class="bk-num">' + esc(t('player.evCol.w')) + '</span>' +
-        '<span class="bk-num">' + esc(t('player.evCol.con')) + '</span></div>';
-      evr.forEach(function (r, i) {
-        const col = EVCOL[i % EVCOL.length];
-        h += '<div class="breakdown-row">';
-        h += '<span class="bk-name"><i style="background:' + col + '"></i>' + esc(r.name) + '</span>';
-        h += '<span class="bk-bar"><i style="width:' + (r.v / evMax * 100).toFixed(1) + '%;background:' + col + '"></i></span>';
-        h += '<span class="bk-num">No.' + r.rk + '</span>';
-        h += '<span class="bk-num">' + U.fmt(r.s, 1) + '</span>';
-        h += '<span class="bk-num">' + U.fmt(r.w, 2) + '</span>';
-        h += '<span class="bk-num"><b>' + U.fmt(r.v, 1) + '</b></span>';
-        h += '</div>';
-      });
-      h += '<div class="breakdown-row" style="border-top:1px solid var(--border-2);font-weight:700">' +
-        '<span class="bk-name">' + esc(t('player.evTotal')) + '</span><span></span>' +
-        '<span class="bk-num"></span><span class="bk-num"></span><span class="bk-num"></span>' +
-        '<span class="bk-num grad">' + U.fmt(evSum, 1) + '</span></div>';
-      h += '</div>';
-      h += '<p class="tiny muted" style="margin-top:8px">' + esc(t('player.evNote')) + '</p>';
-    }
-    h += '</div>';
-
-    /* 辅助：七模块明细（不参与总分，作为风格/成就的补充视角） */
-    h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('player.modAux')) + '</h2>' +
+    /* 六维加权贡献（当前模型唯一口径）：t = Σ_d w_d · s_d */
+    h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('player.modSix')) + '</h2>' +
       '<span class="tiny muted">' + esc(t('player.weight')) + ' Σ=1</span></div>';
     /* 各模块计算过程：把每个模块的代入过程完整写出来 */
-    h += moduleCalc(p, cs, sc);
     h += '<div class="grid grid-2" style="align-items:start">';
     h += '<div>' + ecBox('donut', cs.map(function (c) { return { name: c.name, value: c.v, color: c.color }; }), { radius: ['48%', '74%'], legend: true }, 260) + '</div>';
     h += '<div>' + ecBox('waterfall', cs.map(function (c) { return { name: c.name, value: c.v, color: c.color }; }), { name: t('player.contrib') }, 260) + '</div>';
@@ -232,7 +179,7 @@
     });
     h += '</div></div>';
 
-    /* 横向对比（七模块雷达）：本选手 vs 历史第一人 vs 全体均值 */
+    /* 横向对比（六维雷达）：本选手 vs 历史第一人 vs 全体均值 */
     h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('player.cmp')) + '</h2>' + infoTip(t('player.cmp.d')) + '</div>';
     const cmp = P.playerCompare ? P.playerCompare(p) : null;
     if (cmp) {
@@ -298,7 +245,7 @@
     return h;
   };
 
-  /* 七模块雷达对比：本选手 vs 历史第一人 vs 全体均值（各轴按三者最大值归一为 100） */
+  /* 六维雷达对比：本选手 vs 历史第一人 vs 全体均值（各轴按三者最大值归一为 100） */
   P.playerCompare = function (p) {
     const goat = M.ranked[0];
     const n = M.ranked.length || 1;
@@ -453,126 +400,6 @@
   function round(x, n) { const p = Math.pow(10, n); return Math.round(x * p) / p; }
   function f2(x) { return U.fmt(x, 2); }
 
-  /* ================= 各模块计算过程（逐项代入） =================
-     需求：「总分过程没有将各个分数计算的过程写出来」。
-     这里对七个模块分别给出：计算式→ 代入你本人的数据 → 原始分 → 除以全站最高值归一化。
-     mCalc 明细由 ETL 随明细档选手下发；缺失时只展示归一化前后两个数并给出说明。 */
-  const MC_W = { m1: 3, m2: 1.5, m3: 1.0, m4: 1.0, m5: 0.7, m6: 0.5, m7: 0.85 };
-  function moduleCalc(p, cs, sc) {
-    const mc = p.mCalc || null;
-    const mx = (M.meta && M.meta.modMax) || {};
-    const byKey = {}; cs.forEach(function (c) { byKey[c.k] = c; });
-
-    /* 一行 = 一个模块：标题 + 计算式 + 代入明细 + 归一化 */
-    function row(key, formula, subs, rawVal) {
-      const c = byKey[key] || { raw: 0, color: '#888', name: key, w: 0 };
-      const mxk = mx[key] || 0;
-      const normV = mxk > 0 ? Math.min(100, rawVal / mxk * 100) : 0;
-      let h = '<details class="mc-item" open><summary class="mc-item-h">' +
-        '<i class="mc-dot" style="background:' + c.color + '"></i>' +
-        '<span class="mc-name">' + esc(c.name) + '</span>' +
-        '<span class="mc-eq">' + esc(formula) + '</span>' +
-        '<span class="mc-res"><b>' + U.fmt(normV, 2) + '</b>' +
-        '<span class="mc-res-w">× ' + U.fmt(c.w * 100, 1) + '% ＝ ' + U.fmt(c.v, 2) + '</span></span>' +
-        '<span class="sum-caret">›</span></summary>';
-      h += '<div class="mc-item-b">';
-      /*代入明细 */
-      if (subs && subs.length) {
-        h += '<div class="mc-subs">' + subs.map(function (s) {
-          return '<span class="mc-sub"><span class="mc-sub-k">' + esc(s[0]) + '</span>' +
-            '<span class="mc-sub-v">' + esc(s[1]) + '</span></span>';
-        }).join('') + '</div>';
-      } else if (!mc) {
-        h += '<p class="tiny muted mc-nod">' + esc(t('player.mcNoData')) + '</p>';
-      }
-      /* 原始分 → 归一化 */
-      h += '<div class="mc-norm">' +
-        '<span class="mc-ns">' + esc(t('player.mcRaw')) + '<b>' + f2(rawVal) + '</b></span>' +
-        '<span class="mc-op">÷</span>' +
-        '<span class="mc-ns">' + esc(t('player.mcMax')) + '<b>' + f2(mxk) + '</b></span>' +
-        '<span class="mc-op">×100＝</span>' +
-        '<span class="mc-ns grad"><span>' + esc(t('player.mcNorm')) + '</span><b>' + U.fmt(normV, 2) + '</b></span>' +
-        '</div>';
-      h += '</div></details>';
-      return h;
-    }
-
-    let h = '<div class="card reveal mc-card"><div class="card-head"><h2>' + esc(t('player.mcTitle')) + '</h2>' +
-      '<span class="tiny muted">M₁ … M₇</span></div>' +
-      '<p class="tiny muted" style="margin-bottom:12px">' + esc(t('player.mcTitle.d')) + '</p>';
-
-    /* M1 纪录分：单次 + 平均，WR×3 / CR×1.5 / NR(加权)×0.8 */
-    const rec = mc ? mc.rec : null;
-    const m1raw = rec ? (rec[0] * 3 + rec[1] * 1.5 + rec[2] * 0.8) + (rec[3] * 3 + rec[4] * 1.5 + rec[5] * 0.8) : (byKey.m1 ? byKey.m1.raw * (mx.m1 || 1) : 0);
-    /* M1 纪录分：单次 + 平均，WR×3 / CR×1.5 / NR(加权)×0.8，用 LaTeX 美化公式 */
-    const m1desc = tex('M_1 = 3\\cdot\\mathrm{WR} + 1.5\\cdot\\mathrm{CR} + 0.8\\cdot\\mathrm{NR}', false) + '（单次） + ' + tex('3\\cdot\\mathrm{WR} + 1.5\\cdot\\mathrm{CR} + 0.8\\cdot\\mathrm{NR}', false) + '（平均）';
-    h += row('m1', m1desc, rec ? [
-      [t('mc.wrS'), rec[0]], [t('mc.crS'), rec[1]], [t('mc.nrS'), f2(rec[2])],
-      [t('mc.wrA'), rec[3]], [t('mc.crA'), rec[4]], [t('mc.nrA'), f2(rec[5])]
-    ] : null, m1raw);
-
-    /* M2 大赛领奖台：金牌 1.0 / 银牌 0.6 / 铜牌 0.4，世锦 ×1.0、洲锦 ×0.7 */
-    const pod = mc ? mc.pod : null;
-    const pw = [1, 0.6, 0.4];
-    const m2raw = pod ? (pod[0] * pw[0] + pod[1] * pw[1] + pod[2] * pw[2]) * 1.0 +
-      (pod[3] * pw[0] + pod[4] * pw[1] + pod[5] * pw[2]) * 0.7 : (byKey.m2 ? byKey.m2.raw * (mx.m2 || 1) : 0);
-    h += row('m2', 'M₂ = Σ(名次权重 × 赛级权重)，名次 金1.0/银0.6/铜0.4，赛级 世锦1.0/洲锦0.7', pod ? [
-      [t('mc.wcG') + '×1.0', pod[0]], [t('mc.wcS') + '×0.6', pod[1]], [t('mc.wcB') + '×0.4', pod[2]],
-      [t('mc.ccG') + '×1.0', pod[3]], [t('mc.ccS') + '×0.6', pod[4]], [t('mc.ccB') + '×0.4', pod[5]]
-    ] : null, m2raw);
-
-    /* M3 公开赛领奖台：国锦 ×0.4、其他 ×0.4 */
-    const m3raw = pod ? (pod[6] * pw[0] + pod[7] * pw[1] + pod[8] * pw[2]) * 0.4 +
-      (pod[9] * pw[0] + pod[10] * pw[1] + pod[11] * pw[2]) * 0.4 : (byKey.m3 ? byKey.m3.raw * (mx.m3 || 1) : 0);
-    h += row('m3', 'M₃ = Σ(名次权重 × 赛级权重)，赛级 国锦0.4 / 其他0.4', pod ? [
-      [t('mc.ncG') + '×1.0', pod[6]], [t('mc.ncS') + '×0.6', pod[7]], [t('mc.ncB') + '×0.4', pod[8]],
-      [t('mc.otG') + '×1.0', pod[9]], [t('mc.otS') + '×0.6', pod[10]], [t('mc.otB') + '×0.4', pod[11]]
-    ] : null, m3raw);
-
-    /* M4 统治力：各项目 domScore(世界名次)× 项目权重，按权重平均 */
-    const rk = mc ? mc.rk : null;
-    const m4raw = rk && rk.length ? rk.reduce(function (a, x) { return a + x[2] * x[3]; }, 0) /
-      rk.reduce(function (a, x) { return a + x[3]; }, 0) : (byKey.m4 ? byKey.m4.raw * (mx.m4 || 1) : 0);
-    h += row('m4', 'M₄ = Σ[名次积分 D(r) × 项目权重 w_e] ÷ Σ w_e（D: 第1=1.00，前3=0.85，前10线性0.70→0.15，前100缓降至0.02，更靠后记0.01底噪）', rk && rk.length ? rk.slice(0, 8).map(function (x) {
-      return [evName(M.EV[x[0]]) + ' ' + t('mc.rk') + ' No.' + x[1], 'D=' + f2(x[2]) + ' × w=' + f2(x[3])];
-    }) : null, m4raw);
-
-    /* M5 全能广度：项目数 / 21 × 0.7 + min(项目数 / 17, 1) × 0.3 */
-    const evn = mc ? mc.ev : (p.events ? p.events.length : 0);
-    const m5raw = (evn / 21) * 0.7 + Math.min(evn / 17, 1) * 0.3;
-    h += row('m5', 'M₅ = (项目数 ÷ 21) × 0.7 + min(项目数 ÷ 17, 1) × 0.3', [
-      [t('mc.ev'), evn + ' / 21'], ['', f2(evn / 21) + ' × 0.7 + ' + f2(Math.min(evn / 17, 1)) + ' × 0.3']
-    ], m5raw);
-
-    /* M6 生涯长度：年限 / 22 × 0.5 + min(场次, 300) / 300 × 0.3 + 连续年数 / 15 × 0.2 */
-    const span = mc ? mc.span : Math.max(1, (p.end || 0) - (p.start || 0) + 1);
-    const comps = mc ? mc.comps : (p.comps || 0);
-    const streak = mc ? mc.streak : 1;
-    const m6raw = (span / 22) * 0.5 + (Math.min(comps, 300) / 300) * 0.3 + streak / 15 * 0.2;
-    h += row('m6', 'M₆ = (年限 ÷ 22) × 0.5 + min(场次, 300) ÷ 300 × 0.3 + (最长连续年数 ÷ 15) × 0.2', [
-      [t('mc.span'), span + ' 年'], [t('mc.comps'), comps], [t('mc.streak'), streak + ' 年']
-    ], m6raw);
-
-    /* M7 实战对战：各项目 (参赛人数 − 世界名次) ÷ 参赛人数，跨项目平均 */
-    const m7raw = rk && rk.length ? rk.reduce(function (a, x) { return a + x[5]; }, 0) / rk.length
-      : (byKey.m7 ? byKey.m7.raw * (mx.m7 || 1) : 0);
-    h += row('m7', 'M₇ = 平均[ (该项目参赛人数 − 你的世界名次) ÷ 该项目参赛人数 ]', rk && rk.length ? rk.slice(0, 8).map(function (x) {
-      return [evName(M.EV[x[0]]) + ' ' + t('mc.cnt'), '(' + x[4] + ' − ' + x[1] + ') ÷ ' + x[4] + ' = ' + f2(x[5])];
-    }) : null, m7raw);
-
-    /* 收尾：七模块加权求和 */
-    const cSum = cs.reduce(function (a, c) { return a + c.v; }, 0);
-    h += '<div class="mc-total"><div class="mc-total-h">' + Ic.glyph('book') + ' ' + esc(t('player.calcStep2t')) + '</div>' +
-      '<div class="mc-total-eq">' + cs.map(function (c) {
-        return '<span class="mc-t"><i style="background:' + c.color + '"></i>' + U.fmt(c.raw, 1) + ' × ' + U.fmt(c.w * 100, 1) + '%</span>';
-      }).join('<span class="mc-t-op">+</span>') +
-      '<span class="mc-t-op">＝</span><b class="grad">' + U.fmt(cSum, 1) + '</b></div>' +
-      '<div class="mc-total-eq2">Overall ＝ ' + U.fmt(sc.career, 1) + '<sup>0.6</sup> × ' + U.fmt(sc.peak, 1) +
-      '<sup>0.4</sup> ＝ <b class="grad">' + U.fmt(sc.overall, 1) + '</b></div></div>';
-
-    h += '</div>';
-    return h;
-  }
 
   /* ================= 选手 PK ================= */
   P.pk = function (state) {
@@ -613,7 +440,7 @@
       }, { radius: '66%', max: 100 }, 360) + '</div></div>';
       h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('pk.advantage')) + '</h2>' + infoTip(t('pk.advantage.d')) + '</div>';
       h += ecBox('diverging', MOD.map(function (k) {
-        return { name: modName(k), d: [Pm.weights()[k] * a.m[k], Pm.weights()[k] * b.m[k]] };
+        return { name: modName(k), d: [sixW(k) * sixK(a, k), sixW(k) * sixK(b, k)] };
       }), {
         series: [{ name: a.name, color: colors[0] }, { name: b.name, color: colors[1] }]
       }, MOD.length * 34 + 70);
@@ -649,7 +476,7 @@
       h += ecBox('stacked', MOD.map(function (k) {
         return {
           name: modName(k),
-          values: ps.map(function (p) { return Pm.weights()[k] * p.m[k]; })
+          values: ps.map(function (p) { return sixW(k) * sixK(p, k); })
         };
       }), { series: ps.map(function (p, i) { return { name: p.name, color: colors[i] }; }), legend: true }, MOD.length * 30 + 90);
       h += '</div>';
@@ -659,10 +486,10 @@
     h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('pk.style')) + '</h2>' + infoTip(t('pk.style.d')) + '</div>';
     const pts = ps.map(function (p, i) {
       const sc = scoreOf(p);
-      return [round(sc.career, 1), round(sc.peak, 1), esc(p.name) + ' · ' + U.fmt(sc.overall, 1), sc.overall];
+      return [round(sixK(p, 'm1'), 1), round(sixK(p, 'm2'), 1), esc(p.name) + ' · ' + U.fmt(sc.overall, 1), sc.overall];
     });
     h += ecBox('scatter', pts, {
-      xName: t('rank.tab.career'), yName: t('rank.tab.peak')
+      xName: t('m1.name'), yName: t('m2.name')
     }, 320);
     h += '</div>';
     return h;
@@ -689,8 +516,8 @@
     });
     h += '</div>';
     h += '<div class="pk-keys">';
-    [['rank.tab.career', U.fmt(sc.career, 1)], ['rank.tab.peak', U.fmt(sc.peak, 1)], ['col.wr', p.wr],
-      ['col.wc', p.wcGold], ['col.elo', p.eloPeak], ['col.months', p.months1],
+    [['rank.tab.overall', U.fmt(sc.overall, 1)], ['m4.name', U.fmt(sixK(p, 'm4'), 1)], ['col.wr', p.wr],
+      ['col.wc', p.wcGold], ['m5.name', U.fmt(sixK(p, 'm5'), 1)], ['col.months', p.months1],
       ['player.events', p.events.length], ['player.comps', p.comps]].forEach(function (s) {
         h += '<div class="pk-key"><span class="pk-kk">' + esc(t(s[0])) + '</span><span class="pk-kv">' + s[1] + '</span></div>';
       });
@@ -719,10 +546,10 @@
     h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('pk.flip')) + '</h2>' + infoTip(t('pk.flip.d')) + '</div>';
     h += '<div class="flip-list">';
     MOD.forEach(function (k) {
-      const dA = a.m[k], dB = b.m[k];
+      const dA = sixK(a, k), dB = sixK(b, k);
       const dj = (winner === a ? dA - dB : dB - dA);
       let S = 0;
-      MOD.forEach(function (kk) { if (kk !== k) S += w[kk] * (winner === a ? a.m[kk] - b.m[kk] : b.m[kk] - a.m[kk]); });
+      MOD.forEach(function (kk) { if (kk !== k) S += w[kk] * (winner === a ? sixK(a, kk) - sixK(b, kk) : sixK(b, kk) - sixK(a, kk)); });
       const den = dj * (1 - w[k]) - S;
       let x = den !== 0 ? -S / den : NaN;
       let verdict, cls = 'flip-ok';

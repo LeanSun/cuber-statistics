@@ -5,10 +5,12 @@
 (function () {
   const KEY = 'goat-params-v1';
 
-  /* 默认值：与 docs/GOAT模型_定稿_v1.0.html 完全一致 */
+  /* 默认值：当前模型 = 六维加权（详见评分原理说明页）。
+     旧七模块（含 M7 对战强度）的参数全部停用：仅保留键名以免历史读取报错，
+     但不再出现在参数面板、也不参与任何计算。 */
   const DEFAULTS = {
-    // 七模块权重 β（ROC 序数定权推导，Σ=1）
-    b1: 0.370, b2: 0.228, b3: 0.073, b4: 0.109, b5: 0.044, b6: 0.020, b7: 0.156,
+    // 六维权重 w（Σ=1，以 M1 纪录持有 / M2 领奖台 为主）
+    b1: 0.28, b2: 0.24, b3: 0.12, b4: 0.18, b5: 0.08, b6: 0.10, b7: 0,
     // 名次价值函数
     lambda: 1.10,          // V(r)=r^-λ
     lambdaD: 0.50,         // 统治力积分指数
@@ -52,17 +54,9 @@
     thetaC: 0.60           // 综合总榜 Overall = C^0.6 · P^0.4
   };
 
-  /* 参数元信息：分组 / 标签 / 范围 / 步长 / 所属模块锚点 */
+  /* 参数元信息：面板只暴露六维权重（其余旧参数已停用，不再提供调节入口） */
   const META = [
-    { g: 'weights', keys: ['b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7'] },
-    { g: 'rank', keys: ['lambda', 'lambdaD'] },
-    { g: 'event', keys: ['eta', 'xiCurrent', 'xiRetiring', 'xiRetired'] },
-    { g: 'm1', keys: ['BR', 'kr', 'rhoR', 'omegaH', 'kappa0', 'gammaSA', 'upsilon', 'GWR', 'GCC', 'GNR'] },
-    { g: 'm2', keys: ['BP', 'kp', 'mu', 'kappa', 'csiMin', 'csiMax', 'cWC', 'cCC', 'cNC', 'cOP', 'rhoP', 'alphaO', 'fieldMin'] },
-    { g: 'm5', keys: ['theta', 'covGroup', 'covAll', 'covCap', 'zFloor'] },
-    { g: 'm6', keys: ['BL', 'BC'] },
-    { g: 'm7', keys: ['eloBase', 'eloScale', 'halfLife'] },
-    { g: 'combine', keys: ['thetaC'] }
+    { g: 'weights', keys: ['b1', 'b2', 'b3', 'b4', 'b5', 'b6'] }
   ];
 
   const RANGE = {
@@ -87,10 +81,10 @@
 
   /* 每个参数的展示说明（zh / en） */
   const LABEL = {
-    b1: ['M1 纪录 权重 β₁', 'M1 records weight'], b2: ['M2 大赛领奖台 权重 β₂', 'M2 championship weight'],
-    b3: ['M3 公开赛领奖台 权重 β₃', 'M3 open weight'], b4: ['M4 统治力 权重 β₄', 'M4 dominance weight'],
-    b5: ['M5 全能广度 权重 β₅', 'M5 all-round breadth weight'], b6: ['M6 生涯厚度 权重 β₆', 'M6 career weight'],
-    b7: ['M7 实战对战 权重 β₇', 'M7 head-to-head weight'],
+    b1: ['M1 纪录持有 权重 w₁', 'M1 record ownership weight'], b2: ['M2 领奖台 权重 w₂', 'M2 podium weight'],
+    b3: ['M3 大赛破纪录 权重 w₃', 'M3 championship record weight'], b4: ['M4 统治力 权重 w₄', 'M4 dominance weight'],
+    b5: ['M5 当前排名 权重 w₅', 'M5 current ranking weight'], b6: ['M6 突破幅度 权重 w₆', 'M6 breakthrough margin weight'],
+    b7: ['（已停用）旧 M7 对战强度', '(retired) old M7 head-to-head'],
     lambda: ['名次价值指数 λ', 'Place-value exponent λ'], lambdaD: ['统治力积分指数 λ_D', 'Dominance exponent λ_D'],
     eta: ['深度因子强度 η', 'Depth factor η'], xiCurrent: ['现行项目状态系数', 'Current-event status'],
     xiRetiring: ['即将停办（魔表）', 'Discontinued soon (Clock)'], xiRetired: ['已停办项目', 'Discontinued events'],
@@ -115,30 +109,22 @@
   };
 
   const GROUP_TITLE = {
-    weights: ['模块权重 β', 'Module weights β'],
-    rank: ['名次价值函数', 'Place value'],
-    event: ['项目权重与状态系数', 'Event weights'],
-    m1: ['M1 纪录参数', 'M1 record parameters'],
-    m2: ['M2 / M3 领奖台参数', 'M2 / M3 podium parameters'],
-    m5: ['M5 广度与附加分', 'M5 breadth and bonuses'],
-    m6: ['M6 生涯厚度', 'M6 career volume'],
-    m7: ['M7 对战强度', 'M7 head-to-head'],
-    combine: ['三榜合成', 'Ranking combination']
+    weights: ['六维权重 w', 'Six-dimension weights w']
   };
 
   const PRESETS = {
-    roc: ['默认（序数定权 ROC）', 'Default (ROC)'],
-    records: ['纪录优先', 'Records first'],
-    champs: ['大赛优先', 'Championships first'],
+    roc: ['默认（六维定稿权重）', 'Default'],
+    holding: ['纪录持有优先', 'Record ownership first'],
+    podium: ['领奖台优先', 'Podiums first'],
     balanced: ['均衡型', 'Balanced'],
-    h2h: ['对战强度优先', 'Head-to-head first']
+    dominance: ['统治力优先', 'Dominance first']
   };
   const PRESET_VAL = {
     roc: null,
-    records: { b1: 0.52, b2: 0.20, b3: 0.05, b4: 0.09, b5: 0.03, b6: 0.01, b7: 0.10 },
-    champs: { b1: 0.24, b2: 0.34, b3: 0.06, b4: 0.12, b5: 0.04, b6: 0.02, b7: 0.18 },
-    balanced: { b1: 0.20, b2: 0.20, b3: 0.14, b4: 0.14, b5: 0.12, b6: 0.10, b7: 0.10 },
-    h2h: { b1: 0.22, b2: 0.16, b3: 0.08, b4: 0.16, b5: 0.05, b6: 0.02, b7: 0.31 }
+    holding: { b1: 0.42, b2: 0.20, b3: 0.10, b4: 0.14, b5: 0.06, b6: 0.08 },
+    podium: { b1: 0.22, b2: 0.36, b3: 0.12, b4: 0.14, b5: 0.08, b6: 0.08 },
+    balanced: { b1: 0.18, b2: 0.18, b3: 0.16, b4: 0.16, b5: 0.16, b6: 0.16 },
+    dominance: { b1: 0.20, b2: 0.18, b3: 0.08, b4: 0.34, b5: 0.12, b6: 0.08 }
   };
 
   let cur = clone(DEFAULTS);
@@ -155,11 +141,11 @@
     } catch (e) { }
   }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(cur)); } catch (e) { } }
-  /** 归一化：把七个 β 按比例缩放到 Σ=1（仅在预置方案与读取时调用，避免编辑时相互挤压） */
+  /** 归一化：把六个 w 按比例缩放到 Σ=1（仅在预置方案与读取时调用，避免编辑时相互挤压） */
   function normalize() {
-    const s = cur.b1 + cur.b2 + cur.b3 + cur.b4 + cur.b5 + cur.b6 + cur.b7;
+    const s = cur.b1 + cur.b2 + cur.b3 + cur.b4 + cur.b5 + cur.b6;
     if (s <= 0) return;
-    ['b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7'].forEach(function (k) { cur[k] = Math.round(cur[k] / s * 10000) / 10000; });
+    ['b1', 'b2', 'b3', 'b4', 'b5', 'b6'].forEach(function (k) { cur[k] = Math.round(cur[k] / s * 10000) / 10000; });
     wDirty = false;
   }
   function set(k, v) {
@@ -175,28 +161,29 @@
     else { cur = clone(DEFAULTS); }
     normalize(); save();
   }
-  /** 实际使用的权重：若用户改过任一 β，则先按比例归一化，保证 Σ=1 且相对关系不变 */
+  /** 实际使用的权重：六维（若用户改过任一 w，则先按比例归一化，保证 Σ=1 且相对关系不变） */
   function weights() {
     if (wDirty) normalize();
-    return { m1: cur.b1, m2: cur.b2, m3: cur.b3, m4: cur.b4, m5: cur.b5, m6: cur.b6, m7: cur.b7 };
+    return { m1: cur.b1, m2: cur.b2, m3: cur.b3, m4: cur.b4, m5: cur.b5, m6: cur.b6 };
   }
 
-  /* 综合分：Overall = C^θ · P^(1-θ) */
+  /* 综合分：六维总分 t = Σ_d w_d · s_d（维度分已归一，榜首 = 100）。
+     旧口径的 C^θ·P^(1−θ) 随七模块一并停用，此处仅保留函数签名兼容。 */
   function overall(c, p) {
-    return Math.pow(Math.max(c, 0.01), cur.thetaC) * Math.pow(Math.max(p, 0.01), 1 - cur.thetaC);
+    return Math.max(c || 0, 0) + Math.max(p || 0, 0);
   }
-  /* 生涯 / 巅峰加权分（0–100 → ×10 成 0–1000） */
+  /* 生涯 / 巅峰加权分：两档已合并为同一套六维口径，这里按六维权重求和 */
   function weighted(mods) {
     const w = weights(); let s = 0;
-    ['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7'].forEach(function (k) { s += w[k] * (mods[k] || 0); });
+    ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'].forEach(function (k) { s += w[k] * (mods[k] || 0); });
     return s * 10;
   }
 
-  /* ---------------- 七模块配色（可在评分原理页自定义） ---------------- */
+  /* ---------------- 六维配色（可在评分原理页自定义） ---------------- */
   const CKEY = 'goat-modcolors-v1';
   const CDEF = {
     m1: '#ff5c8a', m2: '#ffa23e', m3: '#ffd84d', m4: '#4ade80',
-    m5: '#38bdf8', m6: '#a78bfa', m7: '#f472b6'
+    m5: '#38bdf8', m6: '#a78bfa'
   };
   let ccur = null;
   function loadColors() {
