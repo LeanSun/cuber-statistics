@@ -14,6 +14,8 @@ const RUNS = require('./runs.js');
 const evW = (ev) => (RUNS.EV_WEIGHT_V2[ev] == null ? RUNS.WEIGHT_V2_CFG.floor : RUNS.EV_WEIGHT_V2[ev]);
 const rows = (f) => fs.readFileSync(path.join(D, f), 'utf8').trim().split('\n').slice(1).map((l) => l.split('\t'));
 const f4 = (v) => Number(v).toFixed(4);
+/* 刻度：与 etl/score/sixdim.js 的 FULL 保持一致（2026-10-26 由 100 → 1000） */
+const FULL = 1000;
 
 /* 采集：dim → Map(pid → v)，仅 EV */
 const V = {}, RAW = {};
@@ -36,17 +38,17 @@ for (const [dim, w, cn] of DIMS) {
   let mx = 0, lpid = '-';
   for (const [p, v] of V[dim]) if (v > mx) { mx = v; lpid = p; }
   const v = V[dim].get(PID) || 0, rel = mx > 0 ? v / mx : 0;
-  tab.push({ dim, w, cn, v, mx, lpid, rel, s: rel * 100, contrib: w * rel * 100, gap: w * (1 - rel) * 100 });
+  tab.push({ dim, w, cn, v, mx, lpid, rel, s: rel * FULL, contrib: w * rel * FULL, gap: w * (1 - rel) * FULL });
 }
 const total = tab.reduce((s, x) => s + x.contrib, 0);
-P(`## 一、三阶得分 = ${f4(total)} / 100`);
+P(`## 一、三阶得分 = ${f4(total)} / ${FULL}`);
 P('');
-P('| 维 | 权重 | 他 | 三阶榜首 | rel | 得分 w×rel×100 | 缺口（相对满分） |');
+P(`| 维 | 权重 | 他 | 三阶榜首 | rel | 得分 w×rel×${FULL} | 缺口（相对满分） |`);
 P('|---|---|---|---|---|---|---|');
 for (const t of tab) P(`| ${t.dim} ${t.cn} | ${t.w} | ${f4(t.v)} | ${f4(t.mx)}（${t.lpid}） | ${f4(t.rel)} | ${f4(t.contrib)} | ${t.gap > 0.00005 ? '**−' + f4(t.gap) + '**' : '0（满分）'} |`);
-P(`| **合计** | 1.00 | | | | **${f4(total)}** | **−${f4(100 - total)}** |`);
+P(`| **合计** | 1.00 | | | | **${f4(total)}** | **−${f4(FULL - total)}** |`);
 P('');
-P(`缺口归因：M5 占 ${f4(tab[4].gap / (100 - total) * 100)}% ，M2 占 ${f4(tab[1].gap / (100 - total) * 100)}%。`);
+P(`缺口归因：M5 占 ${f4(tab[4].gap / (FULL - total) * 100)}% ，M2 占 ${f4(tab[1].gap / (FULL - total) * 100)}%。`);
 P('');
 
 /* 三阶榜 Top5 */
@@ -123,14 +125,14 @@ P('');
 
 /* what-if */
 const c0 = tab.reduce((s, t) => s + t.w * t.rel, 0);
-const noM5 = tab.filter((t) => t.dim !== 'M5').reduce((s, t) => s + t.w * t.rel, 0) / (1 - W.M5) * 100;
-const m5full = (c0 - W.M5 * tab[4].rel + W.M5) * 100;
-const m5m2full = (c0 - W.M5 * tab[4].rel + W.M5 - W.M2 * tab[1].rel + W.M2) * 100;
+const noM5 = tab.filter((t) => t.dim !== 'M5').reduce((s, t) => s + t.w * t.rel, 0) / (1 - W.M5) * FULL;
+const m5full = (c0 - W.M5 * tab[4].rel + W.M5) * FULL;
+const m5m2full = (c0 - W.M5 * tab[4].rel + W.M5 - W.M2 * tab[1].rel + W.M2) * FULL;
 P('## 四、what-if：这 9.83 分差从哪来');
 P('');
 P(`- 现状：${f4(total)}`);
 P(`- 若 M5 也拿满额（"他现在还是三阶世界第一"）：**${f4(m5full)}**（+${f4(m5full - total)}）`);
-P(`- 若 M2 也拿满额（"三阶领奖台不比 Max 少"）：再 +${f4(W.M2 * (1 - tab[1].rel) * 100)} → **${f4(m5m2full)}**`);
+P(`- 若 M2 也拿满额（"三阶领奖台不比 Max 少"）：再 +${f4(W.M2 * (1 - tab[1].rel) * FULL)} → **${f4(m5m2full)}**`);
 P(`- 若整个 M5 维度不计、其余五维按权重重新归一：**${f4(noM5)}**`);
 P('');
 P(`参考：三阶第二名 ${site[1] ? site[1].pid + ' ' + f4(site[1].t) : '-'}，他领先 ${site[1] ? f4(total - site[1].t) : '-'} 分（${site[1] ? (total / site[1].t).toFixed(2) : '-'} 倍）。`);

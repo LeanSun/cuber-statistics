@@ -228,7 +228,7 @@
         items.map(function (x) {
           const ev = M.EV[x.eid] || { zh: x.eid, en: x.eid };
           return '<span style="width:' + (x.v / tot0 * 100).toFixed(1) + '%;background:' + evColorOf(x.eid) +
-            '" title="' + esc(evName(ev)) + ' No.' + x.rk + ' · ' + U.fmt(x.v, 1) + '"></span>';
+            '" title="' + esc(evName(ev)) + ' No.' + x.rk + ' · ' + U.fmt(x.v, 2) + '"></span>';
         }).join('') + '</div>';
     }
     const keys = (ids && ids.length) ? ids : Object.keys(se);
@@ -274,7 +274,7 @@
   function infoTip(text) {
     return '<span class="tip" tabindex="0" aria-label="' + esc(text) + '">' + Ic.glyph('info', 'tip-ic') + '<span class="tip-body">' + esc(text) + '</span></span>';
   }
-  function fmtScore(x) { return U.fmt(x, 1); }
+  function fmtScore(x) { return U.fmt(x, 2); }
 
   P.util = {
     MOD: MOD, MODC: MODC, modName: modName, flag: flag, avatar: avatar, playerLink: playerLink,
@@ -684,7 +684,7 @@
       const stack = stackHtml(row, stackMode, useEv ? scopeIds : null, rt);
       h += '<td class="barcell bars-full"><div class="bar-row' + (evMode || multiMode ? ' evmode' : '') + '"><div class="bar-track">' +
         '<div class="bar-grow" style="width:' + bw.toFixed(1) + '%">' + stack + '</div></div>' +
-        '<span class="bar-total">' + U.fmt(score, 1) + '</span>' +
+        '<span class="bar-total">' + U.fmt(score, 2) + '</span>' +
         /* 世界名次只作参考（排序按六维分），放在 tooltip 里避免又被读成排序依据 */
         (evMode && row.be ? '<span class="ev-rank" title="' + esc(t('rank.evRankTip')) + '">No.' + row.be.r + '</span>' : '') +
         (multiMode ? '<span class="ev-hitnote">' + row.evHit + '/' + evsShown.length + '</span>' : '') +
@@ -755,7 +755,7 @@
     /* 只展示一个口径：六维加权总分（旧模型的生涯 / 巅峰拆分已停用）。
        项目筛选生效时显示所选项目范围内的总分，与榜单名次一致。 */
     h += '<div class="exp-v3-score lead"><span class="k">' + esc(inEv ? t('rank.evScore') : t('rank.tab.overall')) + '</span>' +
-      '<span class="v grad">' + U.fmt(inEv ? inEv.t : sc.overall, 1) + '</span></div>';
+      '<span class="v grad">' + U.fmt(inEv ? inEv.t : sc.overall, 2) + '</span></div>';
     h += '<div class="exp-v3-score"><span class="k">' + esc(t('player.rankWorld')) + '</span>' +
       '<span class="v">No.' + worldNo + '</span></div>';
     h += '</div></div>';
@@ -778,7 +778,7 @@
       h += '<div class="exp-v3-mod">' +
         '<span class="nm"><i style="background:' + c.color + '"></i>' + esc(c.name) + '</span>' +
         '<span class="track"><i style="width:' + Math.max(1.5, pct).toFixed(1) + '%;background:' + c.color + '"></i></span>' +
-        '<span class="raw" title="' + esc(t('player.raw')) + '">' + U.fmt(c.raw, 1) + '</span>' +
+        '<span class="raw" title="' + esc(t('player.raw')) + '">' + U.fmt(c.raw, 2) + '</span>' +
         '<span class="w" title="' + esc(t('player.weight')) + '">' + U.fmt(c.w * 100, 0) + '%</span>' +
         '<span class="v">' + U.fmt(c.v, 2) + '</span>' +
         '<span class="pc">' + U.fmt(pct, 1) + '%</span></div>';

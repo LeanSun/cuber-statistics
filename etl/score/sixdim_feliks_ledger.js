@@ -13,6 +13,8 @@ const DIMS = [
 const W = Object.fromEntries(DIMS.map(([k, w]) => [k, w]));
 const wSum = DIMS.reduce((s, d) => s + d[1], 0);
 const BETA = 0.2241;
+/* 刻度：与 etl/score/sixdim.js 的 FULL 一致（2026-10-26 由 100 → 1000） */
+const FULL = 1000;
 const RUNS = require('./runs.js');
 const evW = (ev) => (RUNS.EV_WEIGHT_V2[ev] == null ? RUNS.WEIGHT_V2_CFG.floor : RUNS.EV_WEIGHT_V2[ev]);
 const load = (f) => fs.readFileSync(path.join(D, f), 'utf8').trim().split('\n').slice(1);
@@ -51,7 +53,7 @@ for (const pid of pids) {
   const per = new Map();
   for (const [dim] of DIMS) { const a = sub.get(dim).get(pid); if (!a) continue; for (const [ev, v] of a) { if (!per.has(ev)) per.set(ev, {}); per.get(ev)[dim] = v; } }
   let t = 0;
-  for (const [ev, dm] of per) { let comp = 0; for (const [dim] of DIMS) { const v = dm[dim] || 0, mx = maxOf[dim].get(ev) || 0; if (v > 0 && mx > 0) comp += W[dim] * (v / mx); } t += comp * evW(ev) * 100 / wSum; }
+  for (const [ev, dm] of per) { let comp = 0; for (const [dim] of DIMS) { const v = dm[dim] || 0, mx = maxOf[dim].get(ev) || 0; if (v > 0 && mx > 0) comp += W[dim] * (v / mx); } t += comp * evW(ev) * FULL / wSum; }
   totals.push({ pid, t });
 }
 totals.sort((a, b) => b.t - a.t);
@@ -63,7 +65,7 @@ const evList = [...perEv.keys()].map((ev) => {
   const dm = perEv.get(ev);
   let comp = 0; const terms = {};
   for (const [dim] of DIMS) { const v = dm[dim] || 0, mx = maxOf[dim].get(ev) || 0; const rel = (v > 0 && mx > 0) ? v / mx : 0; terms[dim] = { v, mx, rel, term: W[dim] * rel }; comp += terms[dim].term; }
-  const t = comp * evW(ev) * 100 / wSum;
+  const t = comp * evW(ev) * FULL / wSum;
   return { ev, terms, compRaw: comp, evw: evW(ev), t };
 }).sort((a, b) => b.t - a.t);
 
@@ -81,8 +83,8 @@ P('');
 P('```');
 P('rel_d,ev = v_d,ev / max_d,ev     该维在该项目内的「相对榜首」比例（0–1，榜首=1）');
 P('comp_ev  = Σ_d w_d × rel_d,ev    该项目六维加权和（Σw = 1.00）');
-P('t_ev     = comp_ev × evW(ev) × 100');
-P('s_d      = Σ_ev rel_d,ev × evW(ev) × 100      （逐维加权小计）');
+P(`t_ev     = comp_ev × evW(ev) × ${FULL}`);
+P(`s_d      = Σ_ev rel_d,ev × evW(ev) × ${FULL}      （逐维加权小计）`);
 P('TOTAL    = Σ_ev t_ev = Σ_d w_d × s_d');
 P('```');
 P('');
@@ -103,15 +105,15 @@ for (const [dim, w, cn] of DIMS) {
   // 榜首 = 该维全站原始累计第一
   let bpid = '-', braw = 0;
   for (const [p, aa] of sub.get(dim)) { let s = 0; for (const [, v] of aa) s += v; if (s > braw) { braw = s; bpid = p; } }
-  const s = evList.reduce((acc, x) => acc + x.terms[dim].rel * x.evw * 100, 0);
+  const s = evList.reduce((acc, x) => acc + x.terms[dim].rel * x.evw * FULL, 0);
   sTot[dim] = s;
-  const ceil = sumEvW * 100;
+  const ceil = sumEvW * FULL;
   P(`| ${dim} ${cn} | ${w} | ${f4(raw)} | ${f4(braw)}（${bpid}） | ${f4(s)} | ${f4(ceil)} | ${(s / ceil * 100).toFixed(1)}% | ${f4(w * s)} |`);
 }
 P(`| **合计** | 1.00 | — | — | — | ${f4(sumEvW * 100)} | ${(DIMS.reduce((s2, [k, w]) => s2 + w * sTot[k], 0) / (sumEvW * 100) * 100).toFixed(1)}% | **${f4(DIMS.reduce((s2, [k, w]) => s2 + w * sTot[k], 0))}** |`);
 P('');
 P('> s_d 不是 raw/榜首 —— 每维在**每个项目内**各归一一次，再乘项目系数再求和。');
-P(`> 满额上限 = 他参加过的 ${evList.length} 个项目系数之和 ${f4(sumEvW)} × 100（假设每项每维都第一）。`);
+P(`> 满额上限 = 他参加过的 ${evList.length} 个项目系数之和 ${f4(sumEvW)} × ${FULL}（假设每项每维都第一）。`);
 P('');
 
 /* 三、逐项目 */
@@ -132,7 +134,7 @@ P('');
 P('## 四、主项目逐维明细（v / max / rel / w×rel）');
 P('');
 for (const x of evList.slice(0, 4)) {
-  P(`### ${x.ev}（evW = ${f4(x.evw)} → 事件分 = comp × ${f4(x.evw)} × 100）`);
+  P(`### ${x.ev}（evW = ${f4(x.evw)} → 事件分 = comp × ${f4(x.evw)} × ${FULL}）`);
   P('');
   P('| 维 | v（Feliks） | max（项目榜首） | rel | w | w×rel |');
   P('|---|---|---|---|---|---|');
@@ -142,7 +144,7 @@ for (const x of evList.slice(0, 4)) {
   }
   P(`| **comp** | | | | | **${f4(x.compRaw)}** |`);
   P('');
-  P(`t_ev = ${f4(x.compRaw)} × ${f4(x.evw)} × 100 = **${f4(x.t)}**`);
+  P(`t_ev = ${f4(x.compRaw)} × ${f4(x.evw)} × ${FULL} = **${f4(x.t)}**`);
   P('');
 }
 
@@ -157,8 +159,8 @@ P(`小项（< 1 分）：${evList.filter((x) => x.t < 1).map((x) => `${x.ev}=${f
 P('');
 P('## 六、结构性诊断');
 P('');
-const m5loss = 0.08 * (sumEvW * 100 - sTot.M5);
-P(`- **M5 是唯一全面塌陷的维度**：s5 = ${f4(sTot.M5)}，达成率仅 ${(sTot.M5 / (sumEvW * 100) * 100).toFixed(1)}%。`);
+const m5loss = 0.08 * (sumEvW * FULL - sTot.M5);
+P(`- **M5 是唯一全面塌陷的维度**：s5 = ${f4(sTot.M5)}，达成率仅 ${(sTot.M5 / (sumEvW * FULL) * 100).toFixed(1)}%。`);
 P(`  若 M5 也拿满额，总分将变成 ${f4(total + m5loss)}（+${f4(m5loss)}），但当前排名维本就按「最近参赛/最近 PB」衰减，`);
 P('  退役多年的历史选手在这一维天然接近 0 —— 这是设计意图，不是 bug。');
 P(`- **M1 略逊 Max**：${f4(36.0015)} vs ${f4(40.8611)}，但 s1 差距被逐项目归一摊薄（Max 的优势集中在三阶等少数项目）。`);

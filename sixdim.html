@@ -140,8 +140,9 @@
     arr.sort(function (a, b) { return b[key] - a[key]; });
     return arr;
   }
+  /* 刻度：单项目六维全满 = 1000（与 ETL 的 FULL 一致）；分数一律两位小数，
+     只有长尾的极小值（<1）保留三位，避免整列变成 0.00。 */
   function fmt(v) {
-    if (v >= 100) return v.toFixed(1);
     if (v >= 1) return v.toFixed(2);
     return v.toFixed(3);
   }

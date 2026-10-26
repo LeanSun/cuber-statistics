@@ -34,6 +34,11 @@
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   }
   var U = { esc: esc, round: round, fmt: fmt, num: num, hue: hue, initials: initials };
+  /* 六维刻度：单项目「六维全满」= SIX_FULL 分。
+     与 ETL 侧 etl/score/sixdim.js 的 FULL 必须一致（2026-10-26 由 100 → 1000）。
+     雷达 / PK 的轴上限、维度分说明都读这里，改一处即可全站同步。 */
+  var SIX_FULL = 1000;
+  U.sixFull = SIX_FULL;
 
   /* ---------------- 模块与权重（当前模型 = 六维） ----------------
      旧七模块（M1 纪录 / M2 锦标赛 / M3 公开赛 / M4 统治力 / M5 广度 / M6 厚度 / M7 Elo）
@@ -564,9 +569,9 @@
          旧模型的 career / peak 两档（七模块加权）已停用，这里统一取同一个总分，
          保证「生涯 / 巅峰」这类历史调用点不再读到旧量纲的数字。
          没有六维分的选手记 0 —— 不回退旧 esum，否则同一张榜会出现两套量纲。 */
-      p.career = round(sixTotal(p), 1);
-      p.peak = round(sixTotal(p), 1);
-      p.overall = round(sixTotal(p), 1);
+      p.career = round(sixTotal(p), 2);
+      p.peak = round(sixTotal(p), 2);
+      p.overall = round(sixTotal(p), 2);
       p.balance = 0;
       if (p.hue == null && p.name) p.hue = hue(p.name);
       /* eloPeak：仅作历史字段保留（页面已不再展示 Elo），缺失时给中性值 1500，

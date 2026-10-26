@@ -98,7 +98,7 @@
     h += '<h1><a class="wca-name" href="https://www.worldcubeassociation.org/persons/' + esc(p.wcaId) + '" target="_blank" rel="noopener" title="' + esc(t('player.wca')) + '">' + esc(p.nameZh || p.name) + ' ' + Ic.glyph('external') + '</a></h1>';
     h += '<div class="pcard-score">';
     h += '<div class="sc-wrap"><div class="sc-label">' + esc(t('rank.tab.overall')) + '</div>' +
-      '<div class="sc-value grad">' + U.fmt(sc.overall, 1) + '</div></div>';
+      '<div class="sc-value grad">' + U.fmt(sc.overall, 2) + '</div></div>';
     h += '</div>';
     h += '</div>';
     h += '<div class="pid-box">' +
@@ -118,8 +118,8 @@
        旧模型的「生涯 / 巅峰 / 均衡」三档已随七模块停用。 */
     h += '<div class="pcard-sub">';
     h += '<div class="sc-row">';
-    h += '<div class="sc-mini"><span>' + esc(t('m4.name')) + '</span><b>' + U.fmt((p.six && p.six.m4) || 0, 1) + '</b></div>';
-    h += '<div class="sc-mini"><span>' + esc(t('m5.name')) + '</span><b>' + U.fmt((p.six && p.six.m5) || 0, 1) + '</b></div>';
+    h += '<div class="sc-mini"><span>' + esc(t('m4.name')) + '</span><b>' + U.fmt((p.six && p.six.m4) || 0, 2) + '</b></div>';
+    h += '<div class="sc-mini"><span>' + esc(t('m5.name')) + '</span><b>' + U.fmt((p.six && p.six.m5) || 0, 2) + '</b></div>';
     h += '</div>';
     h += '<button class="btn btn-primary pkadd-btn" data-pkadd="' + p.id + '">' + Ic.glyph('pk') + ' ' + esc(t('player.compare')) + '</button>';
     h += '</div>';
@@ -165,8 +165,8 @@
     cs.forEach(function (c) {
       h += '<div class="breakdown-row">';
       h += '<span class="bk-name"><i style="background:' + c.color + '"></i>' + esc(c.name) + '</span>';
-      h += '<span class="bk-bar"><i style="width:' + Math.min(100, c.raw) + '%;background:' + c.color + '"></i></span>';
-      h += '<span class="bk-num">' + U.fmt(c.raw, 1) + '</span>';
+      h += '<span class="bk-bar"><i style="width:' + Math.min(100, c.raw / (U.sixFull || 1000) * 100) + '%;background:' + c.color + '"></i></span>';
+      h += '<span class="bk-num">' + U.fmt(c.raw, 2) + '</span>';
       h += '<span class="bk-num">' + U.fmt(c.w * 100, 1) + '%</span>';
       h += '<span class="bk-num"><b>' + U.fmt(c.v, 2) + '</b></span>';
       h += '<span class="bk-num">' + U.fmt(c.v / tot * 100, 1) + '%</span>';
@@ -181,7 +181,7 @@
     h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('player.cmp')) + '</h2>' + infoTip(t('player.cmp.d')) + '</div>';
     const cmp = P.playerCompare ? P.playerCompare(p) : null;
     if (cmp) {
-      h += '<div class="cmp-radar-wrap"><div class="pk-radar-wrap">' + ecBox('radar', { rows: cmp.series, indicators: cmp.indicators }, { max: 100, radius: '72%' }, 500) + '</div></div>';
+      h += '<div class="cmp-radar-wrap"><div class="pk-radar-wrap">' + ecBox('radar', { rows: cmp.series, indicators: cmp.indicators }, { max: U.sixFull || 1000, radius: '72%' }, 500) + '</div></div>';
       h += '<p class="tiny muted" style="text-align:center;margin-bottom:8px">' + esc(t('player.cmp.note')) + '</p>';
     }
     h += '</div>';
@@ -377,7 +377,7 @@
       });
       h += '</div>';
       /* 计算过程：维度分 s（已按该维榜首归一为 100）× 权重 w ＝ 加权贡献 v */
-      h += '<div class="dc-process">维度分 <b>s = ' + U.fmt(c.raw, 1) + '</b>' +
+      h += '<div class="dc-process">维度分 <b>s = ' + U.fmt(c.raw, 2) + '</b>' +
         '<span class="op">×</span> 权重 <b>' + U.fmt(c.w * 100, 0) + '%</b>' +
         '<span class="op">=</span> 加权贡献 <b class="dc-v">' + U.fmt(c.v, 2) + '</b></div>';
       h += '</div>';
@@ -462,7 +462,7 @@
       h += '<div class="pk-radar-wrap">' + ecBox('radar', {
         rows: [a, b].map(function (p, i) { return { name: p.name, color: colors[i], values: MOD.map(function (k) { return p.m[k]; }) }; }),
         indicators: labels
-      }, { radius: '66%', max: 100 }, 360) + '</div></div>';
+      }, { radius: '66%', max: U.sixFull || 1000 }, 360) + '</div></div>';
       h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('pk.advantage')) + '</h2>' + infoTip(t('pk.advantage.d')) + '</div>';
       h += ecBox('diverging', MOD.map(function (k) {
         return { name: modName(k), d: [sixW(k) * sixK(a, k), sixW(k) * sixK(b, k)] };
@@ -481,7 +481,7 @@
       h += '<div class="pk-radar-wrap">' + ecBox('radar', {
         rows: ps.map(function (p, i) { return { name: p.name, color: colors[i], values: MOD.map(function (k) { return p.m[k]; }) }; }),
         indicators: labels
-      }, { radius: '66%', max: 100 }, 360) + '</div>';
+      }, { radius: '66%', max: U.sixFull || 1000 }, 360) + '</div>';
       h += '</div>';
 
       /* 加权贡献堆叠 */
@@ -511,7 +511,7 @@
     h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('pk.style')) + '</h2>' + infoTip(t('pk.style.d')) + '</div>';
     const pts = ps.map(function (p, i) {
       const sc = scoreOf(p);
-      return [round(sixK(p, 'm1'), 1), round(sixK(p, 'm2'), 1), esc(p.name) + ' · ' + U.fmt(sc.overall, 1), sc.overall];
+      return [round(sixK(p, 'm1'), 1), round(sixK(p, 'm2'), 1), esc(p.name) + ' · ' + U.fmt(sc.overall, 2), sc.overall];
     });
     h += ecBox('scatter', pts, {
       xName: t('m1.name'), yName: t('m2.name')
@@ -531,7 +531,7 @@
       '<div class="pk-pid"><h3>' + esc(p.nameZh || p.name) + '</h3>' +
       '<div class="row" style="gap:6px;margin-top:4px">' + flag(p.country) + '<span class="tiny muted">' + esc(countryName(p.country)) + '</span>' +
       '<span class="tiny muted">' + (p.gender === 'F' ? t('f.gender.f') : t('f.gender.m')) + '</span></div></div>' +
-      '<div class="pk-pscore"><b>' + U.fmt(sc.overall, 1) + '</b><span>' + esc(t('rank.tab.overall')) + '</span></div>';
+      '<div class="pk-pscore"><b>' + U.fmt(sc.overall, 2) + '</b><span>' + esc(t('rank.tab.overall')) + '</span></div>';
     h += '</div>';
     h += '<div class="pk-pbars">';
     cs.forEach(function (c) {
@@ -541,8 +541,8 @@
     });
     h += '</div>';
     h += '<div class="pk-keys">';
-    [['rank.tab.overall', U.fmt(sc.overall, 1)], ['m4.name', U.fmt(sixK(p, 'm4'), 1)], ['col.wr', p.wr],
-      ['col.wc', p.wcGold], ['m5.name', U.fmt(sixK(p, 'm5'), 1)], ['col.months', p.months1],
+    [['rank.tab.overall', U.fmt(sc.overall, 2)], ['m4.name', U.fmt(sixK(p, 'm4'), 2)], ['col.wr', p.wr],
+      ['col.wc', p.wcGold], ['m5.name', U.fmt(sixK(p, 'm5'), 2)], ['col.months', p.months1],
       ['player.events', p.events.length], ['player.comps', p.comps]].forEach(function (s) {
         h += '<div class="pk-key"><span class="pk-kk">' + esc(t(s[0])) + '</span><span class="pk-kv">' + s[1] + '</span></div>';
       });
@@ -565,7 +565,7 @@
     h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('pk.robust')) + '</h2>' + infoTip(t('pk.robust.d')) + '</div>';
     h += ecBox('gauge', prob, {}, 220);
     h += '<p class="tiny muted" style="text-align:center">' + esc(winner.name) + ' ' + esc(t('pk.win')) + ' · ' +
-      U.fmt(Math.max(sa.overall, sb.overall), 1) + ' vs ' + U.fmt(Math.min(sa.overall, sb.overall), 1) + '</p>';
+      U.fmt(Math.max(sa.overall, sb.overall), 2) + ' vs ' + U.fmt(Math.min(sa.overall, sb.overall), 2) + '</p>';
     h += '</div>';
 
     h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('pk.flip')) + '</h2>' + infoTip(t('pk.flip.d')) + '</div>';

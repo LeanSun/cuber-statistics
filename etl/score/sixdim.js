@@ -16,7 +16,12 @@
  * 归一化：每个 (维度 × 项目) 在**当前筛选范围**内以榜首为 1（leader=1），
  *   消除六维量纲差（15,506 vs 77 差 200 倍的问题在合成层解决）。
  * 合成：  comp_e(pid) = EV_W(e) × Σ_d w_d × rel_d(pid, e)
- *         total(pid)  = Σ_e comp_e(pid) × 100 / Σ_{选中维} w_d   → 全维时榜首≈100
+ *         total(pid)  = Σ_e comp_e(pid) × FULL / Σ_{选中维} w_d  → 全维时榜首≈FULL
+ *
+ * 刻度 FULL（2026-10-26 用户要求「倍数翻十倍，看着分数多一些显得厉害」）：
+ *   原 100 → 现 1000。**纯线性换算**，只改乘数，不改任何权重 / 归一 / 截顶 / 阈值。
+ *   因此所有分数（维度分 s_d、单项目分 t_ev、总分 t）整体 ×10，
+ *   名次、占比、结构比例全部不变。改这里即可，全站唯一真源。
  *
  * 数据源（各封存脚本的纯写出型事实表）：
  *   M1_facts.tsv  (pid,ev,type,level,scope,year,frac,score)      ← m1_hold.js
@@ -74,6 +79,9 @@ const DIMS = {
   M6: { w: 0.10, cn: '突破幅度' },
 };
 const BETA = 0.2241;                    // M2 普通赛折算（M2-F1 冻结常量）
+/* 刻度：单项目「六维全满」= FULL 分（原 100，2026-10-26 用户要求 ×10 → 1000）。
+   只影响显示量级，不影响排序与结构（纯线性换算）。 */
+const FULL = 1000;
 const TRACK_OF = { single: 'single', avg: 'avg' };
 
 /* ── 姓名 + 性别：data.js 全量玩家为主源，roster 长尾名册兜底 ── */
@@ -216,7 +224,7 @@ for (const pid of pids) {
       const mx = maxOf[dim].get(ev) || 0;
       if (v > 0 && mx > 0) comp += DIMS[dim].w * (v / mx);
     }
-    comp = comp * evW(ev) * 100 / wSum;
+    comp = comp * evW(ev) * FULL / wSum;
     total += comp; evParts++;
   }
   rowsOut.push({ pid, name: nameOf.get(pid) || pid, gender: genderOf.get(pid) || '?', total, evParts, perEv });
@@ -274,14 +282,14 @@ const DIM_KEYS = Object.keys(DIMS);
 const noFilter = !OPT.ev && OPT.gender === 'all' && OPT.asof === 2026 && DIM_KEYS.every((k) => OPT.dims.includes(k));
 const trk = (OPT.track === 'both' || !OPT.track) ? '' : '_' + OPT.track;   // '' | '_single' | '_avg'
 if (OPT.csv && noFilter) {
-  /* 站点接入用：s_d = Σ_ev (v/mx) × evW × 100 / wSum，满足 总分 = Σ_d w_d × s_d */
+  /* 站点接入用：s_d = Σ_ev (v/mx) × evW × FULL / wSum，满足 总分 = Σ_d w_d × s_d */
   const site = ['pid\ts1\ts2\ts3\ts4\ts5\ts6\tt'];
   for (const x of rowsOut) {
     const s = selDims.map((dim) => {
       let acc = 0;
       for (const [ev, dmap] of x.perEv) {
         const v = dmap[dim] || 0, mx = maxOf[dim].get(ev) || 0;
-        if (v > 0 && mx > 0) acc += (v / mx) * evW(ev) * 100 / wSum;
+        if (v > 0 && mx > 0) acc += (v / mx) * evW(ev) * FULL / wSum;
       }
       return acc.toFixed(4);
     });
@@ -289,7 +297,7 @@ if (OPT.csv && noFilter) {
   }
   fs.writeFileSync(path.join(D, 'sixdim_site' + trk + '.tsv'), site.join('\n') + '\n', 'utf8');
   /* ── 按项目分解的六维分（站点「项目筛选后按六维总分排序」用）──
-     s_d[ev] = (v_d,ev / max_d,ev) × evW(ev) × 100 / wSum，与 sixdim_site.tsv 同一归一分母，
+     s_d[ev] = (v_d,ev / max_d,ev) × evW(ev) × FULL / wSum，与 sixdim_site.tsv 同一归一分母，
      因此 Σ_ev s_d[ev] ≡ s_d、Σ_d w_d·s_d[ev] ≡ t_ev，全项目求和可精确复原全站分。 */
   const byEv = ['pid\tev\ts1\ts2\ts3\ts4\ts5\ts6\tt'];
   let beLines = 0;
@@ -297,7 +305,7 @@ if (OPT.csv && noFilter) {
     for (const [ev, dmap] of x.perEv) {
       const s = DIM_KEYS.map((dim) => {
         const v = dmap[dim] || 0, mx = maxOf[dim].get(ev) || 0;
-        return (v > 0 && mx > 0) ? (v / mx) * evW(ev) * 100 / wSum : 0;
+        return (v > 0 && mx > 0) ? (v / mx) * evW(ev) * FULL / wSum : 0;
       });
       let t = 0;
       DIM_KEYS.forEach((k, i) => { t += DIMS[k].w * s[i]; });

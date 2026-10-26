@@ -766,7 +766,7 @@
         h += '<div class="card reveal king-card"><div class="row" style="gap:10px">' + Ic.event(e.id, 'ev-ic') +
           '<div><div class="tiny muted">' + esc(evName(e)) + '</div><div style="font-weight:600">' + playerLink(best) + '</div></div></div>';
         h += '<div class="row tiny muted" style="margin-top:8px;gap:12px"><span>' + flag(best.country) + '</span>' +
-          '<span>' + notation('w_{e}') + ' ' + U.fmt(e.w, 2) + '</span><span>' + U.fmt(best.overall * (0.5 + e.w / 2), 1) + '</span></div>';
+          '<span>' + notation('w_{e}') + ' ' + U.fmt(e.w, 2) + '</span><span>' + U.fmt(best.overall * (0.5 + e.w / 2), 2) + '</span></div>';
         h += '</div>';
       });
       h += '</div>';
@@ -788,7 +788,7 @@
         esc(t('top.nation.per')) + '</th><th>' + esc(t('top.nation.top')) + '</th><th class="tl">' + esc(t('col.player')) + '</th></tr></thead><tbody>';
       M.nations.slice(0, 24).forEach(function (n) {
         h += '<tr><td class="tl">' + flag(n.iso) + ' ' + esc(countryName(n.iso) || n.name || n.iso) + '</td><td class="tl tiny muted">' + esc(contName(n.continent)) + '</td>' +
-          '<td class="num">' + U.num(n.total) + '</td><td class="num">' + U.fmt(n.perCapita, 1) + '</td><td class="num">' + U.fmt(n.best, 1) + '</td>' +
+          '<td class="num">' + U.num(n.total) + '</td><td class="num">' + U.fmt(n.perCapita, 1) + '</td><td class="num">' + U.fmt(n.best, 2) + '</td>' +
           '<td class="tl tiny">' + esc(n.bestName) + '</td></tr>';
       });
       h += '</tbody></table></div>';
@@ -800,8 +800,8 @@
         esc(t('col.m4')) + '</th><th>' + esc(t('stat.yearsTop10')) + '</th></tr></thead><tbody>';
       list.forEach(function (p, i) {
         h += '<tr><td class="tl">' + (i + 1) + '</td><td class="tl"><div class="pname">' + avatar(p, 'sm') + playerLink(p) + '</div></td>' +
-          '<td class="num">' + U.fmt(scoreOf(p).overall, 1) + '</td><td class="num">' + p.months1 + '</td>' +
-          '<td class="num">' + U.fmt((p.six && p.six.m4) || 0, 1) + '</td><td class="num">' + Math.round(p.months10 / 12) + '</td></tr>';
+          '<td class="num">' + U.fmt(scoreOf(p).overall, 2) + '</td><td class="num">' + p.months1 + '</td>' +
+          '<td class="num">' + U.fmt((p.six && p.six.m4) || 0, 2) + '</td><td class="num">' + Math.round(p.months10 / 12) + '</td></tr>';
       });
       h += '</tbody></table></div>';
     } else {
@@ -827,7 +827,7 @@
         h += '<tr><td class="tl"><div class="pname">' + avatar(p, 'sm') + playerLink(p) + '</div></td><td class="num">' + before + '</td>' +
           '<td class="num" style="color:' + (d > 0 ? 'var(--m4)' : (d < 0 ? 'var(--m1)' : 'var(--text-3)')) + '">' +
           (d > 0 ? '↑' : (d < 0 ? '↓' : '·')) + ' ' + Math.abs(d) + '</td>' +
-          '<td class="num">' + U.fmt(scoreOf(p).overall * factor(p), 1) + '</td></tr>';
+          '<td class="num">' + U.fmt(scoreOf(p).overall * factor(p), 2) + '</td></tr>';
       });
       h += '</tbody></table></div>';
     }
@@ -874,15 +874,15 @@
   const MD = [
     {
       id: 'overview', h: ['六维模型总览', 'Six-dimension overview'], g: null,
-      simple: ['选手总分由六个维度加权合成：每个维度先独立算出「维度分」（榜首归一为 100，其余按相对值线性缩放），再乘以该维度的权重 w<sub>d</sub>，加权求和即为总分。旧版七模块模型（M1–M7，含 Elo 对战）已整体停用，不再参与任何榜单。',
-        'A player total is the weighted sum of six dimensions. Each dimension is normalised so the leader scores 100, then multiplied by its weight w_d. The old seven-module model (M1–M7, including Elo head-to-head) is retired and no longer feeds any ranking.'],
-      f: ['$$t=\\sum_{d}w_{d}\\,s_{d},\\qquad s_{d}=100\\cdot\\frac{x_{d}}{\\max_{p}x_{d}},\\qquad \\sum_{d}w_{d}=1$$',
+      simple: ['选手总分由六个维度加权合成：每个维度先独立算出「维度分」（榜首归一为 1000，其余按相对值线性缩放），再乘以该维度的权重 w<sub>d</sub>，加权求和即为总分。旧版七模块模型（M1–M7，含 Elo 对战）已整体停用，不再参与任何榜单。',
+        'A player total is the weighted sum of six dimensions. Each dimension is normalised so the leader scores 1000, then multiplied by its weight w_d. The old seven-module model (M1–M7, including Elo head-to-head) is retired and no longer feeds any ranking.'],
+      f: ['$$t=\\sum_{d}w_{d}\\,s_{d},\\qquad s_{d}=1000\\cdot\\frac{x_{d}}{\\max_{p}x_{d}},\\qquad \\sum_{d}w_{d}=1$$',
         '$$w=(\\underbrace{0.28}_{M1},\\underbrace{0.24}_{M2},\\underbrace{0.18}_{M4},\\underbrace{0.12}_{M3},\\underbrace{0.10}_{M6},\\underbrace{0.08}_{M5})$$'],
       detail: [
         ['六个维度回答六个不同的问题：M1 纪录持有（破的纪录守了多久）、M2 领奖台（拿过多少冠亚季军）、M3 大赛破纪录（锦标赛上突破的加成）、M4 统治力（保持在世界前十有多久）、M5 当前排名（此刻站在世界各榜什么位置）、M6 突破幅度（破纪录瞬间把人类前沿推远多少）。',
           'The six dimensions answer six different questions: M1 record ownership (how long a broken record was held), M2 podiums, M3 record-breaking at championships, M4 dominance (time spent inside the world top ten), M5 current ranking, M6 breakthrough margin.'],
-        ['维度分先按「榜首 = 100」归一再加权，是为了让六个量纲完全不同的维度（M2 原始量级上万、M6 只有几十）能放在同一把尺子上相加；归一后每个维度都是 0–100 的同刻度分数，权重才具有可读的含义。',
-          'Normalising each dimension to leader = 100 lets dimensions with wildly different scales (M2 in the tens of thousands, M6 in the tens) be summed on one ruler; only then do the weights mean what they say.'],
+        ['维度分先按「榜首 = 1000」归一再加权，是为了让六个量纲完全不同的维度（M2 原始量级上万、M6 只有几十）能放在同一把尺子上相加；归一后每个维度都是 0–1000 的同刻度分数，权重才具有可读的含义。',
+          'Normalising each dimension to leader = 1000 lets dimensions with wildly different scales (M2 in the tens of thousands, M6 in the tens) be summed on one ruler; only then do the weights mean what they say.'],
         ['跨维相关性已逐对审查：15 对组合中唯一超过 0.7 的只有 M1 × M4 = 0.714，且属于语义近邻（守得住纪录 ⇔ 长期在世界前十），分年代桶内相关系数不下降，判定为真实机制而非时代混杂，处置方式是标注并在权重上压制。',
           'All 15 dimension pairs were checked: the only pair above 0.7 is M1 x M4 = 0.714, a semantic neighbour rather than a bug; the correlation does not fall inside single-decade buckets, so it is documented and discounted by weight.']
       ]
@@ -1005,7 +1005,7 @@
     const SN = (M.meta && M.meta.sixNames) || { m1: '纪录持有', m2: '领奖台', m3: '大赛破纪录', m4: '统治力', m5: '当前排名', m6: '突破幅度' };
     h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('md.total.title')) + '</h2></div>' +
       '<p class="tiny muted" style="margin-bottom:10px">' + esc(t('md.total.d')) + '</p>' +
-      '<p class="tiny muted" style="margin-bottom:12px">\\[\\displaystyle t=\\sum_{d} w_{d}\\,s_{d},\\qquad s_{d}=100\\cdot\\frac{x_{d}}{\\max_{p}x_{d}}\\]</p>' +
+      '<p class="tiny muted" style="margin-bottom:12px">\\[\\displaystyle t=\\sum_{d} w_{d}\\,s_{d},\\qquad s_{d}=1000\\cdot\\frac{x_{d}}{\\max_{p}x_{d}}\\]</p>' +
       '<div class="breakdown-table">' +
       '<div class="breakdown-row bk-head"><span>' + esc(t('rank.module')) + '</span><span></span>' +
       '<span class="bk-num">' + esc(t('player.weight')) + '</span></div>';

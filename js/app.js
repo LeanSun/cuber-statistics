@@ -541,7 +541,7 @@
             return '<div class="row" style="gap:10px;padding:5px 0;border-bottom:1px solid var(--border)">' +
               '<a href="#/player/' + p.id + '" style="flex:1">' + esc(p.name) + '</a>' +
               P.util.flag(p.country) + '<span class="tiny muted">' + esc(P.util.countryName(p.country)) + '</span>' +
-              '<span class="tiny muted">' + U.fmt(p.overall, 1) + '</span></div>';
+              '<span class="tiny muted">' + U.fmt(p.overall, 2) + '</span></div>';
           }).join('') + '</div>';
         });
       }
