@@ -620,8 +620,13 @@
            · 名次换位时图表自己用很短的过渡补间，不会拖慢整体速度。
            播放原点（tlPlayIdx / tlPlayMs）独立保存，拖动时间轴时实时重置，
            因此播放中也能点击 / 拖动滑块跳到任意时间点并继续播放。 */
-        const rate = (P.tlRate ? P.tlRate() : { jump: 30, anim: 200, fps: 300 });
+        const rate = (P.tlRate ? P.tlRate() : { jump: 30, anim: 200, fps: 100 });
         const daysPerSec = Math.max(0.5, rate.jump || 30);
+        /* 重绘间隔（rate.fps，毫秒）：0 = 逐帧重绘；>0 时每 fps 毫秒才重画一次图表。
+           重绘是播放中最贵的一步（整张竞速图要重算明细并重排），但日期标签、滑块位置、
+           里程碑提示仍逐帧更新 —— 节流只降低画面刷新率，不拖慢时间推进本身。 */
+        const redrawGap = Math.max(0, rate.fps || 0);
+        let lastDrawMs = 0;
         tlPlayIdx = +range.value;
         tlPlayMs = (window.performance && performance.now) ? performance.now() : Date.now();
         lastMsDate = P.tlDateAtFy ? P.tlDateAtFy(P.tlIdxToInfo(tlPlayIdx, state.tlStep).fy) : null;
@@ -642,7 +647,11 @@
           /* 小数天：让分数在两天之间连续插值 */
           const fy = P.tlFyAt ? P.tlFyAt(idx, frac, state.tlStep) : (P.tlIdxToInfo(idx, state.tlStep).fy);
           state.tlFy = fy;
-          if (box) { box.setAttribute('data-fy', fy); P.drawTimeline(box); }
+          /* 到了结尾一定要画最后一帧，否则节流会把最终名次吞掉 */
+          if (box && (!redrawGap || nowMs - lastDrawMs >= redrawGap || pos >= sl.max)) {
+            lastDrawMs = nowMs;
+            box.setAttribute('data-fy', fy); P.drawTimeline(box);
+          }
           /* 每帧按图表真实时间（小数年→日期）精确检测里程碑跨越，弹窗时间与竞速图严格对应 */
           const curDate = P.tlDateAtFy ? P.tlDateAtFy(fy) : (P.tlDateAt ? P.tlDateAt(idx, state.tlStep) : null);
           if (lastMsDate && curDate && curDate !== lastMsDate) msToastFor(lastMsDate, curDate);
@@ -673,7 +682,7 @@
         }
       }
       function applyRate(key, raw, fromNumber) {
-        const r = (P.tlRate ? P.tlRate() : { jump: 30, anim: 200, fps: 300 });
+        const r = (P.tlRate ? P.tlRate() : { jump: 30, anim: 200, fps: 100 });
         const val = (P.tlClampRate ? P.tlClampRate(key, raw) : parseInt(raw, 10));
         if (isNaN(val)) return;
         r[key] = val;

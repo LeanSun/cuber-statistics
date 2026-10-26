@@ -983,6 +983,14 @@ tr[data-prow]:hover .pname .linkish,.pname:hover .linkish{
 .exp-v3-meta span{padding:1px 9px;border-radius:999px;background:var(--bg-soft-2);
   border:1px solid var(--border);white-space:nowrap}
 .exp-v3-meta .m-gender{font-weight:600;color:var(--text-2)}
+/* 国旗移入 meta 行、排在国家名前面（与列表页读法一致）：
+   胶囊整体仍是圆角标签，内层国名要撤掉继承来的胶囊样式，否则会嵌套一层底色。 */
+.exp-v3-meta .m-country{display:inline-flex;align-items:center;gap:6px;padding-left:6px}
+.exp-v3-meta .m-country .fi{width:17px;height:12px;border-radius:2px;flex:none;
+  box-shadow:0 0 0 1px color-mix(in srgb,var(--border) 70%,transparent)}
+.exp-v3-meta .m-country .m-cname{padding:0;border:0;background:none;color:inherit}
+/* 六维贡献列头：这里只占位对齐网格，不再画一条空的灰色柱子 */
+.exp-v3-mod .track-slot{height:9px}
 .exp-v3-wca{font-size:11px;color:var(--text-3);margin-top:0}
 .exp-v3-wca code{font-family:var(--mono,monospace);background:var(--bg-soft-2);
   border:1px solid var(--border);padding:1px 6px;border-radius:5px;color:var(--text-2)}

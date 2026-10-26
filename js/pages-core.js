@@ -738,15 +738,17 @@
 
     let h = '<div class="exp-inner exp-v3">';
 
-    /* ── 顶部：国旗 + 姓名 + 三个总分 ───────────────────────── */
+    /* ── 顶部：姓名 + 身份信息 + 三个总分 ─────────────────────────
+       身份行顺序（2026-10-27 定稿）：**国旗 → 国家名称 → 性别 → 参赛时间**。
+       国旗原先是姓名左侧的一张大图，读起来先看到旗子再看到名字、与列表页
+       「国旗紧跟在国名前」的读法不一致；现在收到 meta 行的国名胶囊里。 */
     h += '<div class="exp-v3-top">';
     h += '<div class="exp-v3-id">' +
-      '<span class="exp-v3-flag">' + flag(p.country, 'f-lg') + '</span>' +
       '<div class="exp-v3-idtxt">' +
       '<div class="exp-v3-nameline"><b class="exp-v3-name">' + esc(p.name) + '</b>' +
         '<span class="exp-v3-wca">WCA · <code>' + esc(String(p.wcaId || p.id)) + '</code></span></div>' +
       '<div class="exp-v3-meta">' +
-      '<span class="m-country">' + esc(countryName(p.country)) + '</span>' +
+      '<span class="m-country">' + flag(p.country) + '<span class="m-cname">' + esc(countryName(p.country)) + '</span></span>' +
       '<span class="m-gender">' + (genderOf(p.gender) === 'F' ? esc(t('f.gender.f')) : esc(t('f.gender.m'))) + '</span>' +
       '<span class="m-years">' + p.start + '–' + p.end + '</span>' +
       '</div>' +
@@ -768,16 +770,27 @@
        否则展开后只剩一串「100.0 51% 50.78 67.0%」看不出含义。 */
     h += '<div class="exp-v3-mod exp-v3-mod-head">' +
       '<span class="nm">' + esc(t('rank.dimCol')) + '</span>' +
-      '<span class="track"></span>' +
+      /* 表头这一格原先输出一个带 track 类的空 span，渲染出来是「一条灰色空柱」，
+         看着像是漏画了数据。现在只留一个无样式的占位格保住网格对齐。 */
+      '<span class="track-slot" aria-hidden="true"></span>' +
       '<span class="raw" title="' + esc(t('expCol.rawD')) + '">' + esc(t('player.raw')) + '</span>' +
       '<span class="w" title="' + esc(t('expCol.wD')) + '">' + esc(t('player.weight')) + '</span>' +
       '<span class="v" title="' + esc(t('expCol.vD')) + '">' + esc(t('player.contrib')) + '</span>' +
       '<span class="pc" title="' + esc(t('expCol.pcD')) + '">' + esc(t('player.pct')) + '</span></div>';
+    /* 条长按「相对最大贡献」归一（2026-10-27 定稿，方案 A）：
+       六维天然是六份，贡献最大的那一维通常也只占 27% 上下；条长若直接等于真实占比，
+       六条全都不到轨道的三分之一，彼此的长短差异几乎看不出来。
+       现在把贡献最大的那条撑满轨道、其余按与它的比例缩放 —— 一眼看出谁在撑分；
+       右侧「占比」列仍是真实百分比，不随条长缩放而失真。 */
+    const topV = csDesc.length ? csDesc[0].v : 0;
     csDesc.forEach(function (c) {
       const pct = c.v / tot * 100;
+      const bw = topV > 0 ? Math.max(1.5, c.v / topV * 100) : 0;
       h += '<div class="exp-v3-mod">' +
         '<span class="nm"><i style="background:' + c.color + '"></i>' + esc(c.name) + '</span>' +
-        '<span class="track"><i style="width:' + Math.max(1.5, pct).toFixed(1) + '%;background:' + c.color + '"></i></span>' +
+        '<span class="track" title="' + esc(t('player.contrib')) + ' ' + U.fmt(c.v, 2) +
+        '（占总分 ' + U.fmt(pct, 1) + '%）· 条长按相对最大贡献归一"><i style="width:' +
+        bw.toFixed(1) + '%;background:' + c.color + '"></i></span>' +
         '<span class="raw" title="' + esc(t('player.raw')) + '">' + U.fmt(c.raw, 2) + '</span>' +
         '<span class="w" title="' + esc(t('player.weight')) + '">' + U.fmt(c.w * 100, 0) + '%</span>' +
         '<span class="v">' + U.fmt(c.v, 2) + '</span>' +

@@ -73,13 +73,17 @@
   /* 动画速率：可自定义「时间跳跃（天/秒）/ 动画时长 / 刷新间隔」，持久化到 localStorage
      每项同时提供滑杆与数字输入框：滑杆用于快速手调，数字框用于精确输入（如 45 天/秒）。 */
   const RATE_KEY = 'goat-tlrate-v1';
-  /* 默认值按「看得清又不拖沓」来定：60 天/秒约 4 分钟走完 23 年，
-     换位补间 260ms 短于大部分相邻帧的累积位移，跟得上播放速度。 */
-  const RATE_DEF = { jump: 30, anim: 200, fps: 300 };
+  /* 默认值按「看得清又不拖沓」来定：30 天/秒约 4.5 分钟走完 23 年，
+     换位补间 200ms 短于大部分相邻帧的累积位移，跟得上播放速度。
+     fps（重绘间隔）此前是个没接线的滑杆 —— 播放改走 requestAnimationFrame 逐帧重绘后
+     就没人再读它，改它完全没有效果。2026-10-27 起真正生效：
+     播放时每 fps 毫秒才重绘一次图表（0 = 不节流、逐帧重绘）。
+     默认 100ms（约 10 帧/秒）兼顾流畅与性能；低端机器调大即可降负载。 */
+  const RATE_DEF = { jump: 30, anim: 200, fps: 100 };
   const RATE_META = {
     jump: { min: 1, max: 365, step: 1, unit: () => (t.isEn() ? 'days/s' : ' 天/秒') },
     anim: { min: 0, max: 2500, step: 20, unit: () => 'ms' },
-    fps: { min: 60, max: 1000, step: 20, unit: () => 'ms' }
+    fps: { min: 0, max: 1000, step: 20, unit: () => 'ms' }
   };
   function clampRate(k, v) {
     const mt = RATE_META[k]; if (!mt) return v;
@@ -192,7 +196,8 @@
           '" step="' + mt.step + '" value="' + rate[r[0]] + '" data-rate="' + r[0] + '">' +
           '<input type="number" class="rate-num" id="tlRate' + r[0] + '" min="' + mt.min + '" max="' + mt.max +
           '" step="' + mt.step + '" value="' + rate[r[0]] + '" data-rate="' + r[0] + '" aria-label="' + esc(t(r[1])) + '">' +
-          '<b>' + rate[r[0]] + esc(mt.unit()) + '</b></label>';
+          /* 重绘间隔为 0 时含义是「不节流、逐帧重绘」，显示 0ms 容易被读成「不重绘」 */
+          '<b>' + ((r[0] === 'fps' && rate[r[0]] === 0) ? esc(t('tl.rate.frame')) : (rate[r[0]] + esc(mt.unit()))) + '</b></label>';
       });
       h += '<button class="btn btn-ghost" id="tlRateReset">' + esc(t('tl.rate.reset')) + '</button>';
       h += '<span class="tiny muted rate-hint">' + esc(t('tl.rate.step1')) + '</span>';
@@ -487,6 +492,35 @@
      旧的 evYearlyOf（按项目按年纪录/金牌，分母缺失且忽略 ev 参数）会让单项目分数算错，
      已删除。 */
 
+  /* 所选项目内的「年度荣誉曲线」：与全项目模式同一套口径
+     （领奖台按赛级 × 名次加权 ×2，破纪录 +1；对应 ETL 里 p.yearly 的算法），
+     只是把统计范围收窄到所选项目。数据来自 p.podiums（ev/year/tier/place）
+     与 p.records（ev/date/type），两者在明细档选手里都是完整的。
+     结果按「项目组合 + 单均口径」缓存在选手对象上：播放时每帧都会调用，
+     不能逐帧重扫一遍领奖台与纪录。 */
+  function evYearlyOf(p, evList, rtype) {
+    const ck = '__evy' + (rtype || 'all') + '_' + evList.join('+');
+    const hit0 = p[ck];
+    if (hit0) return hit0;
+    const y = {};
+    (p.podiums || []).forEach(function (d) {
+      if (evList.indexOf(d.ev) < 0) return;
+      const tw = d.tier === 'WC' ? 1 : (d.tier === 'CC' ? 0.7 : 0.4);
+      const pw = d.place === 1 ? 1 : (d.place === 2 ? 0.6 : 0.4);
+      y[d.year] = (y[d.year] || 0) + pw * tw * 2;
+    });
+    (p.records || []).forEach(function (r) {
+      if (evList.indexOf(r.ev) < 0) return;
+      /* 单次 / 平均口径与全项目分支一致：yearlyS 只算单次纪录、yearlyA 只算平均纪录 */
+      if (rtype === 'single' && r.type === 'avg') return;
+      if (rtype === 'avg' && r.type === 'single') return;
+      const yy = parseInt(String(r.date || '').slice(0, 4), 10);
+      if (yy) y[yy] = (y[yy] || 0) + 1;
+    });
+    p[ck] = y;
+    return y;
+  }
+
   function snapshot(mode, fy, smooth, region, country, evs, gender, rtype) {
     /* 选中项目（单项目 / 多项目）时，整张图切换成「所选项目的六维能力分排名」，与上方筛选项目实时联动：
          分数取每个所选项目的六维总分（p.sixEv 已含 per-event 六维分 a[6]=t_ev）求和，
@@ -494,18 +528,16 @@
          不选项目时仍用全项目历史地位分（生涯累计 × 年度比例）。 */
     const evList = (evs && evs.length) ? evs : null;
     const key = rtype === 'single' ? 'yearlyS' : (rtype === 'avg' ? 'yearlyA' : 'yearly');
-    function cum(p, y) {
-      const yv = p[key] || {}; let s = 0;
-      for (const k in yv) if (+k <= y) s += yv[k];
-      return s;
-    }
-    function cumF(p, f) {
-      const yv = p[key] || {}; let s = 0;
-      for (const k in yv) if (+k <= f) s += yv[k];
+    /* 累计 / 小数年插值：抽成「吃逐年对象」的纯函数，全项目分支与项目分支共用一套读法 */
+    function cumY(yv, y) { let s = 0; for (const k in yv) if (+k <= y) s += yv[k]; return s; }
+    function cumFY(yv, f) {
+      let s = 0; for (const k in yv) if (+k <= f) s += yv[k];
       const yi = Math.floor(f), frac = f - yi;
       if (frac > 0) s += (yv[yi + 1] || 0) * frac;
       return s;
     }
+    function cum(p, y) { return cumY(p[key] || {}, y); }
+    function cumF(p, f) { return cumFY(p[key] || {}, f); }
     const END_Y = 2026;
     const rows = [];
     M.ranked.forEach(function (p) {
@@ -519,9 +551,30 @@
           if (a && a[6] > 0) { t += a[6]; hit++; }
         });
         if (!hit || t <= 0) return;
+        /* ★ 时间演化（此前缺失 → 单/多项目播放时条形纹丝不动，只显示最终名次）：
+           总分 t 是「截至今天」的能力值，必须再乘一条随时间推进的进度曲线，
+           播放时才会逐年长出来。进度曲线用「该选手在所选项目上的年度荣誉累计占比」，
+           与全项目分支的 p.yearly 读法完全同源（领奖台按赛级/名次加权 + 破纪录计数），
+           只是把统计范围收窄到所选项目 —— 所以三阶图只会随他三阶上的成绩推进。 */
+        const evY = evYearlyOf(p, evList, rtype);
+        const evAll = cumY(evY, END_Y);
+        let ratio;
+        if (evAll > 0) {
+          let cf = cumFY(evY, fy);
+          if (smooth) cf = (cumFY(evY, fy) + cumFY(evY, fy - 1) + cumFY(evY, fy - 2)) / 3;
+          ratio = Math.max(0, Math.min(1, cf / evAll));
+        } else {
+          /* 该项目上没有任何领奖台 / 纪录（例如只靠「当前排名」拿分的人）：
+             退回全局年度曲线，否则他的分数恒为 0、整张图少一个人。 */
+          const gAll = cum(p, END_Y);
+          const gcf = smooth ? ((cumF(p, fy) + cumF(p, fy - 1) + cumF(p, fy - 2)) / 3) : cumF(p, fy);
+          ratio = gAll > 0 ? Math.max(0, Math.min(1, gcf / gAll)) : 1;
+        }
+        const v = t * ratio;
+        if (v <= 0) return;
         rows.push({
           name: p.name, country: p.country, hue: p.hue, id: p.id, iso: p.country,
-          value: t, color: countryColor(p.country), flag: window.Charts.flagUri(p.country)
+          value: v, color: countryColor(p.country), flag: window.Charts.flagUri(p.country)
         });
         return;
       }

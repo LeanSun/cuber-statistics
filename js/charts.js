@@ -260,11 +260,17 @@
        于是条形、姓名、国旗、分数会作为一个整体上下滑动，而不再是「槽位固定、名字瞬跳」。 */
     const data = items.slice();
     return Object.assign(base({ stagger: 0, duration: dur }), {
-      grid: { left: 34, right: 80, top: 6, bottom: 6, containLabel: false },
+      /* top/bottom 从 6 提到 20：Y 轴范围改成 1..n（刻度正好落在名次上）后，
+         第一名 / 第 n 名的条形中心贴着网格上下边界，留白不够会被 clip 切掉半条。 */
+      grid: { left: 34, right: 80, top: 20, bottom: 20, containLabel: false },
       xAxis: Object.assign({ type: 'value', max: function (v) { return Math.max(v.max, 1) * 1.05; } }, axisCommon()),
+      /* 轴范围 1..n（原来是 0.5..n+0.5）：条形画在整数名次上，而刻度原来落在
+         0.5/1.5/2.5… 上，两者错开半格 —— 这就是「序号与行对不齐」的根因。
+         现在刻度值与名次 1:1 对应，序号与条形中心严格同一条水平线。
+         序号文字去掉 '#'（用户要求 1、2、3）。 */
       yAxis: Object.assign(axisCommon(), {
-        type: 'value', inverse: true, min: 0.5, max: n + 0.5, interval: 1,
-        axisLabel: { color: T.text3, fontSize: 11, formatter: function (v) { return '#' + Math.round(v); } },
+        type: 'value', inverse: true, min: 1, max: n, interval: 1,
+        axisLabel: { color: T.text3, fontSize: 11, formatter: function (v) { return String(Math.round(v)); } },
         axisLine: { lineStyle: { color: T.border }, show: false },
         axisTick: { show: false },
         splitLine: { show: false }
@@ -297,14 +303,9 @@
             style: { fill: d.color || T.m[0], stroke: T.elev, lineWidth: 1 }
           }];
           let tx = x0 + 6;
-          /* 排名序号：画在条形左端外侧；名次变化时随条形一起上下滑动 */
-          kids.push({
-            type: 'text', transition: ['style'], style: {
-              text: String(d.no != null ? d.no : Math.round(rank)), x: x0 - 12, y: yc,
-              fill: T.text2 || '#888', font: '800 12px "Segoe UI",system-ui,sans-serif',
-              textVerticalAlign: 'middle', textBaseline: 'middle', align: 'right'
-            }
-          });
+          /* 排名序号不再在条形左端外侧画第二份：原先 Y 轴标签（#1…#n，落在半格上）
+             与这里自画的序号（落在条形上）是两套坐标，视觉上就是「序号与行错开」。
+             现在序号统一由 Y 轴给出（轴范围 1..n，与名次 1:1），这里只画条形内容。 */
           const uri = d.flag || flagUri(d.iso);
           if (uri) {
             kids.push({ type: 'image', transition: ['style'], style: { image: uri, x: tx, y: yc - 5, width: 15, height: 11 } });
