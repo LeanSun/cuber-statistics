@@ -13,6 +13,10 @@ WCA_export*
 # 缺 sixdim_by_event.tsv 时项目筛选无法按六维分重排）
 !etl/score/sixdim_site.tsv
 !etl/score/sixdim_by_event.tsv
+!etl/score/sixdim_site_single.tsv
+!etl/score/sixdim_site_avg.tsv
+!etl/score/sixdim_by_event_single.tsv
+!etl/score/sixdim_by_event_avg.tsv
 
 # 例外：六维模型脚本 / 封存文档 / 站点分表（模型真源，需随仓库版本化；
 # 中间事实表与诊断 TSV 仍然忽略，避免把几十 MB 的中间产物推上去）
@@ -20,6 +24,10 @@ WCA_export*
 !etl/score/*.md
 !etl/score/sixdim_site.tsv
 !etl/score/sixdim_by_event.tsv
+!etl/score/sixdim_site_single.tsv
+!etl/score/sixdim_site_avg.tsv
+!etl/score/sixdim_by_event_single.tsv
+!etl/score/sixdim_by_event_avg.tsv
 
 # Python
 __pycache__/

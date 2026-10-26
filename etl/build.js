@@ -60,6 +60,25 @@ const SIXEV = new Map();
   console.log('按项目六维分载入:', SIXEV.size, '人 /', (lines.length - 1), '条 选手×项目');
 })();
 
+/* ---------- 单次 / 平均 两套六维向量（成绩口径切换用）----------
+   与 SIX 同源（六维引擎按 track=single|avg|both 各跑一遍），结构一致 {m1..m6,t}。
+   仅下发「全局」向量，不下发按项目的 sixEv 三份（data.js 已 ~60MB，三倍会严重膨胀）；
+   项目筛选下的六维重排仍用合并 sixEv，单次/平均只切换全局总分档，符合用户诉求。 */
+function loadSixTrack(fname, tag) {
+  const m = new Map();
+  const f = path.join(__dirname, 'score', fname);
+  if (!fs.existsSync(f)) { console.warn('⚠ 未找到 ' + f + ' —— 成绩口径「单次/平均」将退回总计；请先跑 etl/score/sixdim.js --track ' + tag); return m; }
+  const lines = fs.readFileSync(f, 'utf8').trim().split('\n');
+  for (let i = 1; i < lines.length; i++) {
+    const c = lines[i].split('\t');
+    m.set(c[0], { m1: +c[1], m2: +c[2], m3: +c[3], m4: +c[4], m5: +c[5], m6: +c[6], t: +c[7] });
+  }
+  console.log('六维分数（' + tag + '）载入:', m.size, '人');
+  return m;
+}
+const SIX_S = loadSixTrack('sixdim_site_single.tsv', 'single');
+const SIX_A = loadSixTrack('sixdim_site_avg.tsv', 'avg');
+
 /* ---------------- 参数 ---------------- */
 const argv = process.argv.slice(2);
 function arg(name, def) {
@@ -887,6 +906,8 @@ function computeModules() {
     const sd = SIX.get(p.wcaId);
     p.six = sd || null;
     p.sixEv = SIXEV.get(p.wcaId) || null;
+    p.sixS = SIX_S.get(p.wcaId) || null;
+    p.sixA = SIX_A.get(p.wcaId) || null;
     p.overall = sd ? Math.round(sd.t * 100) / 100 : 0;
 
     // 领奖台补 field / factors / R
@@ -1198,7 +1219,7 @@ function buildEventMilestones() {
     id: p.id, wcaId: p.wcaId, name: p.name, nameZh: p.nameZh, country: p.country, gender: p.gender,
     start: p.start, end: p.end, comps: p.comps, mainEvent: p.mainEvent, events: p.events, hue: p.hue,
     m: p.m, pk: p.pk, career: p.career, peak: p.peak, overall: p.overall, esum: p.esum, evRk: p.evRk,
-    six: p.six || null, sixEv: p.sixEv || null,
+    six: p.six || null, sixEv: p.sixEv || null, sixS: p.sixS || null, sixA: p.sixA || null,
     balance: Math.round(Math.log(Math.max(p.career, 0.01) / Math.max(p.peak, 0.01)) * 1000) / 1000,
     wr: p.wr, cr: p.cr, nr: p.nr, nrW: Math.round((p.nrW || 0) * 100) / 100,
     recTotal: p.recTotal || 0, podTotal: p.podTotal || 0,
@@ -1215,7 +1236,7 @@ function buildEventMilestones() {
      不再冗余存储；约 150 字节/人，可把全部约 30 万 WCA 选手随包下发、可搜索。 */
   const SLIM_KEYS = ['id', 'name', 'country', 'gender', 'start', 'end', 'comps', 'mainEvent', 'events',
     'm', 'pk', 'esum', 'evRk', 'wr', 'cr', 'nr', 'resultRows', 'attempts', 'solves', 'dnf', 'cities',
-    'maxEventsPerComp', 'multiEventComp', 'six', 'sixEv'];
+    'maxEventsPerComp', 'multiEventComp', 'six', 'sixEv', 'sixS', 'sixA'];
   const MODK = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm1s', 'm1a'];
   /* 按项目六维分紧凑编码：'333:1.2,3.4,0,0,0,0.5,1.9;222:…'
      3 位小数足够（排序与 1 位小数展示都不受影响），比对象数组省约一半字节。 */
@@ -1233,6 +1254,8 @@ function buildEventMilestones() {
       }
       if (k === 'events') return (p.events || []).join(',');
       if (k === 'six') return p.six ? SIXK.map((mk) => round2(p.six[mk])).concat([round2(p.six.t)]) : null;
+      if (k === 'sixS') return p.sixS ? SIXK.map((mk) => round2(p.sixS[mk])).concat([round2(p.sixS.t)]) : null;
+      if (k === 'sixA') return p.sixA ? SIXK.map((mk) => round2(p.sixA[mk])).concat([round2(p.sixA.t)]) : null;
       if (k === 'sixEv') return encSixEv(p.sixEv);
       return p[k];
     });
@@ -1330,6 +1353,8 @@ function buildEventMilestones() {
     '      var k = SLIM_KEYS[i], v = a[i];\n' +
     '      if (k === "m" || k === "pk") { var mo = {}; for (var j = 0; j < MODK.length; j++) mo[MODK[j]] = v[j]; o[k] = mo; }\n' +
     '      else if (k === "six") { if (v) { var so = {}; for (var j2 = 0; j2 < SIXK.length; j2++) so[SIXK[j2]] = v[j2]; so.t = v[SIXK.length]; o.six = so; } else o.six = null; }\n' +
+    '      else if (k === "sixS") { if (v) { var soS = {}; for (var j2s = 0; j2s < SIXK.length; j2s++) soS[SIXK[j2s]] = v[j2s]; soS.t = v[SIXK.length]; o.sixS = soS; } else o.sixS = null; }\n' +
+    '      else if (k === "sixA") { if (v) { var soA = {}; for (var j2a = 0; j2a < SIXK.length; j2a++) soA[SIXK[j2a]] = v[j2a]; soA.t = v[SIXK.length]; o.sixA = soA; } else o.sixA = null; }\n' +
     '      else if (k === "sixEv") { if (v) { var se = {}; String(v).split(";").forEach(function (seg) { var q = seg.indexOf(":"); if (q < 0) return; se[seg.slice(0, q)] = seg.slice(q + 1).split(",").map(Number); }); o.sixEv = se; } else o.sixEv = null; }\n' +
     '      else if (k === "events") { o.events = v ? String(v).split(",") : []; }\n' +
     '      else o[k] = v;\n' +

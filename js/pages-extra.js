@@ -1047,7 +1047,7 @@
       const nm = SN[k] || modName(k);
       h += '<div class="prow wrow">' +
         '<span class="pr-name"><i class="wdot" style="background:' + MODC[k] + '"></i>' + esc(nm) + ' · ' + k.toUpperCase() + '</span>' +
-        '<input type="range" class="wrange" data-wdim="' + k + '" min="0" max="60" step="0.5" value="' + U.fmt(pct, 1) + '" aria-label="' + esc(nm) + ' 占比">' +
+        '<span class="wbar"><i style="width:' + U.fmt(pct, 1) + '%;background:' + MODC[k] + '"></i></span>' +
         '<span class="wval"><input type="number" class="pr-input wnum" data-wdim="' + k + '" data-wdim-unit="pct" min="0" max="100" step="0.5" value="' + U.fmt(pct, 1) + '" aria-label="' + esc(nm) + ' 占比百分比"><b>%</b></span>' +
         '</div>';
     });

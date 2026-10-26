@@ -79,15 +79,27 @@
      没有六维分的选手一律记 0（不回退旧 esum，避免同一张榜出现两套量纲）。 */
   /* 总分按**当前权重**实时重算（t = Σ_d w_d·s_d），而不是读 ETL 预置的 p.six.t ——
      否则「参数设置」页改了六维占比，榜单并不会跟着变。 */
-  function sixT(p) {
-    if (!p || !p.six) return 0;
+  /* 按成绩口径取正确的六维向量：
+       rt==='single' → 单次档 p.sixS（ETL 用 sixdim.js --track single 跑出）
+       rt==='avg'    → 平均档 p.sixA
+       其它（'all'/空/未传）→ 合并档 p.six
+     三套同源同结构 {m1..m6,t}，仅维度分因口径不同而异（M1 纪录分、M5 当前排名受单次/平均影响最大）。 */
+  function sixVec(p, rt) {
+    if (!p) return null;
+    if (rt === 'single') return p.sixS || p.six || null;
+    if (rt === 'avg') return p.sixA || p.six || null;
+    return p.six || null;
+  }
+  function sixT(p, rt) {
+    const v = sixVec(p, rt);
+    if (!v) return 0;
     const w = sixW();
     let t = 0;
-    for (let i = 0; i < SIXD.length; i++) t += (w[SIXD[i]] || 0) * (p.six[SIXD[i]] || 0);
+    for (let i = 0; i < SIXD.length; i++) t += (w[SIXD[i]] || 0) * (v[SIXD[i]] || 0);
     return t;
   }
   function scoreOf(p, rt) {
-    const t = sixT(p);
+    const t = sixT(p, rt);
     return { career: t, peak: t, overall: t, balance: 0 };
   }
   /* ── 六维按项目分解（项目筛选后重排的真源）─────────────────────────
@@ -133,7 +145,7 @@
      使展开行里的「六维贡献」与榜单上的排序数字始终是同一把尺子。 */
   function contribs(p, tab, rt, vec) {
     const w = sixWeights();
-    const src = vec || (p && p.six) || null;
+    const src = vec || sixVec(p, rt) || null;
     return MOD.map(function (k, i) {
       const raw = src ? (vec ? (vec[i] || 0) : (src[k] || 0)) : 0;
       return { k: k, name: (M.meta && M.meta.sixNames && M.meta.sixNames[k]) || modName(k), raw: raw, w: w[k], v: w[k] * raw, color: MODC[k] };
@@ -167,11 +179,12 @@
     return (multiMode && !evMode) ? 'ev' : 'dim';
   }
   /* 按维度堆叠：色块＝六个维度的加权贡献占比 */
-  function dimStackHtml(row) {
+  function dimStackHtml(row, rt) {
     const w = sixW();
     const p = row.p;
-    /* row.six 是「所选项目范围内」的逐维求和（项目筛选生效时），否则用全站 p.six */
-    const vec = row.six || (p.six ? SIXD.map(function (k) { return p.six[k] || 0; }) : null);
+    /* row.six 是「所选项目范围内」的逐维求和（项目筛选生效时），否则按成绩口径取对应档的六维向量；
+       rt 为 single/avg 时用 p.sixS/p.sixA，保证堆叠条与排序同一把尺子。 */
+    const vec = row.six || (sixVec(p, rt) ? SIXD.map(function (k) { return sixVec(p, rt)[k] || 0; }) : null);
     if (!vec) return '';
     const items = SIXD.map(function (k, i) {
       return { k: k, raw: vec[i] || 0, v: (w[k] || 0) * (vec[i] || 0), color: MODC[k] };
@@ -251,8 +264,8 @@
     }
     return out + '</div>';
   }
-  function stackHtml(row, mode, ids) {
-    return mode === 'dim' ? dimStackHtml(row) : evStackHtml(row, ids);
+  function stackHtml(row, mode, ids, rt) {
+    return mode === 'dim' ? dimStackHtml(row, rt) : evStackHtml(row, ids);
   }
   function ecBox(type, data, opts, h) {
     const payload = { type: type, data: data, opts: opts || {} };
@@ -668,7 +681,7 @@
          段宽合计都等于条长所代表的分数，与排序/条尾数字永远同一把尺子。
          单项目模式下「按项目」必然只有一段（整条单色），所以默认走「按维度」，
          这样只看一个项目时也能看清是 M1…M6 哪几维在撑着这个分数。 */
-      const stack = stackHtml(row, stackMode, useEv ? scopeIds : null);
+      const stack = stackHtml(row, stackMode, useEv ? scopeIds : null, rt);
       h += '<td class="barcell bars-full"><div class="bar-row' + (evMode || multiMode ? ' evmode' : '') + '"><div class="bar-track">' +
         '<div class="bar-grow" style="width:' + bw.toFixed(1) + '%">' + stack + '</div></div>' +
         '<span class="bar-total">' + U.fmt(score, 1) + '</span>' +
@@ -732,11 +745,12 @@
       '<div class="exp-v3-idtxt">' +
       '<b>' + esc(p.name) + '</b>' +
       '<div class="exp-v3-meta">' +
-      '<span>' + esc(countryName(p.country)) + '</span>' +
-      '<span class="dot">·</span><span>' + (genderOf(p.gender) === 'F' ? esc(t('f.gender.f')) : esc(t('f.gender.m'))) + '</span>' +
-      '<span class="dot">·</span><span>' + p.start + '–' + p.end + '</span>' +
-      '<span class="dot">·</span><span>' + esc(String(p.wcaId || p.id)) + '</span>' +
-      '</div></div></div>';
+      '<span class="m-country">' + esc(countryName(p.country)) + '</span>' +
+      '<span class="m-gender">' + (genderOf(p.gender) === 'F' ? esc(t('f.gender.f')) : esc(t('f.gender.m'))) + '</span>' +
+      '<span class="m-years">' + p.start + '–' + p.end + '</span>' +
+      '</div>' +
+      '<div class="exp-v3-wca">WCA · <code>' + esc(String(p.wcaId || p.id)) + '</code></div>' +
+      '</div></div>';
     h += '<div class="exp-v3-scores">';
     /* 只展示一个口径：六维加权总分（旧模型的生涯 / 巅峰拆分已停用）。
        项目筛选生效时显示所选项目范围内的总分，与榜单名次一致。 */
@@ -748,12 +762,12 @@
 
     /* ── 中部：六维贡献（横向条） ─────────────────────────── */
     h += '<div class="exp-v3-mods">';
-    h += '<div class="exp-v3-mods-h"><span>' + esc(t('rank.module')) + (inEv ? ' · ' + esc(t('rank.evScope')) : '') + '</span>' +
+    h += '<div class="exp-v3-mods-h"><span>' + esc(t('rank.sixContrib')) + (inEv ? ' · ' + esc(t('rank.evScope')) : '') + '</span>' +
       '<span class="tiny muted">' + esc(t('player.contrib')) + ' · Σ = ' + U.fmt(tot, 2) + '</span></div>';
     /* 列头：让右侧四列数字（原始分 / 权重 / 加权贡献 / 占比）各自有名字，
        否则展开后只剩一串「100.0 51% 50.78 67.0%」看不出含义。 */
     h += '<div class="exp-v3-mod exp-v3-mod-head">' +
-      '<span class="nm">' + esc(t('m1.name') ? t('rank.module') : '') + '</span>' +
+      '<span class="nm">' + esc(t('rank.dimCol')) + '</span>' +
       '<span class="track"></span>' +
       '<span class="raw" title="' + esc(t('expCol.rawD')) + '">' + esc(t('player.raw')) + '</span>' +
       '<span class="w" title="' + esc(t('expCol.wD')) + '">' + esc(t('player.weight')) + '</span>' +
@@ -774,19 +788,21 @@
     /* ── 底部：成绩速览 + 纪录亮点 + 操作 ───────────────────── */
     h += '<div class="exp-v3-foot">';
     h += '<div class="exp-v3-chips">';
-    h += '<span class="exp-v3-chip"><span class="k">' + esc(t('col.wr')) + '</span><b>' + U.num(p.wr) + '</b></span>';
-    h += '<span class="exp-v3-chip"><span class="k">CR</span><b>' + U.num(p.cr) + '</b></span>';
-    h += '<span class="exp-v3-chip"><span class="k">NR</span><b>' + U.num(p.nr) + '</b></span>';
     h += '<span class="exp-v3-chip"><span class="k">' + esc(t('player.comps')) + '</span><b>' + U.num(p.comps) + '</b></span>';
     h += '<span class="exp-v3-chip"><span class="k">' + esc(t('stat.podiumTotal')) + '</span><b>' + U.num(st.podiumTotal || p.podTotal || 0) + '</b></span>';
     h += '<span class="exp-v3-chip"><span class="k">' + esc(t('player.rankWorld')) + '</span><b>No.' + worldNo + '</b></span>';
     h += '</div>';
     h += '<div class="exp-v3-recs">';
-    if (p.records && p.records.length) {
+    /* WR/CR/NR 只在此处出现一次，并按所选项目（单/多）收窄；
+       未筛选项目时统计全部项目（即全站口径）。 */
+    const recs = (p.records && p.records.length)
+      ? ((evPool && evPool.length) ? p.records.filter(function (r) { return evPool.indexOf(r.ev) >= 0; }) : p.records)
+      : [];
+    if (recs.length) {
       const byLv = { WR: 0, CR: 0, NR: 0 };
       let longest = null;
-      p.records.forEach(function (r) {
-        byLv[r.level] = (byLv[r.level] || 0) + 1;
+      recs.forEach(function (r) {
+        if (byLv[r.level] != null) byLv[r.level] = (byLv[r.level] || 0) + 1;
         if (!longest || r.held > longest.held) longest = r;
       });
       ['WR', 'CR', 'NR'].forEach(function (lv) {
@@ -794,6 +810,7 @@
         h += '<span class="rec-chip lv-' + lv + '">' + lv + ' ×' + byLv[lv] + '</span>';
       });
       if (longest) h += '<span class="rec-chip">' + esc(t('rec.held')) + ' ' + esc(heldText(longest.held)) + '</span>';
+      if (evPool && evPool.length) h += '<span class="rec-chip rec-scope">' + esc(t('rank.evScope')) + '</span>';
     }
     h += '</div>';
     h += '<div class="exp-actions">' +

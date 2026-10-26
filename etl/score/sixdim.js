@@ -267,9 +267,12 @@ if (OPT.csv) {
   fs.writeFileSync(path.join(D, `${OPT.csv}.tsv`), out.join('\n') + '\n', 'utf8');
   console.log(`\n→ 已写 ${OPT.csv}.tsv（全量 ${rowsOut.length} 行）`);
 }
-/* ── 六维实验榜页面数据（仅在无筛选的全量口径下写出，避免覆盖成局部快照） ── */
+/* ── 六维实验榜页面数据（仅在无筛选的全量口径下写出，避免覆盖成局部快照）──
+   track=both     → sixdim_site.tsv / sixdim_by_event.tsv（主交付，build.js 直接依赖）
+   track=single/avg → sixdim_site_single.tsv / sixdim_by_event_single.tsv（成绩口径拆分用） */
 const DIM_KEYS = Object.keys(DIMS);
-const noFilter = !OPT.ev && OPT.track === 'both' && OPT.gender === 'all' && OPT.asof === 2026 && DIM_KEYS.every((k) => OPT.dims.includes(k));
+const noFilter = !OPT.ev && OPT.gender === 'all' && OPT.asof === 2026 && DIM_KEYS.every((k) => OPT.dims.includes(k));
+const trk = (OPT.track === 'both' || !OPT.track) ? '' : '_' + OPT.track;   // '' | '_single' | '_avg'
 if (OPT.csv && noFilter) {
   /* 站点接入用：s_d = Σ_ev (v/mx) × evW × 100 / wSum，满足 总分 = Σ_d w_d × s_d */
   const site = ['pid\ts1\ts2\ts3\ts4\ts5\ts6\tt'];
@@ -284,7 +287,7 @@ if (OPT.csv && noFilter) {
     });
     site.push([x.pid, ...s, x.total.toFixed(4)].join('\t'));
   }
-  fs.writeFileSync(path.join(D, 'sixdim_site.tsv'), site.join('\n') + '\n', 'utf8');
+  fs.writeFileSync(path.join(D, 'sixdim_site' + trk + '.tsv'), site.join('\n') + '\n', 'utf8');
   /* ── 按项目分解的六维分（站点「项目筛选后按六维总分排序」用）──
      s_d[ev] = (v_d,ev / max_d,ev) × evW(ev) × 100 / wSum，与 sixdim_site.tsv 同一归一分母，
      因此 Σ_ev s_d[ev] ≡ s_d、Σ_d w_d·s_d[ev] ≡ t_ev，全项目求和可精确复原全站分。 */
@@ -302,8 +305,8 @@ if (OPT.csv && noFilter) {
       beLines++;
     }
   }
-  fs.writeFileSync(path.join(D, 'sixdim_by_event.tsv'), byEv.join('\n') + '\n', 'utf8');
-  console.log(`→ 已写 etl/score/sixdim_by_event.tsv（${beLines} 条 选手×项目 记录）`);
+  fs.writeFileSync(path.join(D, 'sixdim_by_event' + trk + '.tsv'), byEv.join('\n') + '\n', 'utf8');
+  console.log(`→ 已写 etl/score/sixdim_by_event${trk}.tsv（${beLines} 条 选手×项目 记录）`);
   const compact = rowsOut.map((x, i) => {
     const d = {};
     for (const dim of DIM_KEYS) {
@@ -313,16 +316,18 @@ if (OPT.csv && noFilter) {
     }
     return { r: i + 1, id: x.pid, n: x.name, g: x.gender, t: +x.total.toFixed(4), ...d };
   });
-  const page = {
-    meta: {
-      generated: new Date().toISOString().slice(0, 10),
-      count: compact.length,
-      weights: Object.fromEntries(DIM_KEYS.map((k) => [k, DIMS[k].w])),
-      labels: Object.fromEntries(DIM_KEYS.map((k) => [k, DIMS[k].cn])),
-    },
-    rows: compact,
-  };
-  fs.writeFileSync(path.join(__dirname, '..', '..', 'js', 'sixdim_data.js'),
-    '/* 自动生成：etl/score/sixdim.js → 六维实验榜（sixdim.html）数据。勿手改。 */\nwindow.SIXDIM = ' + JSON.stringify(page) + ';\n', 'utf8');
-  console.log(`→ 已写 js/sixdim_data.js（${compact.length} 人，实验榜页面数据）`);
+  if (OPT.track === 'both') {
+    const page = {
+      meta: {
+        generated: new Date().toISOString().slice(0, 10),
+        count: compact.length,
+        weights: Object.fromEntries(DIM_KEYS.map((k) => [k, DIMS[k].w])),
+        labels: Object.fromEntries(DIM_KEYS.map((k) => [k, DIMS[k].cn])),
+      },
+      rows: compact,
+    };
+    fs.writeFileSync(path.join(__dirname, '..', '..', 'js', 'sixdim_data.js'),
+      '/* 自动生成：etl/score/sixdim.js → 六维实验榜（sixdim.html）数据。勿手改。 */\nwindow.SIXDIM = ' + JSON.stringify(page) + ';\n', 'utf8');
+    console.log(`→ 已写 js/sixdim_data.js（${compact.length} 人，实验榜页面数据）`);
+  }
 }

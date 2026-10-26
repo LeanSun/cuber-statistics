@@ -175,6 +175,9 @@
     });
     h += '</div></div>';
 
+    /* 各维度计算过程：公式 + 本选手真实输入 + 归一化维度分与加权贡献 */
+    h += dimCalcCard(p, cs);
+
     /* 横向对比（六维雷达）：本选手 vs 历史第一人 vs 全体均值 */
     h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('player.cmp')) + '</h2>' + infoTip(t('player.cmp.d')) + '</div>';
     const cmp = P.playerCompare ? P.playerCompare(p) : null;
@@ -355,6 +358,67 @@
     });
     h += '<span class="op">×</span>' + factorChip('z', r.factors.z) + '<span class="op">×</span>' + factorChip('m', r.factors.margin);
     h += '<span class="op">=</span><span class="chain-result">' + U.fmt(r.R, 1) + '</span>';
+    h += '</div>';
+    return h;
+  }
+
+  /* 各维度计算过程：公式（与封存口径一致）+ 本选手真实代入的输入 + 归一化维度分与加权贡献。
+     cs 来自 contribs(p,'career')，已含 name/color/w/raw(=s_d)/v(=w·s_d)。 */
+  const DIM_FORMULA = {
+    m1: 'M_1=\\sum_{\\text{段}}\\Big[\\tfrac{\\min(T,30\\mathrm{y})}{365}\\times V_L\\times \\rho_s\\times f_L\\times w_e\\Big]',
+    m2: 'M_2=\\sum_{\\text{领奖台}}\\big[B_P\\,w_e\\,S_e(t)\\,T^{\\mathrm{pod}}\\,V(r)\\,C_c\\,F^{\\mathrm{CSI}}\\,(1+k_p z+\\mu m)\\big]',
+    m3: 'M_3=\\sum_{\\text{大赛纪录}}W_{REC}[\\text{级别}]\\times W_{TIER}[\\text{赛事级}],\\quad W_{REC}=\\{WR{:}1.0,\\,CR{:}0.4,\\,NR{:}0.15\\}',
+    m4: 'M_4=\\sum_{e,t} w_e\\sum_{\\text{段}}\\tfrac{\\text{段长}}{365}\\,g(r)\\,f(y),\\quad g(r)=r^{-1.0},\\;f(y)=\\tfrac{\\ln(1+N(y))}{\\ln(1+N_{base})}',
+    m5: 'M_5=\\sum_e w_e\\,r^{-1.0}\\max\\!\\left(0.2,1-\\tfrac{gapR}{5}\\cdot0.8\\right)\\max\\!\\left(0.2,1-\\tfrac{gapP}{5}\\cdot0.8\\right)',
+    m6: 'M_6=\\sum_{\\text{events}}\\min\\!\\big(\\ln\\tfrac{\\text{前值}}{\\text{新值}},\,0.5\\big)\\quad(\\text{仅 WR 链条，截顶 }0.5)'
+  };
+  const DIM_ANS = {
+    m1: '破的纪录守了多久', m2: '拿过多少冠亚季军', m3: '锦标赛上突破的加成',
+    m4: '保持在世界前十有多久', m5: '此刻站在世界各榜什么位置', m6: '破纪录瞬间把人类前沿推远多少'
+  };
+  function dimCalcCard(p, cs) {
+    const rec = p.records || [], pod = p.podiums || [];
+    const recByLv = { WR: 0, CR: 0, NR: 0 };
+    let heldDays = 0, recR = 0, champRec = 0;
+    rec.forEach(function (r) {
+      if (recByLv[r.level] != null) recByLv[r.level]++;
+      heldDays += (r.held || 0);
+      recR += (r.R || 0);
+      if (r.factors && r.factors.O > 1.0001) champRec++;
+    });
+    const podByTier = { WC: 0, CC: 0, NC: 0, OP: 0 };
+    let podR = 0;
+    pod.forEach(function (r) {
+      if (podByTier[r.tier] != null) podByTier[r.tier]++;
+      podR += (r.R || 0);
+    });
+    const rk = M.ranksOf(p);
+    const metrics = {
+      m1: [['WR', recByLv.WR], ['CR', recByLv.CR], ['NR', recByLv.NR],
+        ['累计持有', U.fmt(heldDays / 365.25, 1) + ' 年'], ['ΣR', U.fmt(recR, 1)]],
+      m2: [['世锦冠军', podByTier.WC], ['洲锦冠军', podByTier.CC], ['国锦冠军', podByTier.NC], ['公开赛', podByTier.OP], ['ΣP', U.fmt(podR, 1)]],
+      m3: [['大赛纪录(估)', champRec], ['WR', recByLv.WR], ['CR', recByLv.CR], ['NR', recByLv.NR]],
+      m4: [['在位 #1', (p.months1 || 0) + ' 月'], ['当前世界排名', '#' + rk.world]],
+      m5: [['当前世界排名', '#' + rk.world]],
+      m6: [['WR 链条数', recByLv.WR]]
+    };
+    let h = '<div class="card reveal"><div class="card-head"><h2>' + esc(t('player.dimCalc')) + '</h2>' +
+      '<span class="tiny muted">' + esc(t('player.dimCalc.d')) + '</span></div>';
+    cs.forEach(function (c) {
+      const k = c.k;
+      h += '<div class="dimcalc">';
+      h += '<div class="dc-head"><i class="dc-dot" style="background:' + c.color + '"></i>' +
+        '<b>' + esc(c.name) + '</b><span class="dc-q">' + esc(DIM_ANS[k]) + '</span>' +
+        '<span class="dc-w">权重 ' + U.fmt(c.w * 100, 0) + '%</span></div>';
+      h += '<div class="dc-formula">' + tex(DIM_FORMULA[k], true) + '</div>';
+      h += '<div class="dc-inputs">';
+      (metrics[k] || []).forEach(function (m) {
+        h += '<span class="dc-in"><b>' + esc(String(m[1])) + '</b>' + esc(m[0]) + '</span>';
+      });
+      h += '</div>';
+      h += '<div class="dc-result">归一化维度分 <b>s = ' + U.fmt(c.raw, 1) + '</b> · 加权贡献 <b>w·s = ' + U.fmt(c.v, 2) + '</b></div>';
+      h += '</div>';
+    });
     h += '</div>';
     return h;
   }

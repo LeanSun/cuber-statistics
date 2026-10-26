@@ -374,6 +374,10 @@ tr:hover .pname .linkish,tr:hover .pname .pname-txt{
 .bar-track{flex:1 1 auto;min-width:0;height:100%;display:flex;align-items:center}
 .bar-grow{flex:0 0 auto;height:100%;max-width:100%;min-width:0;
   transform-origin:left center;animation:barGrow calc(.8s / var(--anim-rate,1)) cubic-bezier(.2,.75,.25,1) both}
+/* 非单项目模式下，.bar-grow 的 height:100% 在表格单元格里会塌缩为 0，
+   导致内部 .ministack.evstack（height:100%）也跟着塌成 0、按项目堆叠条看不见。
+   这里给非 evmode 的 .bar-grow 一个显式高度（与 dimstack 同高），evmode 仍走 12px。 */
+.bar-row:not(.evmode) .bar-grow{height:18px}
 .bar-total{flex:none;min-width:36px;text-align:right;font-size:12.5px;font-weight:700;color:var(--text-2);font-variant-numeric:tabular-nums}
 /* 单项目模式：色条 + 最佳成绩 + 该项目世界排名 */
 .bar-row.evmode{gap:10px}
@@ -972,8 +976,13 @@ tr[data-prow]:hover .pname .linkish,.pname:hover .linkish{
 .exp-v3-idtxt>b{display:block;font-size:18px;font-weight:700;letter-spacing:-.01em;
   line-height:1.25;word-break:break-word}
 .exp-v3-meta{display:flex;gap:6px;flex-wrap:wrap;align-items:center;
-  font-size:12px;color:var(--text-3);margin-top:3px}
-.exp-v3-meta .dot{opacity:.5}
+  font-size:12px;color:var(--text-3);margin-top:4px}
+.exp-v3-meta span{padding:1px 9px;border-radius:999px;background:var(--bg-soft-2);
+  border:1px solid var(--border);white-space:nowrap}
+.exp-v3-meta .m-gender{font-weight:600;color:var(--text-2)}
+.exp-v3-wca{font-size:11px;color:var(--text-3);margin-top:6px}
+.exp-v3-wca code{font-family:var(--mono,monospace);background:var(--bg-soft-2);
+  border:1px solid var(--border);padding:1px 6px;border-radius:5px;color:var(--text-2)}
 .exp-v3-scores{display:flex;gap:8px;flex:none}
 .exp-v3-score{display:flex;flex-direction:column;align-items:center;gap:1px;
   min-width:76px;padding:7px 12px;border-radius:12px;
@@ -1029,6 +1038,24 @@ tr[data-prow]:hover .pname .linkish,.pname:hover .linkish{
 }
 .rec-chip.lv-CR{background:color-mix(in srgb,#38bdf8 18%,transparent);border-color:#38bdf8}
 .rec-chip.lv-NR{background:color-mix(in srgb,#4ade80 18%,transparent);border-color:#4ade80}
+.rec-chip.rec-scope{background:var(--bg-soft-2);border-color:var(--border);color:var(--text-3);font-weight:600}
+/* 各维度计算过程卡片 */
+.dimcalc{border-top:1px dashed var(--border);padding:12px 2px 4px;margin-top:4px}
+.dimcalc:first-of-type{border-top:none;margin-top:0}
+.dc-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13.5px}
+.dc-dot{width:10px;height:10px;border-radius:50%;flex:none}
+.dc-head b{font-size:14px}
+.dc-q{color:var(--text-3);font-size:12px}
+.dc-w{margin-left:auto;color:var(--accent);font-weight:700;font-size:12px;
+  background:var(--accent-soft);padding:1px 9px;border-radius:999px}
+.dc-formula{margin:8px 0;overflow-x:auto;font-size:13px}
+.dc-formula mjx-container{margin:4px 0!important}
+.dc-inputs{display:flex;gap:7px;flex-wrap:wrap;margin:4px 0 2px}
+.dc-in{display:inline-flex;align-items:baseline;gap:4px;font-size:11.5px;color:var(--text-3);
+  background:var(--bg-soft-2);border:1px solid var(--border);border-radius:999px;padding:2px 9px}
+.dc-in b{color:var(--text);font-variant-numeric:tabular-nums;font-size:12.5px}
+.dc-result{font-size:12px;color:var(--text-2);margin-top:4px}
+.dc-result b{color:var(--text);font-variant-numeric:tabular-nums}
 @media (max-width:760px){
   .exp-inner.exp-v2{grid-template-columns:1fr}
 }
@@ -1253,16 +1280,25 @@ tr[data-prow]:hover .pname .linkish,.pname:hover .linkish{
 
 
 /* ============ 参数设置页：六维占比自定义 ============ */
-/* 每行：维度名（带主色圆点）+ 滑杆 + 百分比数字框 */
+/* 每行：维度名（带主色圆点）+ 占比条 + 百分比数字框（不再用滑杆，直接输入更精准） */
 .wdim-body{grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:10px 16px}
-.wrow{grid-template-columns:minmax(120px,1fr) 120px 84px;gap:10px}
+.wrow{grid-template-columns:minmax(120px,210px) 1fr 92px;gap:10px}
 .wrow .pr-name{display:inline-flex;align-items:center;gap:7px;min-width:0}
 .wdot{width:10px;height:10px;border-radius:50%;flex:none;box-shadow:0 0 0 1px rgba(0,0,0,.12) inset}
-.wrow .wrange{width:100%;min-width:0;accent-color:var(--accent);cursor:pointer}
+/* 占比条：直观反映该维度在六维中的相对份额，数字框才是真正的输入控件 */
+.wbar{position:relative;height:11px;border-radius:999px;background:var(--bg-soft-2);overflow:hidden}
+.wbar i{display:block;height:100%;border-radius:999px;min-width:2px;transition:width .25s ease}
 .wval{display:inline-flex;align-items:center;gap:3px;justify-content:flex-end}
-.wval .wnum{width:58px;text-align:right}
+.wval .wnum{width:62px;text-align:right}
 .wval b{color:var(--text-3);font-weight:600;font-size:11.5px}
 @media (max-width:720px){
   .wrow{grid-template-columns:1fr 76px;row-gap:6px}
-  .wrow .wrange{grid-column:1 / -1}
+  .wrow .wbar{grid-column:1 / -1;margin:1px 0}
 }
+
+/* 首屏加载占位：替换此前静态写死的旧版首页（含已下线的 GOAT 入口），
+   避免脚本接管前短暂闪现过时内容 */
+.home-loading{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;min-height:62vh;color:var(--text-3)}
+.home-loading .spinner{width:34px;height:34px;border-radius:50%;border:3px solid var(--border);border-top-color:var(--accent);animation:homeSpin .8s linear infinite}
+.home-loading p{font-size:13px;margin:0}
+@keyframes homeSpin{to{transform:rotate(360deg)}}

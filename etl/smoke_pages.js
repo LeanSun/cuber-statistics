@@ -564,11 +564,12 @@ console.log('== 选手页排名数字 / 参数设置页 ==');
   const hM = tryRender('参数设置页', () => P.model(base));
   ok(hM.indexOf('data-cmod') >= 0, '模块配色色块存在（点击弹出取色菜单）');
   ok(hM.indexOf('data-ccmod') >= 0, '国家配色色块存在（点击弹出取色菜单）');
-  /* 需求：六个维度各自给出占比自定义入口（滑杆 + 百分比数字框） */
+  /* 需求：六个维度各自给出占比自定义入口（条形可视化 .wbar + 百分比数字框，
+     不再用滑杆——用户反馈滑杆拖拽交互差，改条形+数字框双通道）。 */
   ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'].forEach(function (k) {
-    ok(hM.indexOf('data-wdim="' + k + '"') >= 0, '六维占比自定义：' + k.toUpperCase() + ' 有输入框');
+    ok(hM.indexOf('data-wdim="' + k + '"') >= 0, '六维占比自定义：' + k.toUpperCase() + ' 有数字输入框');
   });
-  ok((hM.match(/class="wrange"/g) || []).length === 6, '六维占比各带一根滑杆');
+  ok((hM.match(/class="wbar"/g) || []).length === 6, '六维占比各带一条可视化条形（替代滑杆）');
   ok(hM.indexOf('id="wSum"') >= 0 && hM.indexOf('id="wReset"') >= 0 && hM.indexOf('id="wEven"') >= 0,
     '六维占比给出合计显示 / 恢复默认 / 平均分配');
   /* 需求：所有颜色设置统一沉到页面最下方（在左目录 + 右章节之后） */
