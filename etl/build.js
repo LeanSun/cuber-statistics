@@ -306,7 +306,7 @@ function fmtResult(eventId, value, type) {
 /* ---------------- 维度表 ---------------- */
 const persons = new Map();
 const comps = new Map();
-const champWC = new Set(), champCC = new Set();
+const champWC = new Set(), champCC = new Set(), champNC = new Set();
 const countryName = {};
 const continentShort = {};
 const events = new Map();
@@ -391,11 +391,19 @@ async function loadDimensions() {
   log('加载 championships …');
   await streamTsv('championships', (r) => {
     if (!r.competition_id) return;
+    /* championship_type 的真实取值有三类（WCA 导出实证）：
+         'world'          → 世界锦标赛
+         '_Europe' / '_Asia' …（下划线开头）→ 洲际锦标赛
+         'FI' / 'IT' / 'AU' …（两位国家码）  → **国家锦标赛**
+       旧代码只认 'world'，其余一股脑塞进 CC —— 于是各国国家锦标赛被当成洲锦赛，
+       而「国家赛」这一档被错用成「在本国境内举办的比赛」（任何一场本土周末赛都算），
+       这正是选手页「国家赛统计」数字不对的根源（Feliks 曾被算成 660 场 / 517 冠）。 */
     const t = (r.championship_type || '').toLowerCase();
     if (t === 'world') champWC.add(r.competition_id);
+    else if (t.length === 2) champNC.add(r.competition_id);
     else champCC.add(r.competition_id);
   });
-  log('championships WC/CC:', champWC.size, champCC.size);
+  log('championships WC/CC/NC:', champWC.size, champCC.size, champNC.size);
 
   log('加载 countries / continents …');
   /* continents.id 在不同导出版本里可能是 "_Europe" / "Europe"，这里三条路径都试 */
@@ -736,7 +744,11 @@ async function processResults() {
     const isFinal = rtype === 'f' || rtype === 'c';
     const pos = toInt(r.pos);
     if (isFinal && pos >= 1 && pos <= 3) {
-      const tier = champWC.has(compId) ? 'WC' : (champCC.has(compId) ? 'CC' : (comp && comp.country_id === p.country ? 'NC' : 'OP'));
+      /* 赛级：世锦 / 洲锦 / 国家锦标赛 / 其它一律公开赛。
+         旧口径把「在本国境内举办的比赛」也算成 NC，国家赛因此虚高到几百场。 */
+      const tier = champWC.has(compId) ? 'WC'
+        : (champCC.has(compId) ? 'CC'
+          : (champNC.has(compId) ? 'NC' : 'OP'));
       const key = compId + '|' + eid;
       let fs = finalCounts.get(key); if (!fs) { fs = new Set(); finalCounts.set(key, fs); }
       fs.add(pid);
