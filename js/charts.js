@@ -197,12 +197,49 @@
     const T = pal();
     const rows = data && data.rows ? data.rows : data;
     const indicators = data && data.indicators ? data.indicators : opts.indicators || [];
+    /* 逐轴满分：opts.max 可以是数字（所有轴同一个满分），也可以是数组（每轴各一个）。
+       六维维度分是「Σ_项目 归一分」，天然可以远大于 1000（Feliks 的 M3 = 5640），
+       所以再用同一个 1000 当满分会让图形整个冲出图表 —— 满分必须逐轴给。 */
+    const maxArr = Array.isArray(opts.max) ? opts.max : null;
+    const maxOne = maxArr ? 0 : (opts.max || 100);
+    /* 封顶：允许个别选手在单轴超出满分（这正是「世界前十均值」作满分的本意），
+       但不能超出太多，否则多边形会冲出画布。默认封顶 2 倍，配合 46% 半径刚好装下。 */
+    const capAt = opts.capAt || 2;
+    const mk = rows.map(function (r) {
+      const real = r.values.map(function (v) { return Number(v) || 0; });
+      const capped = real.map(function (v, i) {
+        const mx = maxArr ? (maxArr[i] || 1) : maxOne;
+        const cap = mx * capAt;
+        return round(v > cap ? cap : v);
+      });
+      return {
+        name: r.name, value: capped, real: real,
+        itemStyle: { color: r.color }, lineStyle: { color: r.color }, areaStyle: { color: r.color }
+      };
+    });
     return Object.assign(base({ duration: 620 }), {
-      tooltip: Object.assign({ trigger: 'item' }, base().tooltip),
+      /* 悬浮框显示**真实值**（不是封顶后的值），否则读到的数字是假的 */
+      tooltip: Object.assign({
+        trigger: 'item',
+        formatter: function (p) {
+          const r = mk[p.dataIndex];
+          if (!r) return '';
+          const vs = r.real || r.value;
+          let s = '<b>' + esc(r.name) + '</b>';
+          indicators.forEach(function (n, i) {
+            const mx = maxArr ? (maxArr[i] || 1) : maxOne;
+            s += '<br/>' + esc(String(n)) + '：' + f2(vs[i]) +
+              (vs[i] > mx ? ' <span style="opacity:.7">（满分 ' + f2(mx) + '，已封顶显示）</span>' : '');
+          });
+          return s;
+        }
+      }, base().tooltip),
       legend: { show: true, bottom: 0, textStyle: { color: T.text2, fontSize: 11.5 }, itemWidth: 12, itemHeight: 8, data: rows.map(function (r) { return r.name; }) },
       radar: {
         center: ['50%', '48%'], radius: opts.radius || '62%',
-        indicator: indicators.map(function (n, i) { return { name: n, max: opts.max || 100, color: T.text2 }; }),
+        indicator: indicators.map(function (n, i) {
+          return { name: n, max: maxArr ? (maxArr[i] || 1) : maxOne, color: T.text2 };
+        }),
         axisName: { color: T.text2, fontSize: 11.5 },
         splitLine: { lineStyle: { color: T.border } },
         splitArea: { areaStyle: { color: [T.soft, 'transparent'] } },
@@ -213,9 +250,7 @@
         areaStyle: { opacity: 0.16 },
         lineStyle: { width: 2 },
         emphasis: { lineStyle: { width: 3 } },
-        data: rows.map(function (r) {
-          return { name: r.name, value: r.values.map(function (v) { return round(v); }), itemStyle: { color: r.color }, lineStyle: { color: r.color }, areaStyle: { color: r.color } };
-        })
+        data: mk
       }]
     });
   }
@@ -260,9 +295,10 @@
        于是条形、姓名、国旗、分数会作为一个整体上下滑动，而不再是「槽位固定、名字瞬跳」。 */
     const data = items.slice();
     return Object.assign(base({ stagger: 0, duration: dur }), {
-      /* top/bottom 从 6 提到 20：Y 轴范围改成 1..n（刻度正好落在名次上）后，
-         第一名 / 第 n 名的条形中心贴着网格上下边界，留白不够会被 clip 切掉半条。 */
-      grid: { left: 34, right: 80, top: 20, bottom: 20, containLabel: false },
+      /* 上下留白 30：Y 轴范围 1..n 时，第 1 名 / 第 n 名的条形中心正好贴在
+         网格上下边界，条形高约 24px，留白不够上半条 / 下半条会被切掉。
+         同时 series.clip 关掉（见下），双保险：就算有极端行高也不会被裁。 */
+      grid: { left: 34, right: 86, top: 30, bottom: 30, containLabel: false },
       xAxis: Object.assign({ type: 'value', max: function (v) { return Math.max(v.max, 1) * 1.05; } }, axisCommon()),
       /* 轴范围 1..n（原来是 0.5..n+0.5）：条形画在整数名次上，而刻度原来落在
          0.5/1.5/2.5… 上，两者错开半格 —— 这就是「序号与行对不齐」的根因。
@@ -281,12 +317,13 @@
           const d = p.data || {};
           if (!d || !d.id || !d.name) return '';
           const v = (d.value && d.value[0]) || 0;
-          return '<b>' + esc(d.name) + '</b><br/>' + esc(d.iso || '') + ' · ' + (Math.round(v * 10) / 10);
+          return '<b>' + esc(d.name) + '</b><br/>' + esc(d.iso || '') + ' · ' + f2(v);
         }
       }, base().tooltip),
       series: [{
         type: 'custom',
-        clip: true,
+        /* clip 关掉：首末两名的条形有一半落在网格外，打开会被裁成半条。 */
+        clip: false,
         renderItem: function (params, api) {
           const rank = api.value(1);
           const val = Math.max(0, api.value(0));
@@ -325,10 +362,11 @@
               }
             });
           }
-          /* 条尾分数：随条形右端 x1 一起左右滑动，并与名次一起上下滑动 */
+          /* 条尾分数：随条形右端 x1 一起左右滑动，并与名次一起上下滑动。
+             两位小数（与全站分数显示一致），右侧留白已同步加宽到 86。 */
           kids.push({
             type: 'text', transition: ['style'], style: {
-              text: val > 0 ? String(Math.round(val * 10) / 10) : '', x: x1 + 6, y: yc,
+              text: val > 0 ? f2(val) : '', x: x1 + 6, y: yc,
               fill: T.text2, font: '600 11.5px "Segoe UI",system-ui,sans-serif',
               textVerticalAlign: 'middle', textBaseline: 'middle'
             }
@@ -656,6 +694,8 @@
   }
 
   function round(x, n) { const p = Math.pow(10, n == null ? 2 : n); return Math.round(x * p) / p; }
+  /* 两位小数的固定显示（竞速图条尾 / 悬浮框）：与全站分数口径一致 */
+  function f2(v) { const n = Number(v); return (isFinite(n) ? Math.round(n * 100) / 100 : 0).toFixed(2); }
 
   /* ---------- 统一挂载：扫描 [data-ec] ---------- */
   function mount(root) {

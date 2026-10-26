@@ -300,6 +300,14 @@
     }
 
     /* 以下全部取自 ETL 真实统计；仅在旧数据缺字段时回退为 0（不再用估算公式） */
+    /* 按赛级的领奖台数：明细 p.podiums 在 ETL 侧已被截断到前 10 条（按 R 排序），
+       洲锦 / 国家赛几乎进不了前十，这里再数一遍必然是 0。
+       所以优先采用 ETL 在截断前算好的 podTier（旧数据没有该字段时退回逐条统计）。 */
+    if (p.podTier) {
+      ['WC', 'CC', 'NC', 'OP', 'Local'].forEach(function (tt) {
+        if (p.podTier[tt] != null) podiumByTier[tt] = p.podTier[tt];
+      });
+    }
     var totalPod = pods.length;
     if (p.podTotal) totalPod = p.podTotal;
     var st = {

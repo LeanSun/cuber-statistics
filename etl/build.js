@@ -60,6 +60,24 @@ const SIXEV = new Map();
   console.log('按项目六维分载入:', SIXEV.size, '人 /', (lines.length - 1), '条 选手×项目');
 })();
 
+/* ---------- 「在位时长」（M4 统治力引擎产物）----------
+   M4_seats.tsv 的 d1 / d10 / d100 = 该选手在**世界第一 / 前十 / 前一百**上
+   累计坐了多久（单位：年，按各项目累加）。选手页「在位月数」用的就是 d1 × 12。
+   只有真正进过前十的人会出现在这张表里（约 1.5k 人），其余选手的在位月数
+   真实值就是 0 —— 不是缺数据。表缺失时打印告警并全部记 0，不静默出错。 */
+const M4SEATS = new Map();
+(function loadM4Seats() {
+  const f = path.join(__dirname, 'score', 'M4_seats.tsv');
+  if (!fs.existsSync(f)) { console.warn('⚠ 未找到 ' + f + ' —— 「在位月数」将全部记 0；请先跑 etl/score/m4_dominance.js'); return; }
+  const lines = fs.readFileSync(f, 'utf8').trim().split('\n');
+  for (let i = 1; i < lines.length; i++) {
+    const c = lines[i].split('\t');
+    if (c.length < 10) continue;
+    M4SEATS.set(c[0], { d1: +c[8] || 0, d10: +c[7] || 0, d100: +c[9] || 0 });
+  }
+  console.log('在位时长载入:', M4SEATS.size, '人');
+})();
+
 /* ---------- 单次 / 平均 两套六维向量（成绩口径切换用）----------
    与 SIX 同源（六维引擎按 track=single|avg|both 各跑一遍），结构一致 {m1..m6,t}。
    仅下发「全局」向量，不下发按项目的 sixEv 三份（data.js 已 ~60MB，三倍会严重膨胀）；
@@ -927,6 +945,23 @@ function computeModules() {
        排序只为前端默认顺序，不参与截断。 */
     p.records.sort((a, b) => b.R - a.R);
     p.podTotal = p.podiums.length;
+    /* ★ 冠军数 / 领奖台数按赛级统计，必须在**截断之前**做：
+       下面会把 podiums 按 R 取前 10 条下发（控制包体），而 R 由赛级加成参与计算，
+       洲锦 / 国家赛的领奖台几乎进不了前十 —— 若在截断后再统计，
+       国家赛相关的数字对所有选手都会恒为 0（线上正是这个现象）。 */
+    const podTier = { WC: 0, CC: 0, NC: 0, OP: 0, Local: 0 };
+    const podGold = { WC: 0, CC: 0, NC: 0, OP: 0, Local: 0 };
+    p.podiums.forEach((x) => {
+      if (podTier[x.tier] == null) podTier[x.tier] = 0;
+      if (podGold[x.tier] == null) podGold[x.tier] = 0;
+      podTier[x.tier]++;
+      if (x.place === 1) podGold[x.tier]++;
+    });
+    p.podTier = podTier;
+    p.podGold = podGold;
+    p.wcGold = podGold.WC;
+    p.ccGold = podGold.CC;
+    p.ncGold = podGold.NC;
     p.podiums.sort((a, b) => b.R - a.R);
     if (p.podiums.length > 10) p.podiums = p.podiums.slice(0, 10);
 
@@ -936,10 +971,14 @@ function computeModules() {
     if (!bestEv) { let bestN = -1; p.eventsSet.forEach((eid) => { if ((eventCounts[eid] || 0) > bestN) { bestN = eventCounts[eid]; bestEv = eid; } }); if (!bestEv) bestEv = '333'; }
     p.mainEvent = bestEv;
 
-    p.wcGold = p.podiums.filter((x) => x.place === 1 && x.tier === 'WC').length;
-    p.ccGold = p.podiums.filter((x) => x.place === 1 && x.tier === 'CC').length;
-    p.ncGold = p.podiums.filter((x) => x.place === 1 && x.tier === 'NC').length;
-    p.months1 = 0; p.months10 = 0; p.months100 = 0; p.peakSpan = 0; p.peakAge = 0;
+    /* wcGold / ccGold / ncGold 已在上面（截断之前）算好，这里不要再重算一遍。 */
+    /* 在位月数：世界第一的累计在位时长，取自 M4 统治力引擎（M4_seats.tsv 的 d1 / d10 / d100，
+       单位是年，按各项目累加）。此前这里一律写 0，选手页「在位月数」因此永远是 0。 */
+    const m4s = M4SEATS.get(p.wcaId);
+    p.months1 = m4s ? Math.round(m4s.d1 * 12) : 0;
+    p.months10 = m4s ? Math.round(m4s.d10 * 12) : 0;
+    p.months100 = m4s ? Math.round(m4s.d100 * 12) : 0;
+    p.peakSpan = 0; p.peakAge = 0;
 
     p.events = Array.from(p.eventsSet).sort((a, b) => ((events.get(a) || { rank: 99 }).rank) - ((events.get(b) || { rank: 99 }).rank));
     p.comps = p.compsSet.size;
@@ -1224,7 +1263,9 @@ function buildEventMilestones() {
     wr: p.wr, cr: p.cr, nr: p.nr, nrW: Math.round((p.nrW || 0) * 100) / 100,
     recTotal: p.recTotal || 0, podTotal: p.podTotal || 0,
     wcGold: p.wcGold, ccGold: p.ccGold, ncGold: p.ncGold,
-    months1: 0, months10: 0, months100: 0, eloPeak: p.eloPeak, peakSpan: 0, peakAge: 0,
+    podTier: p.podTier || null, podGold: p.podGold || null,
+    months1: p.months1 || 0, months10: p.months10 || 0, months100: p.months100 || 0,
+    eloPeak: p.eloPeak, peakSpan: 0, peakAge: 0,
     resultRows: p.resultRows || 0, attempts: p.attempts || 0, solves: p.solves || 0, dnf: p.dnf || 0,
     cities: p.cities || 0, maxEventsPerComp: p.maxEventsPerComp || 0, multiEventComp: p.multiEventComp || 0,
     yTop10: p.yTop10 || 0, yTop100: p.yTop100 || 0,

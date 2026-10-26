@@ -799,67 +799,31 @@
           if (!k) return;
           const v = parseFloat(el.value);
           if (isNaN(v)) return;
-          if (el.hasAttribute('data-wdim-unit')) Pm.set('b' + k.slice(1), v / 100);
-          else Pm.set('b' + k.slice(1), v / 100);
+          /* 目标：这一维占 f，其余五维**按原比例**分摊剩下的 1−f，
+             于是六维合计始终 = 100%，改一个维度不会把别的维度压成 0。 */
+          const f = Math.max(0, Math.min(1, v / 100));
+          const WK = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'];
+          const norm = (Pm.weights ? Pm.weights() : {}) || {};
+          const sumOthers = 1 - (norm[k] || 0);
+          WK.forEach(function (j) {
+            const vj = (j === k) ? f
+              : (sumOthers > 0 ? (1 - f) * (norm[j] || 0) / sumOthers : 0);
+            Pm.set('b' + j.slice(1), vj);
+          });
           syncWdim(el);
           clearTimeout(window.__wdT);
           window.__wdT = setTimeout(function () { render(true); }, 420);
         });
       });
-      /* 六维占比：拖动柱子调整权重（动态可视化，其余自动按比例缩放） */
-      const wChart = document.getElementById('wChart');
-      if (wChart) {
-        const WK = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'];
-        const applyWeight = function (k, f) {
-          const norm = (Pm.weights ? Pm.weights() : {}) || {};
-          const sumOthers = 1 - (norm[k] || 0);
-          WK.forEach(function (j) {
-            let v;
-            if (j === k) v = f;
-            else v = sumOthers > 0 ? (1 - f) * (norm[j] || 0) / sumOthers : 0;
-            if (Pm.set) Pm.set('b' + j.slice(1), v);
-          });
-          WK.forEach(function (j) {
-            const col = wChart.querySelector('.wcol[data-wdim="' + j + '"]');
-            if (!col) return;
-            const p = (Pm.weights()[j] || 0) * 100;
-            const fill = col.querySelector('.wcol-fill');
-            if (fill) fill.style.height = p.toFixed(1) + '%';
-            const pc = col.querySelector('.wcol-pct');
-            if (pc) pc.textContent = p.toFixed(1) + '%';
-          });
-          const sEl = document.getElementById('wSum');
-          if (sEl) sEl.textContent = t('md.weightsSum', { s: '100.0' });
-          clearTimeout(window.__wdT);
-          window.__wdT = setTimeout(function () { render(true); }, 380);
-        };
-        let drag = null;
-        const onMove = function (e) {
-          if (!drag) return;
-          const rect = drag.track.getBoundingClientRect();
-          const y = e.clientY;
-          let f = (rect.bottom - y) / rect.height;
-          f = Math.max(0, Math.min(1, f));
-          applyWeight(drag.k, f);
-        };
-        const onUp = function () {
-          drag = null;
-          window.removeEventListener('pointermove', onMove);
-          window.removeEventListener('pointerup', onUp);
-        };
-        wChart.addEventListener('pointerdown', function (e) {
-          const hd = e.target.closest ? (e.target.closest('.wcol-fill') || e.target.closest('.wcol-handle')) : null;
-          if (!hd) return;
-          const col = hd.closest('.wcol');
-          if (!col) return;
-          const k = col.getAttribute('data-wdim');
-          if (!k) return;
-          drag = { k: k, track: col.querySelector('.wcol-track') };
-          e.preventDefault();
-          onMove(e);
-          window.addEventListener('pointermove', onMove);
-          window.addEventListener('pointerup', onUp);
-        });
+      /* 六维占比的交互已由上面的 [data-wdim] 通用处理器接管
+         （滑杆 + 数字框，改一维其余按比例缩放）。这里只保留合计标签的即时刷新。 */
+      const wSumEl = document.getElementById('wSum');
+      if (wSumEl) {
+        const wk = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'];
+        const ww = (Pm.weights ? Pm.weights() : {}) || {};
+        let s = 0;
+        wk.forEach(function (j) { s += (ww[j] || 0) * 100; });
+        wSumEl.textContent = t('md.weightsSum', { s: s.toFixed(1) });
       }
       const wR = document.getElementById('wReset');
       if (wR) wR.addEventListener('click', function () {

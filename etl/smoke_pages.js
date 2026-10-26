@@ -582,15 +582,18 @@ console.log('== 选手页排名数字 / 参数设置页 ==');
   const hM = tryRender('参数设置页', () => P.model(base));
   ok(hM.indexOf('data-cmod') >= 0, '模块配色色块存在（点击弹出取色菜单）');
   ok(hM.indexOf('data-ccmod') >= 0, '国家配色色块存在（点击弹出取色菜单）');
-  /* 需求：六个维度各自给出占比自定义入口，改为「可拖拽柱状图」(.wcol + 把手)，
-     用户明确不喜欢「滑杆 / 输入数字」，要求动态可视化、操作简单、观看直接。 */
+  /* 需求变更（2026-10-27）：六维占比自定义由「可拖拽柱状图」改为
+     「每行一根滑杆 + 一个数字输入框」——柱子只有 40 来像素高，拖 1px 就是 2 个点，
+     拖不准也点不中，触屏还会误触页面滚动。滑杆行程长、可点轨道跳位、键盘可微调。 */
   ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'].forEach(function (k) {
-    ok(hM.indexOf('data-wdim="' + k + '"') >= 0, '六维占比自定义：' + k.toUpperCase() + ' 有一根占比柱');
+    ok(hM.indexOf('data-wdim="' + k + '"') >= 0, '六维占比自定义：' + k.toUpperCase() + ' 有调节入口');
   });
-  ok((hM.match(/class="wcol"/g) || []).length === 6, '六维占比各带一根可拖拽柱（替代滑杆/数字框）');
-  ok((hM.match(/class="wcol-fill"/g) || []).length === 6 &&
-    (hM.match(/class="wcol-handle"/g) || []).length === 6,
-    '每根占比柱都有填充条与拖拽把手');
+  ok((hM.match(/class="wrange"/g) || []).length === 6 &&
+    (hM.match(/class="wnum"/g) || []).length === 6,
+    '六维占比每行各带一根滑杆与一个数字框（替代可拖拽柱状图）');
+  ok((hM.match(/type="range"/g) || []).length === 6 &&
+    (hM.match(/type="number"/g) || []).length === 6,
+    '滑杆 / 数字框的 input type 正确');
   ok(hM.indexOf('id="wSum"') >= 0 && hM.indexOf('id="wReset"') >= 0 && hM.indexOf('id="wEven"') >= 0,
     '六维占比给出合计显示 / 恢复默认 / 平均分配');
   /* 需求：所有颜色设置统一沉到页面最下方（在左目录 + 右章节之后） */

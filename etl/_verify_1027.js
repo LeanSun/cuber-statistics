@@ -84,7 +84,7 @@ console.log('== ③ 展开行：身份顺序 + 表头空柱 ==');
   ok(/track-slot/.test(head), '表头保留无样式占位格（网格对齐不变）');
 }
 
-console.log('== ④ 六维贡献条：方案 A（相对最大归一） ==');
+console.log('== ④ 六维贡献条：真实占比（2026-10-27 回滚方案 A） ==');
 {
   const p = M.ranked.find((x) => x.six && !x.slim) || M.ranked[0];
   const h = P.expandBody(p, { recType: 'all', tab: 'career' });
@@ -98,12 +98,15 @@ console.log('== ④ 六维贡献条：方案 A（相对最大归一） ==');
     if (pm) pcts.push(parseFloat(pm[1]));
   });
   ok(widths.length === 6, '六维各有一条: ' + widths.length);
-  ok(Math.abs(widths[0] - 100) < 0.05, '贡献最大的那条撑满轨道: ' + widths[0] + '%');
+  /* 条长必须**等于**右侧真实占比（同尺），六条相加铺满整条轨道 */
+  const sameScale = widths.every((w, i) => Math.abs(w - pcts[i]) < 1.6);
+  ok(sameScale, '条长 = 右侧真实占比（同一把尺）: ' + widths.join(' / ') + '  vs  ' + pcts.join(' / '));
   const desc = widths.every((w, i) => i === 0 || w <= widths[i - 1] + 1e-6);
   ok(desc, '条长按贡献降序递减: ' + widths.join(' / '));
   const pctSum = pcts.reduce((a, b) => a + b, 0);
-  ok(Math.abs(pctSum - 100) < 0.5, '右侧占比仍是真实百分比（合计≈100）: ' + pcts.join(' / '));
-  ok(widths[5] < 100 && pcts[0] < 100, '条长与占比是两把尺（不混为一谈）');
+  ok(Math.abs(pctSum - 100) < 0.5, '占比合计≈100: ' + pcts.join(' / '));
+  const wSum = widths.reduce((a, b) => a + b, 0);
+  ok(Math.abs(wSum - 100) < 1.5, '六条相加铺满整条轨道: ' + wSum.toFixed(1) + '%');
 }
 
 console.log('== ⑤ 重绘间隔（fps）已接线 ==');

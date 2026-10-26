@@ -521,6 +521,40 @@
     return y;
   }
 
+  /* 所选项目范围内的六维总分（与榜单 `sixIn()` 同一把尺子：t = Σ_d w_d · s_d）。
+     ★ 单次 / 平均口径：ETL 只下发了**全局**的 sixS / sixA，没有按项目的单均分解
+       （data.js 已 ~60MB，再翻倍会严重膨胀）。这里的做法是「按项目份额缩放」：
+         s_d(口径, 项目范围) = s_d(口径, 全局) × [ s_d(合并, 项目范围) ÷ s_d(合并, 全局) ]
+       项目范围 = 全部项目时份额恒为 1，公式精确退化为全局单/均分，不会凭空造数。 */
+  const SIXD_RACE = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'];
+  function evScopeT(p, evList, rtype) {
+    const se = p && p.sixEv;
+    if (!se) return 0;
+    const w = (P.util && P.util.sixW) ? P.util.sixW() : { m1: .28, m2: .24, m3: .12, m4: .18, m5: .08, m6: .10 };
+    const s = [0, 0, 0, 0, 0, 0];
+    let hit = 0;
+    evList.forEach(function (ev) {
+      const a = se[ev];
+      if (!a) return;
+      for (let d = 0; d < 6; d++) s[d] += (a[d] || 0);
+      hit++;
+    });
+    if (!hit) return 0;
+    let t = 0;
+    for (let d = 0; d < 6; d++) t += (w[SIXD_RACE[d]] || 0) * s[d];
+    if (rtype !== 'single' && rtype !== 'avg') return t;
+    const vs = rtype === 'single' ? p.sixS : p.sixA;
+    const vb = p.six;
+    if (!vs || !vb) return t;
+    let t2 = 0;
+    for (let d = 0; d < 6; d++) {
+      const all = vb[SIXD_RACE[d]] || 0;
+      const share = all > 0 ? Math.max(0, Math.min(1, s[d] / all)) : 0;
+      t2 += (w[SIXD_RACE[d]] || 0) * (vs[SIXD_RACE[d]] || 0) * share;
+    }
+    return t2;
+  }
+
   function snapshot(mode, fy, smooth, region, country, evs, gender, rtype) {
     /* 选中项目（单项目 / 多项目）时，整张图切换成「所选项目的六维能力分排名」，与上方筛选项目实时联动：
          分数取每个所选项目的六维总分（p.sixEv 已含 per-event 六维分 a[6]=t_ev）求和，
@@ -543,14 +577,13 @@
     M.ranked.forEach(function (p) {
       if (!inScope(p, region, country, gender, evs)) return;
       if (evList) {
-        /* 多项目（含单项目）：把所选项目的六维总分求和，作为该选手在「所选项目」上的综合能力分。
-           p.sixEv[ev][6] 即为该项目六维加权总分（已含权重），直接相加即可。 */
-        let t = 0, hit = 0;
-        evList.forEach(function (ev) {
-          const a = p.sixEv && p.sixEv[ev];
-          if (a && a[6] > 0) { t += a[6]; hit++; }
-        });
-        if (!hit || t <= 0) return;
+        /* 多项目（含单项目）：把所选项目的六维分逐维求和，再用当前权重合成，
+           与榜单「项目筛选」完全同一把尺子（不再直接读 ETL 预置的 a[6]，
+           否则在参数设置页改了六维占比，竞速图不会跟着变）。
+           ★ rtype（单次 / 平均）此前在这里被完全忽略 —— 项目模式只认合并档，
+             所以「单次 / 平均」筛选看着像失效；现在由 evScopeT 按口径取值。 */
+        const t = evScopeT(p, evList, rtype);
+        if (t <= 0) return;
         /* ★ 时间演化（此前缺失 → 单/多项目播放时条形纹丝不动，只显示最终名次）：
            总分 t 是「截至今天」的能力值，必须再乘一条随时间推进的进度曲线，
            播放时才会逐年长出来。进度曲线用「该选手在所选项目上的年度荣誉累计占比」，
@@ -1069,24 +1102,29 @@
     h += '</div>' +
       '<p class="tiny muted" style="margin-top:8px">' + esc(t('md.total.note')) + '</p></div>';
 
-    /* ---- 六维占比自定义：拖动每根柱子调整权重，全站榜单立即重排 ----
-       柱子高度 = 该维在总分里的占比（实时归一化，六根合计恒为 100%）。
-       拖动某根柱子到某个高度，其余柱子按原比例自动缩放，保持「相对话语权」的直觉。 */
+    /* ---- 六维占比自定义：每行「滑杆 + 数字框」，全站榜单立即重排 ----
+       旧版是六根竖柱 + 上下拖动柱顶调高度：柱子只有 40 来像素高，
+       拖 1 像素就是 2 个多百分点，根本拖不准，触屏上还会误触页面滚动。
+       现在换成横向滑杆（行程长、可直接点轨道跳位、键盘方向键可微调）
+       加上一个数字输入框（精确到 0.5%），两者双向同步。
+       改某一维时其余各维按原比例自动缩放，六维合计恒为 100%。 */
     const CW = (P.util.sixW ? P.util.sixW() : null) || SW;
     let wsum = 0;
     MOD.forEach(function (k) { wsum += (CW[k] || 0); });
     h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('md.weightsCustom')) + '</h2>' +
       '<span class="tag acc" id="wSum">' + esc(t('md.weightsSum', { s: U.fmt(wsum * 100, 1) })) + '</span></div>' +
       '<p class="tiny muted" style="margin-bottom:10px">' + esc(t('md.weightsHint')) + '</p>' +
-      '<div class="wchart" id="wChart">';
+      '<div class="wslider" id="wChart">';
     MOD.forEach(function (k) {
       const pct = (CW[k] || 0) * 100;
       const nm = SN[k] || modName(k);
-      h += '<div class="wcol" data-wdim="' + k + '">' +
-        '<div class="wcol-track"><div class="wcol-fill" style="height:' + U.fmt(pct, 1) + '%;background:' + MODC[k] + '">' +
-        '<span class="wcol-handle" data-wdim="' + k + '" title="' + esc(t('md.weightsDrag')) + '"></span></div></div>' +
-        '<div class="wcol-pct">' + U.fmt(pct, 1) + '%</div>' +
-        '<div class="wcol-name"><i class="wdot" style="background:' + MODC[k] + '"></i>' + esc(nm) + '</div>' +
+      h += '<div class="wrow" data-wrow="' + k + '">' +
+        '<span class="wrow-name"><i class="wdot" style="background:' + MODC[k] + '"></i>' + esc(nm) + '</span>' +
+        '<input type="range" class="wrange" data-wdim="' + k + '" min="0" max="100" step="0.5" ' +
+        'value="' + U.fmt(pct, 1) + '" aria-label="' + esc(nm) + ' ' + esc(t('player.weight')) + '">' +
+        '<input type="number" class="wnum" data-wdim="' + k + '" min="0" max="100" step="0.5" ' +
+        'value="' + U.fmt(pct, 1) + '" aria-label="' + esc(nm) + ' ' + esc(t('player.weight')) + '">' +
+        '<span class="wrow-unit">%</span>' +
         '</div>';
     });
     h += '</div>' +

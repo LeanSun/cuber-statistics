@@ -6,10 +6,55 @@
   const P = window.P || (window.P = {});
   const MOD = P.util.MOD, MODC = P.util.MODC;
   const esc = U.esc;
-  const { avatar, flag, playerLink, modName, contribs, ecBox, scoreOf, infoTip, evName, contName, regionName, countryName, strength } = P.util;
+  /* sixW / sixK：六维权重与维度分的统一入口。
+     sixK 此前在整个代码库里**从未定义**（只有调用），sixW 也没被解构进来，
+     于是 PK 页一渲染就抛 ReferenceError —— 这里一并补齐。 */
+  const { avatar, flag, playerLink, modName, contribs, ecBox, scoreOf, infoTip, evName, contName, regionName, countryName, strength, sixW } = P.util;
   function tt(zh, en) { return t.isEn() ? en : zh; }
   /* 性别归一化（兼容 'Male'/'Female'/'m'/'f' 等真实导出写法） */
   function genderOf(g) { if (!g) return ''; g = String(g).charAt(0).toUpperCase(); return g === 'F' ? 'F' : 'M'; }
+  /* 六维维度分统一入口（旧代码里 sixK 从未定义，PK 页一进来就抛 ReferenceError） */
+  function sixK(p, k) { const v = p && p.six; return v ? (v[k] || 0) : 0; }
+  /* ── 六维雷达的逐轴满分 ────────────────────────────────────────────
+     维度分 s_d 是「Σ_项目 (v/max × 项目权重 × 1000)」，是**跨项目累加**值，
+     可以远大于 1000（Feliks 的 M3 = 5640），所以拿 1000 当满分时整张图会冲出去。
+     现按需求改为：满分 = 该维度**世界前十的分值平均值**，个别选手可超出，
+     超出部分在 charts.radar() 里封顶显示（悬停仍看真实值）。 */
+  let SIX_AXIS_MAX = null;
+  function sixAxisMax() {
+    if (SIX_AXIS_MAX) return SIX_AXIS_MAX;
+    const out = {};
+    MOD.forEach(function (k) {
+      const vals = [];
+      for (let i = 0; i < M.ranked.length; i++) {
+        const v = M.ranked[i].six && M.ranked[i].six[k];
+        if (v > 0) vals.push(v);
+      }
+      vals.sort(function (a, b) { return b - a; });
+      const t = vals.slice(0, 10);
+      let s = 0;
+      for (let i = 0; i < t.length; i++) s += t[i];
+      out[k] = t.length ? Math.round(s / t.length * 100) / 100 : 1;
+    });
+    SIX_AXIS_MAX = out;
+    return out;
+  }
+  /* 领奖台按赛级的**真实**计数：ETL 会把明细截断到前 10 条（按 R 排序），
+     洲锦 / 国家赛的领奖台几乎进不了前 10，前端再数一遍必然全是 0。
+     所以这里优先读 ETL 在截断前算好的 podTier / podGold；旧数据没有这两个字段时，
+     才退回逐条统计（至少不会比现在更差）。 */
+  function podTierCount(p, tier) {
+    if (p && p.podTier && p.podTier[tier] != null) return p.podTier[tier] || 0;
+    let n = 0;
+    ((p && p.podiums) || []).forEach(function (r) { if (r.tier === tier) n++; });
+    return n;
+  }
+  function podGoldCount(p, tier) {
+    if (p && p.podGold && p.podGold[tier] != null) return p.podGold[tier] || 0;
+    let n = 0;
+    ((p && p.podiums) || []).forEach(function (r) { if (r.tier === tier && r.place === 1) n++; });
+    return n;
+  }
 
   /* ---------- LaTeX 公式工具 ---------- */
   function tex(s, display) {
@@ -94,18 +139,26 @@
        避免大号分数因为行高不同而比姓名高出一截。 */
     h += '<div class="card pcard reveal">';
     h += '<div class="pcard-main">';
-    h += '<div class="pcard-name"><div class="pcard-topline">';
-    h += '<h1><a class="wca-name" href="https://www.worldcubeassociation.org/persons/' + esc(p.wcaId) + '" target="_blank" rel="noopener" title="' + esc(t('player.wca')) + '">' + esc(p.nameZh || p.name) + ' ' + Ic.glyph('external') + '</a></h1>';
-    h += '<div class="pcard-score">';
-    h += '<div class="sc-wrap"><div class="sc-label">' + esc(t('rank.tab.overall')) + '</div>' +
-      '<div class="sc-value grad">' + U.fmt(sc.overall, 2) + '</div></div>';
-    h += '</div>';
-    h += '</div>';
+    /* 信息栏布局（2026-10-27 重排）：
+       左列 = 姓名 → 国籍 / WCA ID / 性别 → 标签行（主项目 / 生涯 / 场次 / 项目数）；
+       右列 = 综合能力分。
+       旧版把「姓名 + 分数」放在同一行按基线对齐，34px 的姓名被 52px 的分数撑出
+       一大段空白，国籍行看着像是隔了一行 —— 现在姓名独占左列顶部，
+       身份胶囊紧跟其后（margin 6px），整块与右侧分数平行排布。 */
+    h += '<div class="pcard-topline">';
+    h += '<div class="pcard-idcol">';
+    h += '<h1 class="pcard-h1"><a class="wca-name" href="https://www.worldcubeassociation.org/persons/' + esc(p.wcaId) + '" target="_blank" rel="noopener" title="' + esc(t('player.wca')) + '">' + esc(p.nameZh || p.name) + ' ' + Ic.glyph('external') + '</a></h1>';
     h += '<div class="pid-box">' +
       '<span class="pid-cell pid-flag">' + flag(p.country, 'f-lg') + '<span class="pid-txt">' + esc(countryName(p.country)) + '</span></span>' +
       '<span class="pid-cell mono" title="' + esc(t('player.wca')) + '">' + esc(p.wcaId) + '</span>' +
       '<span class="pid-cell">' + (genderOf(p.gender) === 'F' ? t('f.gender.f') : t('f.gender.m')) + '</span>' +
       '</div>';
+    h += '</div>';
+    h += '<div class="pcard-score">';
+    h += '<div class="sc-wrap"><div class="sc-label">' + esc(t('rank.tab.overall')) + '</div>' +
+      '<div class="sc-value grad">' + U.fmt(sc.overall, 2) + '</div></div>';
+    h += '</div>';
+    h += '</div>';
     h += '<div class="p-tags">';
     h += '<span class="tip tag-tip" tabindex="0" aria-label="' + esc(t('player.mainEventTip')) + '">' +
       '<span class="tag acc">' + esc(t('player.mainEvent')) + ' ' + esc(evName(M.EV[p.mainEvent])) + '</span>' +
@@ -139,8 +192,15 @@
 
     /* 核心数据：按需求上移到「选手信息」下方、「六维加权贡献」上方 */
     h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('player.coreStats')) + '</h2></div><div class="grid grid-4">';
-    [['col.wr', p.wr, ''], ['rec.level.CR', p.cr, t('player.crTip')], ['rec.level.NR', p.nr, ''], ['col.wc', p.wcGold, ''],
-    ['pod.level.CC', p.ccGold, ''], ['pod.level.NC', p.ncGold, ''], ['col.months', p.months1, ''],
+    /* 洲锦 / 国家赛冠军此前恒为 0：p.ccGold / p.ncGold 是在领奖台明细被截断成前 10 条
+       **之后**才统计的，而明细按 R 排序，洲锦 / 国家赛几乎进不了前十。
+       现在改读 ETL 在截断前算好的 podGold（旧数据无该字段时退回逐条统计）。 */
+    [['col.wr', p.wr, ''], ['rec.level.CR', p.cr, t('player.crTip')], ['rec.level.NR', p.nr, ''], ['col.wc', podGoldCount(p, 'WC'), ''],
+    ['pod.level.CC', podGoldCount(p, 'CC'), ''], ['pod.level.NC', podGoldCount(p, 'NC'), ''],
+    /* 在位月数：该选手在各项目上「世界第一」的累计月数（M4 引擎的 d1 时长 × 12，
+       跨项目累加）。从未坐上过任何一个项目的世界第一即为 0 —— 这是真实值，不是缺失。 */
+    ['col.months', p.months1 || 0, tt('在任一项目上位居世界第一的累计月数（跨项目累加）。从未登顶过任何项目即为 0。',
+      'Cumulative months ranked world #1 across all events. Zero means they never held #1 in any event.')],
     ['col.m4', (p.six && p.six.m4) || 0, ''], ['stat.podiumTotal', st.podiumTotal, ''], ['player.comps', p.comps, '']].forEach(function (s) {
       h += '<div class="stat"><div class="k">' + esc(t(s[0])) + (s[2] ? ' ' + infoTip(s[2]) : '') + '</div><div class="v">' + U.num(s[1]) + '</div></div>';
     });
@@ -161,18 +221,26 @@
     h += '<div>' + ecBox('waterfall', cs.map(function (c) { return { name: c.name, value: c.v, color: c.color }; }), { name: t('player.contrib') }, 260) + '</div>';
     h += '</div>';
     h += '<div class="breakdown-table">';
-    h += '<div class="breakdown-row bk-head"><span>' + esc(t('m1.name')) + '</span><span></span><span>' + esc(t('player.raw')) + '</span><span class="bk-num">' + esc(t('player.weight')) + '</span><span class="bk-num">' + esc(t('player.contrib')) + '</span><span class="bk-num">' + esc(t('player.pct')) + '</span></div>';
+    h += '<div class="breakdown-row bk-head"><span>' + esc(t('m1.name')) + '</span><span>' + esc(t('player.pct')) + '</span><span>' + esc(t('player.raw')) + '</span><span class="bk-num">' + esc(t('player.weight')) + '</span><span class="bk-num">' + esc(t('player.contrib')) + '</span><span class="bk-num">' + esc(t('player.pct')) + '</span></div>';
     cs.forEach(function (c) {
+      const pct = c.v / tot * 100;
       h += '<div class="breakdown-row">';
       h += '<span class="bk-name"><i style="background:' + c.color + '"></i>' + esc(c.name) + '</span>';
-      h += '<span class="bk-bar"><i style="width:' + Math.min(100, c.raw / (U.sixFull || 1000) * 100) + '%;background:' + c.color + '"></i></span>';
+      /* 条形 = 该维加权贡献占**总分**的真实比例（此前用 原始分 ÷ 1000，
+         而维度分是跨项目累加值、动辄几千，于是六根条全部撑满 100%，
+         看着一样长，比例信息完全丢失）。现在条长与右侧「占比」列同一把尺子。 */
+      h += '<span class="bk-bar" title="' + esc(t('player.contrib')) + ' ' + U.fmt(c.v, 2) +
+        ' · 占总分 ' + U.fmt(pct, 1) + '%"><i style="width:' + U.fmt(Math.max(0.8, pct), 1) + '%;background:' + c.color + '"></i></span>';
       h += '<span class="bk-num">' + U.fmt(c.raw, 2) + '</span>';
       h += '<span class="bk-num">' + U.fmt(c.w * 100, 1) + '%</span>';
       h += '<span class="bk-num"><b>' + U.fmt(c.v, 2) + '</b></span>';
-      h += '<span class="bk-num">' + U.fmt(c.v / tot * 100, 1) + '%</span>';
+      h += '<span class="bk-num">' + U.fmt(pct, 1) + '%</span>';
       h += '</div>';
     });
-    h += '</div></div>';
+    h += '</div>';
+    h += '<p class="tiny muted" style="margin-top:8px">' + esc(tt(
+      'Σ 加权贡献 = ' + U.fmt(tot, 2) + '，正好等于综合能力分；「占比」即各维在这 ' + U.fmt(tot, 2) + ' 分里分到的真实份额（条形同尺）。',
+      'Σ weighted contribution = ' + U.fmt(tot, 2) + ', exactly the overall score; the share column is each dimension’s true slice of it (bars use the same scale).')) + '</p></div>';
 
     /* 各维度计算过程：公式 + 本选手真实输入 + 归一化维度分与加权贡献 */
     h += dimCalcCard(p, cs);
@@ -181,8 +249,15 @@
     h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('player.cmp')) + '</h2>' + infoTip(t('player.cmp.d')) + '</div>';
     const cmp = P.playerCompare ? P.playerCompare(p) : null;
     if (cmp) {
-      h += '<div class="cmp-radar-wrap"><div class="pk-radar-wrap">' + ecBox('radar', { rows: cmp.series, indicators: cmp.indicators }, { max: U.sixFull || 1000, radius: '72%' }, 500) + '</div></div>';
+      const AX = sixAxisMax();
+      h += '<div class="cmp-radar-wrap"><div class="pk-radar-wrap">' + ecBox('radar', { rows: cmp.series, indicators: cmp.indicators },
+        { max: MOD.map(function (k) { return AX[k]; }), radius: '46%', capAt: 2 }, 500) + '</div></div>';
       h += '<p class="tiny muted" style="text-align:center;margin-bottom:8px">' + esc(t('player.cmp.note')) + '</p>';
+      h += '<p class="tiny muted" style="text-align:center;margin-bottom:8px">' + esc(tt(
+        '外圈 = 该维度世界前十的分值平均值（' + MOD.map(function (k) { return modName(k) + ' ' + U.fmt(AX[k], 0); }).join(' / ') +
+        '）；单维超出外圈时封顶显示，悬停看真实值。',
+        'Outer ring = the top-10 average of each dimension (' + MOD.map(function (k) { return modName(k) + ' ' + U.fmt(AX[k], 0); }).join(' / ') +
+        '); values beyond it are capped on the chart — hover for the true figure.')) + '</p>';
     }
     h += '</div>';
 
@@ -355,7 +430,9 @@
     const metrics = {
       m1: [['WR', recByLv.WR], ['CR', recByLv.CR], ['NR', recByLv.NR],
         ['累计持有', U.fmt(heldDays / 365.25, 1) + ' 年'], ['ΣR', U.fmt(recR, 1)]],
-      m2: [['世锦冠军', podByTier.WC], ['洲锦冠军', podByTier.CC], ['国锦冠军', podByTier.NC], ['公开赛', podByTier.OP], ['ΣP', U.fmt(podR, 1)]],
+      /* 冠军数按赛级取 ETL 在明细截断前算好的真实计数（详见 podGoldCount 注释）；
+         「公开赛」一栏沿用逐条统计（ETL 未下发按赛级的公开赛冠军数）。 */
+      m2: [['世锦冠军', podGoldCount(p, 'WC')], ['洲锦冠军', podGoldCount(p, 'CC')], ['国锦冠军', podGoldCount(p, 'NC')], ['公开赛冠军', podGoldCount(p, 'OP')], ['ΣP', U.fmt(podR, 1)]],
       m3: [['大赛纪录(估)', champRec], ['WR', recByLv.WR], ['CR', recByLv.CR], ['NR', recByLv.NR]],
       m4: [['在位 #1', (p.months1 || 0) + ' 月'], ['当前世界排名', '#' + rk.world]],
       m5: [['当前世界排名', '#' + rk.world]],
@@ -459,10 +536,14 @@
       h += pkSideCard(a, 'left', colors[0]);
       h += '<div class="pk-center">';
       h += '<div class="card reveal" style="margin-bottom:14px"><div class="card-head"><h2>' + esc(t('pk.radar')) + '</h2>' + infoTip(t('pk.radar.d')) + '</div>';
+      /* 六维雷达：逐轴满分 = 该维度世界前十均值（统一走 sixAxisMax）。
+         旧版这里读的是 p.m（已停用的旧七模块 0–100 分），又把满分设成 1000，
+         两个错误叠加 → 图形缩在圆心一小团，完全读不出强弱。 */
+      const AXM = MOD.map(function (k) { return sixAxisMax()[k]; });
       h += '<div class="pk-radar-wrap">' + ecBox('radar', {
-        rows: [a, b].map(function (p, i) { return { name: p.name, color: colors[i], values: MOD.map(function (k) { return p.m[k]; }) }; }),
+        rows: [a, b].map(function (p, i) { return { name: p.name, color: colors[i], values: MOD.map(function (k) { return sixK(p, k); }) }; }),
         indicators: labels
-      }, { radius: '66%', max: U.sixFull || 1000 }, 360) + '</div></div>';
+      }, { radius: '46%', max: AXM, capAt: 2 }, 360) + '</div></div>';
       h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('pk.advantage')) + '</h2>' + infoTip(t('pk.advantage.d')) + '</div>';
       h += ecBox('diverging', MOD.map(function (k) {
         return { name: modName(k), d: [sixW(k) * sixK(a, k), sixW(k) * sixK(b, k)] };
@@ -479,9 +560,9 @@
       /* 雷达 */
       h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('pk.radar')) + '</h2>' + infoTip(t('pk.radar.d')) + '</div>';
       h += '<div class="pk-radar-wrap">' + ecBox('radar', {
-        rows: ps.map(function (p, i) { return { name: p.name, color: colors[i], values: MOD.map(function (k) { return p.m[k]; }) }; }),
+        rows: ps.map(function (p, i) { return { name: p.name, color: colors[i], values: MOD.map(function (k) { return sixK(p, k); }) }; }),
         indicators: labels
-      }, { radius: '66%', max: U.sixFull || 1000 }, 360) + '</div>';
+      }, { radius: '46%', max: MOD.map(function (k) { return sixAxisMax()[k]; }), capAt: 2 }, 360) + '</div>';
       h += '</div>';
 
       /* 加权贡献堆叠 */
