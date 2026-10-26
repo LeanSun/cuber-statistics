@@ -280,7 +280,8 @@ ok(h3.indexOf('bar-track') >= 0, '条形外层有可收缩的弹性轨道（bar-
     console.log('   · 全站榜首 ' + rowsAll[0].p.name + ' / 三阶榜首 ' + rowsOne[0].p.name + (allTop === rowsOne[0].p.id ? '（同一人）' : '（已重排）'));
   }
   /* 多项目：条尾数字必须是所选项目范围内的六维总分 */
-  ok(h3.indexOf('>' + rowsMulti[0].score.toFixed(1) + '<') >= 0,
+  /* 2026-10-26 起条尾数字统一两位小数（刻度 ×10 → 满分 1000） */
+  ok(h3.indexOf('>' + rowsMulti[0].score.toFixed(2) + '<') >= 0,
     '多项目条尾数字为所选项目范围内的六维总分');
   if (hasEv) {
     const m1 = rowsMulti[0].p;
