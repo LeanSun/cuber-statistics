@@ -854,7 +854,10 @@
      直接用六维维度分本地重算总分（不再依赖旧 β 参数）。 */
   function sensitivity(state) {
     let h = '<div class="card reveal"><div class="card-head"><h2>' + esc(t('top.sens')) + '</h2>' + infoTip(t('top.sens.d')) + '</div>';
-    const W = (M.meta && M.meta.sixWeights) || { m1: 0.28, m2: 0.24, m3: 0.12, m4: 0.18, m5: 0.08, m6: 0.10 };
+    /* 用「参数设置」页的当前权重做敏感性扫描（而不是写死的默认值） */
+    const W = (P.util.sixW && P.util.sixW()) || (M.meta && M.meta.sixWeights) || { m1: 0.28, m2: 0.24, m3: 0.12, m4: 0.18, m5: 0.08, m6: 0.10 };
+    const wsum = W.m1 + W.m2 + W.m3 + W.m4 + W.m5 + W.m6;
+    for (const kk in W) W[kk] = W[kk] / (wsum || 1);
     const rest0 = 1 - W.m1;
     const pts = [];
     const pool = (P.util.topicPool ? P.util.topicPool(state) : M.ranked).slice(0, 60);
@@ -1014,7 +1017,7 @@
 
     /* ---- 总分口径（现行）：六维加权 t = Σ_d w_d · s_d ----
        放在页面最上方，避免读者把下面各维的公式误当成别的合成方式。 */
-    const SW = (M.meta && M.meta.sixWeights) || { m1: 0.28, m2: 0.24, m3: 0.12, m4: 0.18, m5: 0.08, m6: 0.10 };
+    const SW = (P.util.sixW && P.util.sixW()) || (M.meta && M.meta.sixWeights) || { m1: 0.28, m2: 0.24, m3: 0.12, m4: 0.18, m5: 0.08, m6: 0.10 };
     const SN = (M.meta && M.meta.sixNames) || { m1: '纪录持有', m2: '领奖台', m3: '大赛破纪录', m4: '统治力', m5: '当前排名', m6: '突破幅度' };
     h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('md.total.title')) + '</h2></div>' +
       '<p class="tiny muted" style="margin-bottom:10px">' + esc(t('md.total.d')) + '</p>' +
@@ -1029,6 +1032,31 @@
     h += '</div>' +
       '<p class="tiny muted" style="margin-top:8px">' + esc(t('md.total.note')) + '</p></div>';
 
+    /* ---- 六维占比自定义：直接改写 t = Σ w_d·s_d 里的权重，全站榜单立即重排 ----
+       输入的是相对份量（%），不强求先凑成 100：读取时按比例归一化，
+       所以只调某一维的份量也能立刻看出它在总分里的话语权变化。 */
+    const CW = (P.util.sixW ? P.util.sixW() : null) || SW;
+    let wsum = 0;
+    MOD.forEach(function (k) { wsum += (CW[k] || 0); });
+    h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('md.weightsCustom')) + '</h2>' +
+      '<span class="tag acc" id="wSum">' + esc(t('md.weightsSum', { s: U.fmt(wsum * 100, 1) })) + '</span></div>' +
+      '<p class="tiny muted" style="margin-bottom:10px">' + esc(t('md.weightsHint')) + '</p>' +
+      '<div class="md-params-body wdim-body">';
+    MOD.forEach(function (k) {
+      const pct = (CW[k] || 0) * 100;
+      const nm = SN[k] || modName(k);
+      h += '<div class="prow wrow">' +
+        '<span class="pr-name"><i class="wdot" style="background:' + MODC[k] + '"></i>' + esc(nm) + ' · ' + k.toUpperCase() + '</span>' +
+        '<input type="range" class="wrange" data-wdim="' + k + '" min="0" max="60" step="0.5" value="' + U.fmt(pct, 1) + '" aria-label="' + esc(nm) + ' 占比">' +
+        '<span class="wval"><input type="number" class="pr-input wnum" data-wdim="' + k + '" data-wdim-unit="pct" min="0" max="100" step="0.5" value="' + U.fmt(pct, 1) + '" aria-label="' + esc(nm) + ' 占比百分比"><b>%</b></span>' +
+        '</div>';
+    });
+    h += '</div>' +
+      '<div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap">' +
+      '<button class="btn btn-ghost" id="wReset">' + esc(t('md.resetDefault')) + '</button>' +
+      '<button class="btn btn-ghost" id="wEven">' + esc(t('md.weightsEven')) + '</button>' +
+      '<span class="tiny muted">' + esc(t('md.weightsNote')) + '</span></div></div>';
+
     /* 预设卡片：仅做预设切换；参数已分散到各章节（不再有单一聚合块） */
     h += '<div class="card reveal md-preset"><div class="row" style="gap:10px;flex-wrap:wrap;align-items:center">';
     h += '<select id="presetSel"><option value="">' + esc(t('md.preset')) + '</option>' +
@@ -1037,37 +1065,7 @@
     h += '<button class="btn" id="pReset">' + esc(t('md.resetDefault')) + '</button>';
     h += '<span class="tiny muted">' + esc(t('md.paramsHint')) + '</span></div></div>';
 
-    /* 模块配色：七个模块的主色可在评分系统里自定义，实时生效并本地保存 */
-    const C = Pm.colors();
-    h += '<div class="card reveal md-colors"><div class="md-params-title">' + Ic.glyph('sliders') + ' ' +
-      esc(t('md.colors')) + '</div>' +
-      '<p class="tiny muted" style="margin:6px 0 10px">' + esc(t('md.colorsHint')) + '</p><div class="md-colors-body">';
-    MOD.forEach(function (k) {
-      /* 颜色色块：点击弹出取色菜单（RGB 滑杆 + 16 进制输入框 + 取消/确认），不再把 16 进制框直接铺在行内 */
-      h += '<div class="crow"><button type="button" class="swatch" data-cmod="' + k + '" data-cmod-label="' + esc(modName(k)) +
-        '" style="background:' + esc(C[k]) + '" aria-label="' + esc(modName(k)) + ' 配色"></button>' +
-        '<span class="cr-name">' + esc(modName(k)) + '</span></div>';
-    });
-    h += '<button class="btn btn-ghost" id="mColorReset">' + esc(t('md.resetDefault')) + '</button>';
-    h += '</div></div>';
-
-    /* 国家配色：竞速图/ 泳道图按国籍取色，逐国可自定义 */
-    const CC = P.countryColorDefaults || {};
-    const ccKeys = Object.keys(CC).sort();
-    h += '<div class="card reveal md-colors"><div class="md-params-title">' + Ic.glyph('flag') + ' ' +
-      esc(t('md.countryColors')) + '</div>' +
-      '<p class="tiny muted" style="margin:6px 0 10px">' + esc(t('md.countryColorsHint')) + '</p>' +
-      '<div class="md-colors-body cc-body" id="ccBody">';
-    ccKeys.forEach(function (iso) {
-      h += '<div class="crow cc-row"><button type="button" class="swatch" data-ccmod="' + iso + '" style="background:' + esc(countryColor(iso)) +
-        '" aria-label="' + esc(countryName(iso) || iso) + ' 配色"></button>' +
-        '<span class="cc-flag fi fi-' + iso.toLowerCase() + '"></span>' +
-        '<span class="cr-name">' + esc(countryName(iso) || iso) + '</span></div>';
-    });
-    h += '</div><div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap">' +
-      '<button class="btn btn-ghost" id="ccReset">' + esc(t('md.resetDefault')) + '</button></div></div>';
-
-    /* 两栏：左目录 + 右详情（一次只展示一个章节） */
+    /* ---- 两栏：左目录 + 右详情（一次只展示一个章节） ---- */
     h += '<div class="md-layout">';
     h += '<aside class="md-side card reveal"><div class="md-side-title">' + esc(t('md.toc')) + '</div><nav class="md-nav">';
     MD.forEach(function (s) {
@@ -1080,6 +1078,38 @@
     const s = MD.filter(function (x) { return x.id === secId; })[0] || MD[0];
     h += mdSectionHtml(s, en, state);
     h += '</div></div>';
+
+    /* ===== 颜色类设置统一放在页面最下方（按需求：所有颜色设置沉底） ===== */
+    /* 模块配色：六个维度的主色可自定义，实时生效并本地保存 */
+    const C = Pm.colors();
+    h += '<div class="card reveal md-colors" id="mdColors"><div class="md-params-title">' + Ic.glyph('sliders') + ' ' +
+      esc(t('md.colors')) + '</div>' +
+      '<p class="tiny muted" style="margin:6px 0 10px">' + esc(t('md.colorsHint')) + '</p><div class="md-colors-body">';
+    MOD.forEach(function (k) {
+      /* 颜色色块：点击弹出取色菜单（RGB 滑杆 + 16 进制输入框 + 取消/确认），不再把 16 进制框直接铺在行内 */
+      h += '<div class="crow"><button type="button" class="swatch" data-cmod="' + k + '" data-cmod-label="' + esc(modName(k)) +
+        '" style="background:' + esc(C[k]) + '" aria-label="' + esc(modName(k)) + ' 配色"></button>' +
+        '<span class="cr-name">' + esc(modName(k)) + '</span></div>';
+    });
+    h += '<button class="btn btn-ghost" id="mColorReset">' + esc(t('md.resetDefault')) + '</button>';
+    h += '</div></div>';
+
+    /* 国家配色：竞速图 / 泳道图按国籍取色，逐国可自定义 */
+    const CC = P.countryColorDefaults || {};
+    const ccKeys = Object.keys(CC).sort();
+    h += '<div class="card reveal md-colors" id="mdCountryColors"><div class="md-params-title">' + Ic.glyph('flag') + ' ' +
+      esc(t('md.countryColors')) + '</div>' +
+      '<p class="tiny muted" style="margin:6px 0 10px">' + esc(t('md.countryColorsHint')) + '</p>' +
+      '<div class="md-colors-body cc-body" id="ccBody">';
+    ccKeys.forEach(function (iso) {
+      h += '<div class="crow cc-row"><button type="button" class="swatch" data-ccmod="' + iso + '" style="background:' + esc(countryColor(iso)) +
+        '" aria-label="' + esc(countryName(iso) || iso) + ' 配色"></button>' +
+        '<span class="cc-flag fi fi-' + iso.toLowerCase() + '"></span>' +
+        '<span class="cr-name">' + esc(countryName(iso) || iso) + '</span></div>';
+    });
+    h += '</div><div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap">' +
+      '<button class="btn btn-ghost" id="ccReset">' + esc(t('md.resetDefault')) + '</button></div></div>';
+
     return h;
   };
 

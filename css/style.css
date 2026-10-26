@@ -1251,3 +1251,18 @@ tr[data-prow]:hover .pname .linkish,.pname:hover .linkish{
    下方不再罗列持有者清单（需求：删掉冗杂的「纪录内容」）；
    姓名 / 国旗 / 起止日期改由鼠标移到色块上时跟随光标的 tooltip 显示。 */
 
+
+/* ============ 参数设置页：六维占比自定义 ============ */
+/* 每行：维度名（带主色圆点）+ 滑杆 + 百分比数字框 */
+.wdim-body{grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:10px 16px}
+.wrow{grid-template-columns:minmax(120px,1fr) 120px 84px;gap:10px}
+.wrow .pr-name{display:inline-flex;align-items:center;gap:7px;min-width:0}
+.wdot{width:10px;height:10px;border-radius:50%;flex:none;box-shadow:0 0 0 1px rgba(0,0,0,.12) inset}
+.wrow .wrange{width:100%;min-width:0;accent-color:var(--accent);cursor:pointer}
+.wval{display:inline-flex;align-items:center;gap:3px;justify-content:flex-end}
+.wval .wnum{width:58px;text-align:right}
+.wval b{color:var(--text-3);font-weight:600;font-size:11.5px}
+@media (max-width:720px){
+  .wrow{grid-template-columns:1fr 76px;row-gap:6px}
+  .wrow .wrange{grid-column:1 / -1}
+}

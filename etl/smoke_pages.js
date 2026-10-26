@@ -133,6 +133,27 @@ if (HAS_SCORE) {
   ok(h2Ev.indexOf('evstack') >= 0 && h2Ev.indexOf('dimstack') < 0, '显式选择「按项目」时切回项目堆叠');
   const h1Dim = tryRender('总榜（默认 · 按维度堆叠）', () => P.rank(Object.assign({}, base, { stackMode: 'dim' })));
   ok(h1Dim.indexOf('dimstack') >= 0, '未选项目时也可切换为按维度堆叠');
+  /* 默认（未筛选 / 全项目）必须也是「按维度」，否则一个全能选手会画出十几段互撞的同色碎块，
+     看上去就像堆叠条没渲染出来（这正是反馈里的第二个症状）。 */
+  ok(h1.indexOf('dimstack') >= 0 && h1.indexOf('evstack') < 0, '未筛选时也默认按维度堆叠（不再碎成一地撞色片段）');
+  const h1Ev = tryRender('总榜（未筛选 · 显式按项目）', () => P.rank(Object.assign({}, base, { stackMode: 'ev' })));
+  ok(h1Ev.indexOf('evstack') >= 0, '未筛选时仍可显式切到按项目堆叠');
+  {
+    /* 项目堆叠：同一行内每个项目必须拿到不同颜色 —— 之前调色板只有 10 色而正式项目有 21 个，
+       序号取模会让三阶和多盲、二阶和最少步画成同一个颜色，看上去像没渲染出来。 */
+    const rowsEv = h1Ev.split('<tr data-pid="').slice(1);
+    let dupRow = 0, maxSeg = 0;
+    rowsEv.forEach(function (r) {
+      const bar = (r.match(/<div class="bar-grow"[^>]*>[\s\S]*?<\/div><\/div>/) || [''])[0];
+      const cols = (bar.match(/<span style="width:[\d.]+%;background:([^"]+)"/g) || [])
+        .map(function (s) { return (s.match(/background:([^"]+)/) || [])[1]; });
+      const uniq = cols.filter(function (c, i) { return cols.indexOf(c) === i; });
+      if (uniq.length !== cols.length) dupRow++;
+      if (cols.length > maxSeg) maxSeg = cols.length;
+    });
+    ok(rowsEv.length > 0 && dupRow === 0,
+      '同一行内各项目颜色互不重复（' + rowsEv.length + ' 行，最多 ' + maxSeg + ' 段' + (dupRow ? '，' + dupRow + ' 行撞色' : '') + '）');
+  }
 } else {
   console.log('  · 本次数据无六维分（样例数据），跳过堆叠条口径断言');
 }
@@ -144,6 +165,33 @@ ok(h3.indexOf('evstack') >= 0, '多项目模式显示项目堆叠条');
 ok(h3.indexOf('ev-badge') < 0, '多项目模式已删除名次徽章（不再出现 #265）');
 ok(h3.indexOf('已覆盖') < 0 && h3.indexOf('ev-rank') < 0, '多项目模式已删除「已覆盖 x/y」');
 ok(h3.indexOf('ev-hitnote') >= 0, '多项目模式保留紧凑的「命中/总数」计数');
+/* 图例颜色必须与条形里同名项目的颜色完全一致 —— 之前条形按「事件表全局序号」取色、
+   图例却按「所选项目下标」取色，两者在所选项目不是从头开始时就会错位。 */
+if (!HAS_SCORE) {
+  console.log('  · 本次数据无六维分（样例数据），跳过条形/图例配色一致性校验');
+} {
+  const lgMap = {};
+  const lgBlock = (h3.match(/<div class="ev-legend[\s\S]*?<\/div>/) || [''])[0];
+  const re = /<i style="background:([^"]+)"><\/i>([^<]+)</g;
+  let m;
+  while ((m = re.exec(lgBlock))) lgMap[m[2]] = m[1];
+  const rowsHtml = h3.split('<tr data-pid="').slice(1, 4);
+  let bad = 0, checked = 0, sample = '';
+  rowsHtml.forEach(function (r) {
+    const bar = (r.match(/<div class="bar-grow"[^>]*>[\s\S]*?<\/div><\/div>/) || [''])[0];
+    const segRe = /<span style="width:[\d.]+%;background:([^"]+)" title="([^"]*?) · /g;
+    let s2;
+    while ((s2 = segRe.exec(bar))) {
+      const bg = s2[1], name = s2[2];
+      if (Object.prototype.hasOwnProperty.call(lgMap, name)) {
+        checked++;
+        if (lgMap[name] !== bg) { bad++; sample = name + ': 条形 ' + bg + ' vs 图例 ' + lgMap[name]; }
+      }
+    }
+  });
+    ok(HAS_SCORE ? (checked > 0 && bad === 0) : true,
+      '多项目：条形颜色与图例逐一对应（校验 ' + checked + ' 段' + (bad ? '，错位 ' + bad + ' 段 ' + sample : '') + '）');
+}
 ok(h3.indexOf('rank.ruleNote') < 0 && h3.indexOf('统计口径') >= 0, '多项目模式给出统一口径说明');
 /* 选中项目后：单项目按「该项目的历史地位分（GOAT 综合分）」排序，而非单纯世界名次 ——
    修复前按世界名次排，会导致综合分低、但项目内名次靠前的选手排到前面（Issue 1）。 */
@@ -516,6 +564,30 @@ console.log('== 选手页排名数字 / 参数设置页 ==');
   const hM = tryRender('参数设置页', () => P.model(base));
   ok(hM.indexOf('data-cmod') >= 0, '模块配色色块存在（点击弹出取色菜单）');
   ok(hM.indexOf('data-ccmod') >= 0, '国家配色色块存在（点击弹出取色菜单）');
+  /* 需求：六个维度各自给出占比自定义入口（滑杆 + 百分比数字框） */
+  ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'].forEach(function (k) {
+    ok(hM.indexOf('data-wdim="' + k + '"') >= 0, '六维占比自定义：' + k.toUpperCase() + ' 有输入框');
+  });
+  ok((hM.match(/class="wrange"/g) || []).length === 6, '六维占比各带一根滑杆');
+  ok(hM.indexOf('id="wSum"') >= 0 && hM.indexOf('id="wReset"') >= 0 && hM.indexOf('id="wEven"') >= 0,
+    '六维占比给出合计显示 / 恢复默认 / 平均分配');
+  /* 需求：所有颜色设置统一沉到页面最下方（在左目录 + 右章节之后） */
+  const iLayout = hM.indexOf('class="md-layout"');
+  ok(iLayout > 0, '参数页有两栏布局容器 md-layout');
+  ok(hM.indexOf('id="mdColors"') > iLayout, '模块配色卡片已移到页面最下方（在md-layout之后）');
+  ok(hM.indexOf('id="mdCountryColors"') > iLayout, '国家配色卡片已移到页面最下方（在md-layout之后）');
+  ok(hM.indexOf('id="mdCountryColors"') > hM.indexOf('id="mdColors"'), '两个颜色卡片都在最下方且顺序为 维度色 → 国家色');
+  /* 占改权重必须真的改变榜单（不能直接读 ETL 预置的 p.six.t） */
+  {
+    const before = P.filtered(Object.assign({}, base)).slice(0, 1)[0];
+    const saveM1 = win.Params.get('b1'), saveM2 = win.Params.get('b2');
+    win.Params.set('b1', 0.60); win.Params.set('b2', 0.08);
+    const after = P.filtered(Object.assign({}, base)).slice(0, 1)[0];
+    win.Params.set('b1', saveM1); win.Params.set('b2', saveM2);
+    const diff = (before && after) ? Math.abs(before.score - after.score) : 0;
+    ok(HAS_SCORE ? diff > 0.01 : true,
+      '改六维占比后总分真的重算了 (' + (before ? before.score.toFixed(2) : '-') + ' → ' + (after ? after.score.toFixed(2) : '-') + ')');
+  }
 }
 
 console.log('== 六维加权贡献（逐项代入） ==');

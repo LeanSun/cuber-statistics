@@ -764,6 +764,49 @@
       if (rs) rs.addEventListener('click', function () { Pm.reset(); render(true); toast(t('ui.ok')); });
       const mcr = document.getElementById('mColorReset');
       if (mcr) mcr.addEventListener('click', function () { Pm.resetColors(); render(true); toast(t('ui.ok')); });
+      /* 六维占比：滑杆 / 数字框改写 b1–b6，榜单按新权重实时重排 */
+      const wPair = function (k) {
+        return {
+          range: document.querySelector('.wrange[data-wdim="' + k + '"]'),
+          num: document.querySelector('.wnum[data-wdim="' + k + '"]')
+        };
+      };
+      const syncWdim = function (src) {
+        const w = (Pm.weights ? Pm.weights() : {}) || {};
+        let sum = 0;
+        ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'].forEach(function (k) {
+          const pct = (w[k] || 0) * 100;
+          sum += pct;
+          const pr = wPair(k);
+          if (pr.range && pr.range !== src) pr.range.value = pct.toFixed(1);
+          if (pr.num && pr.num !== src) pr.num.value = pct.toFixed(1);
+        });
+        const s = document.getElementById('wSum');
+        if (s) s.textContent = sum.toFixed(1) + '%';
+      };
+      document.querySelectorAll('[data-wdim]').forEach(function (el) {
+        el.addEventListener('input', function () {
+          const k = el.getAttribute('data-wdim');
+          if (!k) return;
+          const v = parseFloat(el.value);
+          if (isNaN(v)) return;
+          if (el.hasAttribute('data-wdim-unit')) Pm.set('b' + k.slice(1), v / 100);
+          else Pm.set('b' + k.slice(1), v / 100);
+          syncWdim(el);
+          clearTimeout(window.__wdT);
+          window.__wdT = setTimeout(function () { render(true); }, 420);
+        });
+      });
+      const wR = document.getElementById('wReset');
+      if (wR) wR.addEventListener('click', function () {
+        ['b1', 'b2', 'b3', 'b4', 'b5', 'b6'].forEach(function (k) { Pm.set(k, Pm.defaults[k]); });
+        render(true); toast(t('ui.ok'));
+      });
+      const wE = document.getElementById('wEven');
+      if (wE) wE.addEventListener('click', function () {
+        ['b1', 'b2', 'b3', 'b4', 'b5', 'b6'].forEach(function (k) { Pm.set(k, 1 / 6); });
+        render(true); toast(t('ui.ok'));
+      });
       /* 模块配色：点击色块弹出取色菜单（RGB 滑杆 + 16 进制 + 取消/确认），确认才写入 */
       document.querySelectorAll('[data-cmod]').forEach(function (btn) {
         btn.addEventListener('click', function () {
@@ -784,7 +827,10 @@
           const iso = btn.getAttribute('data-ccmod');
           openColorPopup({
             current: (P.countryColor ? P.countryColor(iso) : '#000000'),
-            label: (countryName(iso) || iso),
+            /* 注意：这里必须用 P.util.countryName —— 本文件作用域里没有 countryName 这个
+               裸标识符，之前写成 countryName(iso) 会抛 ReferenceError，取色弹窗根本打不开，
+               表现就是「国旗颜色点了没反应」。 */
+            label: (P.util.countryName ? P.util.countryName(iso) : iso) || iso,
             anchor: btn,
             onConfirm: function (hex) {
               if (P.setCountryColor) { P.setCountryColor(iso, hex); btn.style.background = hex; toast(t('md.countryColorsOk')); }
