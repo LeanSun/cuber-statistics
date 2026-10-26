@@ -482,31 +482,16 @@
     return true;
   }
 
-  /* 分数竞速图：口径与「历史地位排名」完全一致 —— 生涯累计按截至当日的纪录 / 领奖台
-     年度分比例缩放，峰谷比保持不变，因此末帧即总榜综合能力分。
-     项目筛选与总榜用同一套规则：先按项目裁剪选手池，再按「命中比例」做广度折减
-     （0.45~1.00，单项目时恒为 1）。此前这里只裁选手池、不重新计分，
-     导致上方筛选项目后下方竞速图几乎不变，已修复。 */
-  /* 单项目模式：该项目上的「年度表现」= 当年纪录数 × 3 + 当年金牌数 × 5。
-     取的是 evStat 里已有的 recPerYear / goldPerYear（按项目按年统计），
-     没有它的话筛选单个项目后竞速图仍会按全项目分数排，等于没联动。 */
-  function evYearlyOf(p, ev) {
-    const st = M.evStatRaw ? M.evStatRaw(p, ev) : null;
-    if (!st) return null;
-    const ry = st.recPerYear || {}, gy = st.goldPerYear || {};
-    if (!Object.keys(ry).length && !Object.keys(gy).length) return null;
-    const y = {};
-    Object.keys(ry).forEach(function (k) { y[k] = (y[k] || 0) + (ry[k] || 0) * 3; });
-    Object.keys(gy).forEach(function (k) { y[k] = (y[k] || 0) + (gy[k] || 0) * 5; });
-    return y;
-  }
+  /* 分数竞速图：未选项目时用「生涯累计 × 截至当日比例」逐年缩放（末帧＝总榜综合能力分）；
+     选中项目时改按「所选项目的六维总分」(p.sixEv) 求和排序，见下方 snapshot()。
+     旧的 evYearlyOf（按项目按年纪录/金牌，分母缺失且忽略 ev 参数）会让单项目分数算错，
+     已删除。 */
 
   function snapshot(mode, fy, smooth, region, country, evs, gender, rtype) {
-    /* 选中项目（单项目 / 多项目）时，整张图切换成「所选项目的排名演进」，与上方筛选项目实时联动：
-       · 单项目：分数取该项目上的年度表现累计；
-       · 多项目：把所选项目的年度表现按截至 fy 的累计求和，得到「多项目综合分」，
-         排名随项目选择实时重排（上方筛选项目，下方竞速图即按多项目综合分排名）。
-       不选项目时仍用全项目历史地位分（生涯累计 × 年度比例）。 */
+    /* 选中项目（单项目 / 多项目）时，整张图切换成「所选项目的六维能力分排名」，与上方筛选项目实时联动：
+         分数取每个所选项目的六维总分（p.sixEv 已含 per-event 六维分 a[6]=t_ev）求和，
+         与「历史地位排名」单 / 多项目筛选共用同一把六维尺子（不再依赖缺失的逐项目按年统计）。
+         不选项目时仍用全项目历史地位分（生涯累计 × 年度比例）。 */
     const evList = (evs && evs.length) ? evs : null;
     const key = rtype === 'single' ? 'yearlyS' : (rtype === 'avg' ? 'yearlyA' : 'yearly');
     function cum(p, y) {
@@ -526,18 +511,17 @@
     M.ranked.forEach(function (p) {
       if (!inScope(p, region, country, gender, evs)) return;
       if (evList) {
-        /* 多项目（含单项目）：把所选项目的「年度表现」按截至 fy 的累计求和 */
-        let all = 0, cur = 0, has = false;
+        /* 多项目（含单项目）：把所选项目的六维总分求和，作为该选手在「所选项目」上的综合能力分。
+           p.sixEv[ev][6] 即为该项目六维加权总分（已含权重），直接相加即可。 */
+        let t = 0, hit = 0;
         evList.forEach(function (ev) {
-          const y = evYearlyOf(p, ev);
-          if (!y) return;
-          has = true;
-          for (const k in y) { const yy = +k; all += y[k]; if (yy <= fy) cur += y[k]; }
+          const a = p.sixEv && p.sixEv[ev];
+          if (a && a[6] > 0) { t += a[6]; hit++; }
         });
-        if (!has || all <= 0 || cur <= 0) return;
+        if (!hit || t <= 0) return;
         rows.push({
           name: p.name, country: p.country, hue: p.hue, id: p.id, iso: p.country,
-          value: cur, color: countryColor(p.country), flag: window.Charts.flagUri(p.country)
+          value: t, color: countryColor(p.country), flag: window.Charts.flagUri(p.country)
         });
         return;
       }
@@ -1032,23 +1016,24 @@
     h += '</div>' +
       '<p class="tiny muted" style="margin-top:8px">' + esc(t('md.total.note')) + '</p></div>';
 
-    /* ---- 六维占比自定义：直接改写 t = Σ w_d·s_d 里的权重，全站榜单立即重排 ----
-       输入的是相对份量（%），不强求先凑成 100：读取时按比例归一化，
-       所以只调某一维的份量也能立刻看出它在总分里的话语权变化。 */
+    /* ---- 六维占比自定义：拖动每根柱子调整权重，全站榜单立即重排 ----
+       柱子高度 = 该维在总分里的占比（实时归一化，六根合计恒为 100%）。
+       拖动某根柱子到某个高度，其余柱子按原比例自动缩放，保持「相对话语权」的直觉。 */
     const CW = (P.util.sixW ? P.util.sixW() : null) || SW;
     let wsum = 0;
     MOD.forEach(function (k) { wsum += (CW[k] || 0); });
     h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('md.weightsCustom')) + '</h2>' +
       '<span class="tag acc" id="wSum">' + esc(t('md.weightsSum', { s: U.fmt(wsum * 100, 1) })) + '</span></div>' +
       '<p class="tiny muted" style="margin-bottom:10px">' + esc(t('md.weightsHint')) + '</p>' +
-      '<div class="md-params-body wdim-body">';
+      '<div class="wchart" id="wChart">';
     MOD.forEach(function (k) {
       const pct = (CW[k] || 0) * 100;
       const nm = SN[k] || modName(k);
-      h += '<div class="prow wrow">' +
-        '<span class="pr-name"><i class="wdot" style="background:' + MODC[k] + '"></i>' + esc(nm) + ' · ' + k.toUpperCase() + '</span>' +
-        '<span class="wbar"><i style="width:' + U.fmt(pct, 1) + '%;background:' + MODC[k] + '"></i></span>' +
-        '<span class="wval"><input type="number" class="pr-input wnum" data-wdim="' + k + '" data-wdim-unit="pct" min="0" max="100" step="0.5" value="' + U.fmt(pct, 1) + '" aria-label="' + esc(nm) + ' 占比百分比"><b>%</b></span>' +
+      h += '<div class="wcol" data-wdim="' + k + '">' +
+        '<div class="wcol-track"><div class="wcol-fill" style="height:' + U.fmt(pct, 1) + '%;background:' + MODC[k] + '">' +
+        '<span class="wcol-handle" data-wdim="' + k + '" title="' + esc(t('md.weightsDrag')) + '"></span></div></div>' +
+        '<div class="wcol-pct">' + U.fmt(pct, 1) + '%</div>' +
+        '<div class="wcol-name"><i class="wdot" style="background:' + MODC[k] + '"></i>' + esc(nm) + '</div>' +
         '</div>';
     });
     h += '</div>' +

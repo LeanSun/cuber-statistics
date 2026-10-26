@@ -78,7 +78,6 @@
     const cs = contribs(p, 'career');
     const tot = cs.reduce(function (a, c) { return a + c.v; }, 0) || 1;
     const rk = M.ranksOf(p);
-    const bn = M.bonus(p);
     const st = M.stats(p);
 
     let h = '<div class="page-head reveal"><a class="tiny" href="#/rank">‹ ' + esc(t('player.back')) + '</a></div>';
@@ -178,31 +177,15 @@
     /* 各维度计算过程：公式 + 本选手真实输入 + 归一化维度分与加权贡献 */
     h += dimCalcCard(p, cs);
 
-    /* 横向对比（六维雷达）：本选手 vs 历史第一人 vs 全体均值 */
+    /* 横向对比（六维雷达）：只展示本选手个人六维分（每轴按该维度榜首归一为 100，即「与满分对比」） */
     h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('player.cmp')) + '</h2>' + infoTip(t('player.cmp.d')) + '</div>';
     const cmp = P.playerCompare ? P.playerCompare(p) : null;
     if (cmp) {
       h += '<div class="cmp-radar-wrap"><div class="pk-radar-wrap">' + ecBox('radar', { rows: cmp.series, indicators: cmp.indicators }, { max: 100, radius: '72%' }, 500) + '</div></div>';
       h += '<p class="tiny muted" style="text-align:center;margin-bottom:8px">' + esc(t('player.cmp.note')) + '</p>';
-      h += '<p class="tiny muted" style="text-align:center">' + esc(t('player.cmp.zero')) + '</p>';
     }
     h += '</div>';
 
-    /* 附加分 */
-    h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('player.bonus')) + '</h2>' +
-      infoTip(t('player.bonus.d')) + '</div>';
-    h += '<div class="bonus-grid">';
-    bn.items.forEach(function (it) {
-      h += '<div class="bonus-item"><div class="bi-k">' + esc(t('player.bonus.' + it.k)) + '</div>' +
-        '<div class="bi-v">' + U.fmt(it.v, 2) + '</div></div>';
-    });
-    h += '<div class="bonus-item total"><div class="bi-k">' + esc(t('player.bonus.total')) + '</div>' +
-      '<div class="bi-v">' + U.fmt(bn.total, 2) + '</div>' +
-      '<div class="tiny muted">' + esc(t('ui.note')) + '：' + esc(t('player.bonus.d')) + '</div></div>';
-    h += '</div>';
-    h += '<p class="tiny muted" style="margin-top:10px">' +
-      tex('\\text{Bonus}=\\min\\Bigl(\\underbrace{\\text{Breadth}^{\\,\\theta}-1}_{\\text{跨项目}}+\\underbrace{n_{g}\\,c_{g}+\\mathbb{1}_{\\text{全项目}}c_{a}}_{\\text{全覆盖}},\\;\\text{cap}\\Bigr),\\quad \\text{cap}=' + U.fmt(bn.cap, 0) + '\\%', true) + '</p>';
-    h += '</div>';
 
     /* 纪录事件明细（默认收起，点击标题展开） */
     h += '<details class="card reveal" id="recDetails">';
@@ -244,27 +227,10 @@
     return h;
   };
 
-  /* 六维雷达对比：本选手 vs 历史第一人 vs 全体均值（各轴按三者最大值归一为 100） */
+  /* 六维雷达对比：只画本选手个人六维分（每轴已是「该维度榜首=100」的归一分，即与满分对比） */
   P.playerCompare = function (p) {
-    const goat = M.ranked[0];
-    const n = M.ranked.length || 1;
-    const aV = contribs(p, 'career').map(function (c) { return c.v; });
-    const gV = contribs(goat, 'career').map(function (c) { return c.v; });
-    const sumV = MOD.map(function () { return 0; });
-    M.ranked.forEach(function (x) {
-      const cx = contribs(x, 'career');
-      cx.forEach(function (c, i) { sumV[i] += c.v; });
-    });
-    const avgV = sumV.map(function (s) { return s / n; });
-    const maxPer = MOD.map(function (k, i) { return Math.max(aV[i], gV[i], avgV[i]) || 1; });
-    function mk(name, color, vals) {
-      return { name: name, color: color, values: vals.map(function (v, i) { return v / maxPer[i] * 100; }) };
-    }
-    const series = [
-      mk(p.name, 'hsl(' + p.hue + ',58%,50%)', aV),
-      mk(goat.name, '#e0533d', gV),
-      mk(t('player.cmp.avg'), '#7a8aa0', avgV)
-    ];
+    const aV = contribs(p, 'career').map(function (c) { return c.raw; });
+    const series = [{ name: p.name, color: 'hsl(' + p.hue + ',58%,50%)', values: aV }];
     return { indicators: MOD.map(function (k) { return modName(k); }), series: series };
   };
 
@@ -362,16 +328,9 @@
     return h;
   }
 
-  /* 各维度计算过程：公式（与封存口径一致）+ 本选手真实代入的输入 + 归一化维度分与加权贡献。
-     cs 来自 contribs(p,'career')，已含 name/color/w/raw(=s_d)/v(=w·s_d)。 */
-  const DIM_FORMULA = {
-    m1: 'M_1=\\sum_{\\text{段}}\\Big[\\tfrac{\\min(T,30\\mathrm{y})}{365}\\times V_L\\times \\rho_s\\times f_L\\times w_e\\Big]',
-    m2: 'M_2=\\sum_{\\text{领奖台}}\\big[B_P\\,w_e\\,S_e(t)\\,T^{\\mathrm{pod}}\\,V(r)\\,C_c\\,F^{\\mathrm{CSI}}\\,(1+k_p z+\\mu m)\\big]',
-    m3: 'M_3=\\sum_{\\text{大赛纪录}}W_{REC}[\\text{级别}]\\times W_{TIER}[\\text{赛事级}],\\quad W_{REC}=\\{WR{:}1.0,\\,CR{:}0.4,\\,NR{:}0.15\\}',
-    m4: 'M_4=\\sum_{e,t} w_e\\sum_{\\text{段}}\\tfrac{\\text{段长}}{365}\\,g(r)\\,f(y),\\quad g(r)=r^{-1.0},\\;f(y)=\\tfrac{\\ln(1+N(y))}{\\ln(1+N_{base})}',
-    m5: 'M_5=\\sum_e w_e\\,r^{-1.0}\\max\\!\\left(0.2,1-\\tfrac{gapR}{5}\\cdot0.8\\right)\\max\\!\\left(0.2,1-\\tfrac{gapP}{5}\\cdot0.8\\right)',
-    m6: 'M_6=\\sum_{\\text{events}}\\min\\!\\big(\\ln\\tfrac{\\text{前值}}{\\text{新值}},\,0.5\\big)\\quad(\\text{仅 WR 链条，截顶 }0.5)'
-  };
+  /* 各维度计算过程：用本选手真实代入的输入值，逐步算出「维度分 s」与「加权贡献 w·s」。
+     cs 来自 contribs(p,'career')，已含 name/color/w/raw(=s_d)/v(=w·s_d)。
+     整体包在 <details> 里，默认收起，点标题展开（满足「可收回可展开」需求）。 */
   const DIM_ANS = {
     m1: '破的纪录守了多久', m2: '拿过多少冠亚季军', m3: '锦标赛上突破的加成',
     m4: '保持在世界前十有多久', m5: '此刻站在世界各榜什么位置', m6: '破纪录瞬间把人类前沿推远多少'
@@ -402,24 +361,30 @@
       m5: [['当前世界排名', '#' + rk.world]],
       m6: [['WR 链条数', recByLv.WR]]
     };
-    let h = '<div class="card reveal"><div class="card-head"><h2>' + esc(t('player.dimCalc')) + '</h2>' +
-      '<span class="tiny muted">' + esc(t('player.dimCalc.d')) + '</span></div>';
+    let h = '<details class="card reveal dimcalc-wrap"><summary class="card-head"><h2>' + esc(t('player.dimCalc')) + '</h2>' +
+      '<span class="sum-caret">›</span></summary>';
+    h += '<div class="card-body">';
+    h += '<p class="tiny muted" style="margin:2px 0 10px">' + esc(t('player.dimCalc.d')) + '</p>';
     cs.forEach(function (c) {
       const k = c.k;
       h += '<div class="dimcalc">';
       h += '<div class="dc-head"><i class="dc-dot" style="background:' + c.color + '"></i>' +
         '<b>' + esc(c.name) + '</b><span class="dc-q">' + esc(DIM_ANS[k]) + '</span>' +
         '<span class="dc-w">权重 ' + U.fmt(c.w * 100, 0) + '%</span></div>';
-      h += '<div class="dc-formula">' + tex(DIM_FORMULA[k], true) + '</div>';
       h += '<div class="dc-inputs">';
       (metrics[k] || []).forEach(function (m) {
         h += '<span class="dc-in"><b>' + esc(String(m[1])) + '</b>' + esc(m[0]) + '</span>';
       });
       h += '</div>';
-      h += '<div class="dc-result">归一化维度分 <b>s = ' + U.fmt(c.raw, 1) + '</b> · 加权贡献 <b>w·s = ' + U.fmt(c.v, 2) + '</b></div>';
+      /* 计算过程：维度分 s（已按该维榜首归一为 100）× 权重 w ＝ 加权贡献 v */
+      h += '<div class="dc-process">维度分 <b>s = ' + U.fmt(c.raw, 1) + '</b>' +
+        '<span class="op">×</span> 权重 <b>' + U.fmt(c.w * 100, 0) + '%</b>' +
+        '<span class="op">=</span> 加权贡献 <b class="dc-v">' + U.fmt(c.v, 2) + '</b></div>';
       h += '</div>';
     });
-    h += '</div>';
+    const grand = cs.reduce(function (a, c) { return a + c.v; }, 0);
+    h += '<div class="dc-foot tiny muted">总分 t = Σ 各维加权贡献 = <b>' + U.fmt(grand, 2) + '</b></div>';
+    h += '</div></details>';
     return h;
   }
 

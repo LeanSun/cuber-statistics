@@ -322,7 +322,14 @@ console.log('== 图表可视化：项目筛选与竞速图联动 ==');
     const few = P.tlSnapshot(['333', '222'], 2025, 'all', 'all', '');
     const four = P.tlSnapshot(['333', '222', '333oh'], 2025, 'all', 'all', '');
     ok(all.length > 0, '默认（全部项目）有选手: ' + all.length);
-    ok(one.length > 0 && one.length <= all.length, '单项目筛选后选手池收窄: ' + one.length + ' vs ' + all.length);
+    /* 口径变更：全项目分支仍用「历史地位分（按年纪录/金牌）」，筛选分支改按「所选项目六维分」
+       （p.sixEv 求和），两套人群口径不同，不能再直接比较 all.length。
+       改为校验：筛选池落在全站六维人群内，且所选项越多池不减。 */
+    const sixPool = M.ranked.filter(function (p) { return p.six && p.six.t > 0; }).length;
+    ok(one.length > 0 && one.length <= sixPool,
+      '单项目筛选后选手池落在六维人群内: ' + one.length + ' ≤ ' + sixPool);
+    ok(one.length <= few.length && few.length <= four.length,
+      '所选项越多，入选选手池不减: ' + one.length + ' ≤ ' + few.length + ' ≤ ' + four.length);
     /* 多项目必须真正重新计分（广度折减），而不是只裁剪选手池。
        扫描任意一名选手：其在「333+222」与「333+222+444+555」下的口径应不同。 */
     const valOf = (r, n) => { const x = r.filter(v => v.name === n)[0]; return x ? x.value : null; };
@@ -416,6 +423,16 @@ ok(hC.indexOf('cov-rank') >= 0, '项目领域内有真实世界名次（cov-rank
 ok(hC.indexOf('rankCurve') < 0, '已删除「世界排名演变」板块（rankCurve）');
 ok(hC.indexOf('cmp-radar-wrap') >= 0, '六维雷达有放大容器');
 ok(hC.indexOf('eloTip') < 0 && hC.length > 0, '核心数据带 infoTip');
+/* 本轮需求：各维度「计算过程」收进可展开卡片 / 雷达只和满分比 / 六维口径下无附加分明细 */
+ok(/<details[^>]*dimcalc-wrap/.test(hC) && hC.indexOf('dc-process') >= 0,
+  '各维度计算过程为可展开卡片，且含「过程行」（s × 权重 = 贡献）');
+ok(hC.indexOf('附加分') < 0 && hC.indexOf('bonus-grid') < 0, '六维口径下不再显示「附加分」明细');
+{
+  let cmp = null;
+  try { cmp = P.playerCompare ? P.playerCompare(M.ranked[0]) : null; } catch (e) { cmp = null; }
+  ok(cmp && cmp.series && cmp.series.length === 1,
+    '六维雷达只画选手本人（1 条序列，不与历史第一人对比）');
+}
 
 /* —— 选手页排名胶囊 / 主项：三项曾反复回归的问题，这里加死断言 ——
    1) 「主项」被输出两次（早期 pages-player.js 有两处重复渲染）；
@@ -564,12 +581,15 @@ console.log('== 选手页排名数字 / 参数设置页 ==');
   const hM = tryRender('参数设置页', () => P.model(base));
   ok(hM.indexOf('data-cmod') >= 0, '模块配色色块存在（点击弹出取色菜单）');
   ok(hM.indexOf('data-ccmod') >= 0, '国家配色色块存在（点击弹出取色菜单）');
-  /* 需求：六个维度各自给出占比自定义入口（条形可视化 .wbar + 百分比数字框，
-     不再用滑杆——用户反馈滑杆拖拽交互差，改条形+数字框双通道）。 */
+  /* 需求：六个维度各自给出占比自定义入口，改为「可拖拽柱状图」(.wcol + 把手)，
+     用户明确不喜欢「滑杆 / 输入数字」，要求动态可视化、操作简单、观看直接。 */
   ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'].forEach(function (k) {
-    ok(hM.indexOf('data-wdim="' + k + '"') >= 0, '六维占比自定义：' + k.toUpperCase() + ' 有数字输入框');
+    ok(hM.indexOf('data-wdim="' + k + '"') >= 0, '六维占比自定义：' + k.toUpperCase() + ' 有一根占比柱');
   });
-  ok((hM.match(/class="wbar"/g) || []).length === 6, '六维占比各带一条可视化条形（替代滑杆）');
+  ok((hM.match(/class="wcol"/g) || []).length === 6, '六维占比各带一根可拖拽柱（替代滑杆/数字框）');
+  ok((hM.match(/class="wcol-fill"/g) || []).length === 6 &&
+    (hM.match(/class="wcol-handle"/g) || []).length === 6,
+    '每根占比柱都有填充条与拖拽把手');
   ok(hM.indexOf('id="wSum"') >= 0 && hM.indexOf('id="wReset"') >= 0 && hM.indexOf('id="wEven"') >= 0,
     '六维占比给出合计显示 / 恢复默认 / 平均分配');
   /* 需求：所有颜色设置统一沉到页面最下方（在左目录 + 右章节之后） */
@@ -623,8 +643,14 @@ ok(!/class="cov-rank">#\d+</.test(hC), '项目排名不再使用「#56」格式'
 
 const hD = tryRender('展开详情', () => P.expandBody(M.ranked[0], base));
 ok(hD.indexOf('exp-v3') >= 0, '展开详情为重构后的三层布局 (v3)');
-ok(hD.indexOf('exp-v3-mod') >= 0, '展开详情含七模块贡献条');
+ok(hD.indexOf('exp-v3-mod') >= 0, '展开详情含六维贡献条');
 ok(hD.indexOf('exp-v3-chip') >= 0, '展开详情含成绩速览胶囊');
+/* 本轮需求：下拉详情里姓名与国旗竖向对齐、WCA ID 紧跟姓名；「保持xx年xx月」改名为「最长纪录保持」 */
+ok(hD.indexOf('exp-v3-nameline') >= 0 && hD.indexOf('exp-v3-name') >= 0 &&
+  hD.indexOf('exp-v3-name') < hD.indexOf('exp-v3-wca'),
+  '展开详情：姓名与 WCA ID 同行，WCA ID 紧跟姓名之后');
+ok(!!t('rec.heldLongest') && t('rec.heldLongest') !== 'rec.heldLongest',
+  '「保持xx年xx月」已改名为「最长纪录保持」');
 
 console.log('== 统计真实性 ==');
 const st = M.stats(M.ranked[0]);

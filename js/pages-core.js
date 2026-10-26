@@ -743,13 +743,13 @@
     h += '<div class="exp-v3-id">' +
       '<span class="exp-v3-flag">' + flag(p.country, 'f-lg') + '</span>' +
       '<div class="exp-v3-idtxt">' +
-      '<b>' + esc(p.name) + '</b>' +
+      '<div class="exp-v3-nameline"><b class="exp-v3-name">' + esc(p.name) + '</b>' +
+        '<span class="exp-v3-wca">WCA · <code>' + esc(String(p.wcaId || p.id)) + '</code></span></div>' +
       '<div class="exp-v3-meta">' +
       '<span class="m-country">' + esc(countryName(p.country)) + '</span>' +
       '<span class="m-gender">' + (genderOf(p.gender) === 'F' ? esc(t('f.gender.f')) : esc(t('f.gender.m'))) + '</span>' +
       '<span class="m-years">' + p.start + '–' + p.end + '</span>' +
       '</div>' +
-      '<div class="exp-v3-wca">WCA · <code>' + esc(String(p.wcaId || p.id)) + '</code></div>' +
       '</div></div>';
     h += '<div class="exp-v3-scores">';
     /* 只展示一个口径：六维加权总分（旧模型的生涯 / 巅峰拆分已停用）。
@@ -809,7 +809,7 @@
         if (!byLv[lv]) return;
         h += '<span class="rec-chip lv-' + lv + '">' + lv + ' ×' + byLv[lv] + '</span>';
       });
-      if (longest) h += '<span class="rec-chip">' + esc(t('rec.held')) + ' ' + esc(heldText(longest.held)) + '</span>';
+      if (longest) h += '<span class="rec-chip"><b>' + esc(t('rec.heldLongest')) + '</b> ' + esc(heldText(longest.held)) + '</span>';
       if (evPool && evPool.length) h += '<span class="rec-chip rec-scope">' + esc(t('rank.evScope')) + '</span>';
     }
     h += '</div>';

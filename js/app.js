@@ -797,6 +797,61 @@
           window.__wdT = setTimeout(function () { render(true); }, 420);
         });
       });
+      /* 六维占比：拖动柱子调整权重（动态可视化，其余自动按比例缩放） */
+      const wChart = document.getElementById('wChart');
+      if (wChart) {
+        const WK = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'];
+        const applyWeight = function (k, f) {
+          const norm = (Pm.weights ? Pm.weights() : {}) || {};
+          const sumOthers = 1 - (norm[k] || 0);
+          WK.forEach(function (j) {
+            let v;
+            if (j === k) v = f;
+            else v = sumOthers > 0 ? (1 - f) * (norm[j] || 0) / sumOthers : 0;
+            if (Pm.set) Pm.set('b' + j.slice(1), v);
+          });
+          WK.forEach(function (j) {
+            const col = wChart.querySelector('.wcol[data-wdim="' + j + '"]');
+            if (!col) return;
+            const p = (Pm.weights()[j] || 0) * 100;
+            const fill = col.querySelector('.wcol-fill');
+            if (fill) fill.style.height = p.toFixed(1) + '%';
+            const pc = col.querySelector('.wcol-pct');
+            if (pc) pc.textContent = p.toFixed(1) + '%';
+          });
+          const sEl = document.getElementById('wSum');
+          if (sEl) sEl.textContent = t('md.weightsSum', { s: '100.0' });
+          clearTimeout(window.__wdT);
+          window.__wdT = setTimeout(function () { render(true); }, 380);
+        };
+        let drag = null;
+        const onMove = function (e) {
+          if (!drag) return;
+          const rect = drag.track.getBoundingClientRect();
+          const y = e.clientY;
+          let f = (rect.bottom - y) / rect.height;
+          f = Math.max(0, Math.min(1, f));
+          applyWeight(drag.k, f);
+        };
+        const onUp = function () {
+          drag = null;
+          window.removeEventListener('pointermove', onMove);
+          window.removeEventListener('pointerup', onUp);
+        };
+        wChart.addEventListener('pointerdown', function (e) {
+          const hd = e.target.closest ? (e.target.closest('.wcol-fill') || e.target.closest('.wcol-handle')) : null;
+          if (!hd) return;
+          const col = hd.closest('.wcol');
+          if (!col) return;
+          const k = col.getAttribute('data-wdim');
+          if (!k) return;
+          drag = { k: k, track: col.querySelector('.wcol-track') };
+          e.preventDefault();
+          onMove(e);
+          window.addEventListener('pointermove', onMove);
+          window.addEventListener('pointerup', onUp);
+        });
+      }
       const wR = document.getElementById('wReset');
       if (wR) wR.addEventListener('click', function () {
         ['b1', 'b2', 'b3', 'b4', 'b5', 'b6'].forEach(function (k) { Pm.set(k, Pm.defaults[k]); });
