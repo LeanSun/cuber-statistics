@@ -10,9 +10,15 @@
  *   M1-F2 = Σ_段 [ min(T,30年)/365 × V_L × ρ_s × f_L × w_e ]      ← r ≡ 1
  *     T   = 本人持有到被别人打破的天数（CAP_DAYS_V2=30 年封顶）
  *     V_L = WR 1.0 / CR 0.4 / NR 0.15
- *     ρ_s = 级别属地竞争密度
+ *     ρ_s = 级别属地竞争密度（★ 2026-10-26 方案 B：按年，见 §ρ 口径）
  *     f_L = 持有区间时代折算均值（沿用 M1-F1 的 2026-10-24 保留决定）
  *     w_e = EV_WEIGHT_V2
+ *
+ *   ★ 2026-10-26 用户拍板（方案 B）：ρ 从「当期快照比」改为「按年竞争密度」。
+ *     理由：数据每周从 WCA 官网更新，全站人数只增不减 —— 旧口径的分母 R.total
+ *     每期都变，会让**所有历史 CR/NR 分数**整体等比漂移（一次重建就漂 1.88 倍）。
+ *     新口径分子分母同年取自同一池子，历史年份的 ρ 只受「该年之前注册的新增」影响，
+ *     每周刷新几乎不动。详见 §ρ 口径 与 M1_封存_2026-10-24.md §F2c。
  *
  *   ★ 副作用（语义改善）：M1-F1 的「阶梯首段 r=0 不计分」边界随之消失 ——
  *     首段没有前值可比但持有是真实事件，纯持有口径下 Minh Thai 守 7,749 天正常得分。
@@ -57,6 +63,95 @@ for (const p of P) {
 const ctx = M1.makeContext({ contCount: cc, natCount: nc, total: R.total });
 const pool = M1.makeScopePool(people);
 
+/* =============================================================================
+ * §ρ 口径（★ 2026-10-26 方案 B）
+ * -----------------------------------------------------------------------------
+ *  A（旧，已停用）：ρ_s = 属地全量人数 ÷ R.total
+ *      一个标量，取「当前快照」；分母 R.total 每期随数据刷新而变
+ *      → 所有历史 CR/NR 分数按同一比例整体漂移（非平稳）。
+ *
+ *  B（今，默认）：ρ_s(t) = 属地当年累计人数 ÷ 全球当年累计人数
+ *      时间函数，与 f_L 一起在持有区间上积分：
+ *          score = min(T,30y)/365 × V_L × w_e × ⟨ f_L(t) · ρ_s(t) ⟩_区间
+ *      性质：
+ *        · ρ_WR(t) ≡ 1（分子分母同池）→ **WR 段数值与旧口径逐位相同**
+ *        · 无基准年归一，天然尺度无关：分子分母同年取自同一池子
+ *        · 历史年份的 ρ 只受「首次参赛年 ≤ 该年」的新增影响，每周刷新几乎不动
+ *        · 语义 = 「当年这条纪录在多大池子里稀缺」，而非「相对今天多稀缺」
+ *
+ *  切换：M1_RHO=snapshot 可退回旧口径（仅供对比，不作为生产口径）。
+ * ========================================================================== */
+const RHO_MODE = process.env.M1_RHO === 'snapshot' ? 'snapshot' : 'time';
+/* NR 的时代折算必须用「该国池」；旧代码把 who 直接传进 pool.valueOf，
+ * 而 valueOf 读的是 w.nat（who 里只有 country）→ 静默落到全球池，
+ * 导致 f_NR ≡ f_WR（CN/AU/US/JP/IN 在 2010 年全是 0.7340）。
+ * M1_NR_F=world 可退回该 bug 行为，仅供对比。 */
+const NR_F_MODE = process.env.M1_NR_F === 'world' ? 'world' : 'country';
+
+const rhoYear = new Map();   // level|scope|year → ρ
+function rhoAt(level, scope, y) {
+  if (level === 'WR') return 1;
+  if (RHO_MODE === 'snapshot') return level === 'CR' ? ctx.rhoC(scope) : ctx.rhoN(scope);
+  const k = level + '|' + scope + '|' + y;
+  let v = rhoYear.get(k);
+  if (v == null) {
+    const den = pool.globalAt(y);
+    const num = level === 'CR' ? pool.contAt(scope, y) : pool.natAt(scope, y);
+    v = den > 0 ? num / den : 0;
+    rhoYear.set(k, v);
+  }
+  return v;
+}
+/* f_L 按「日历年份」缓存：mid() 内部 floor，f 是年阶梯函数，故按年缓存无损 */
+const fYear = new Map();
+function fAt(who, level, y) {
+  const who2 = NR_F_MODE === 'world' ? who : { cont: who.cont, nat: who.country };
+  const k = (who2.cont || '') + '|' + (who2.nat || '') + '|' + level + '|' + y;
+  let v = fYear.get(k);
+  if (v == null) {
+    v = pool.valueOf ? pool.valueOf(level, who2, y) : pool.yearValue(y);
+    fYear.set(k, v);
+  }
+  return v;
+}
+const yOfDay = (d) => new Date(d * 86400000).getUTCFullYear();
+/**
+ * ⟨f_L · ρ_s⟩：持有区间上「时代折算 × 竞争密度」的乘积均值。
+ *
+ * 为什么这样算：f 与 ρ 都是**按日历年分段的常数**（m1.js 的 mid() 内部 floor），
+ * 所以区间积分 = Σ_y 天数_y × f_y × ρ_y —— 精确，不是采样近似。
+ * 同一切片同时用于「段合计」与「facts 年度行」，拆分恒等在浮点级闭合。
+ */
+function frAvg(who, level, scope, t0, t1) {
+  const end = t1 == null ? RN.SNAPSHOT_DAY : t1;
+  if (!(end > t0)) { const y = yOfDay(t0); return fAt(who, level, y) * rhoAt(level, scope, y); }
+  let s = 0;
+  for (const p of frYears(who, level, scope, t0, end)) s += p.days * p.fr;
+  return s / (end - t0);
+}
+/**
+ * 把持有区间按日历年切片，给出每年的天数与 f·ρ。
+ * @returns {Array<{y:number, days:number, fr:number}>}
+ */
+const yStartCache = new Map();
+function yStart(y) {
+  let v = yStartCache.get(y);
+  if (v == null) { v = RN.dayOf(y + '-01-01'); yStartCache.set(y, v); }
+  return v;
+}
+function frYears(who, level, scope, t0, end) {
+  const out = [];
+  const yA = yOfDay(t0), yB = yOfDay(end);
+  for (let y = yA; y <= yB; y++) {
+    const s0 = Math.max(t0, yStart(y));
+    const s1 = Math.min(end, yStart(y + 1));
+    const days = s1 - s0;
+    if (days <= 0) continue;
+    out.push({ y, days, fr: fAt(who, level, y) * rhoAt(level, scope, y) });
+  }
+  return out;
+}
+
 /* ── 导出日 ── */
 let EXPORT = 0;
 for (const p of P) for (const x of p.records || []) {
@@ -96,24 +191,12 @@ for (const p of P) {
   whoOf.set(p.id, { id: p.id, name: p.name, country: p.country, cont: CL.contOfIso(p.country) || '??' });
   byWho.set(p.id, { total: 0, n: 0, wr: 0, cr: 0, nr: 0, rows: [], fsum: 0, ysum: 0 });
 }
-const afCache = new Map();
-function afOf(who, level, t0, t1) {
-  const key = who.id + '|' + level + '|' + t0 + '|' + t1;
-  let v = afCache.get(key);
-  if (v == null) {
-    v = RN.avgFactor(pool, level, who, t0, t1 == null ? RN.SNAPSHOT_DAY : t1, RN.SNAPSHOT_DAY);
-    afCache.set(key, v);
-  }
-  return v;
-}
 let nFirst = 0, sFirst = 0;   // 首段统计（M1-F1 边界消失的量化）
 let segMismatch = 0;          // 年度分解恒等校验计数
 const facts1 = [];            // sixdim 事实表：年度分解
 const Y0 = (d) => new Date(d * 86400000).getUTCFullYear();
-const dayOfYearStart = {};    // y -> 该年 1 月 1 日的 day 序号
 for (const k of Object.keys(LAD)) {
   const b = LAD[k];
-  const rho = b.level === 'WR' ? 1 : (b.level === 'CR' ? ctx.rhoC(b.scope) : ctx.rhoN(b.scope));
   const w = RN.EV_WEIGHT_V2[b.ev] == null ? 1 : RN.EV_WEIGHT_V2[b.ev];
   const gL = M1.G[b.level] == null ? 1 : M1.G[b.level];
   for (const r of b.runs) {
@@ -121,35 +204,40 @@ for (const k of Object.keys(LAD)) {
     const acc = byWho.get(r.pid);
     if (!who || !acc) continue;
     const c = RN.runCredit(r, { capDays: RN.CAP_DAYS_V2, snapshotDay: RN.SNAPSHOT_DAY });
-    const f = afOf(who, b.level, r.tStart, r.tEnd);
     const years = c.years;                       // ★ r ≡ 1：credit = years
-    const score = years * gL * rho * f * w;
+    const t1d = r.tEnd == null ? RN.SNAPSHOT_DAY : r.tEnd;
+    /* ★ 方案 B：把区间按年切片，f 与 ρ 都是年阶梯常数 → 切片即精确积分。
+     *   同一切片同时用于「段合计」与「facts 年度行」，因此拆分恒等在浮点级闭合。 */
+    const parts = frYears(who, b.level, b.scope, r.tStart, t1d);
+    /* 30 年封顶：若段长超过 cap，按比例缩放切片天数，使 Σdays/365 ≡ years */
+    const rawDays = parts.reduce((s, p) => s + p.days, 0);
+    const scale = rawDays > 0 && years * 365 < rawDays ? (years * 365) / rawDays : 1;
+    let score = 0, fw = 0, fsum = 0, frsum = 0;
+    for (const p of parts) {
+      const frac = (p.days * scale) / 365;
+      score += frac * gL * p.fr * w;
+      fw += frac;
+      frsum += frac * p.fr;
+    }
+    const fr = fw > 0 ? frsum / fw : 0;           // ⟨f·ρ⟩：段内加权均值（进 score）
+    /* 纯 f 的段内均值（不含 ρ），仅用于报表/诊断展示；ρ̄ 由 fr/̄f 反解 */
+    let fp = 0;
+    for (const p of parts) { const frac = (p.days * scale) / 365; fp += frac * fAt(who, b.level, p.y); }
+    const f = fw > 0 ? fp / fw : 0;
+    const rhoBar = f > 0 ? fr / f : 0;
     acc.total += score;
-    acc.fsum += f;
+    acc.fsum += fr;
     acc.ysum += years;
     acc.n++;
     acc[b.level.toLowerCase()]++;
     if (r.gain === 0) { nFirst++; sFirst += score; }
-    acc.rows.push({ ev: b.ev, type: b.type, level: b.level, days: c.days, credit: years, f, w, gL, rho, score, t0: r.tStart, t1: r.tEnd, vOut: r.vOut.value });
-    /* ── 年度分解（sixdim as-of 用）：f_L 的区间均值 = 各年子区间均值的时长加权 → 恒等可拆 ── */
-    {
-      const t1d = r.tEnd == null ? RN.SNAPSHOT_DAY : r.tEnd;
-      const yA = Y0(r.tStart), yB = Y0(t1d);
-      let fsumW = 0, yrW = 0;
-      for (let y = yA; y <= yB; y++) {
-        if (dayOfYearStart[y] == null) dayOfYearStart[y] = RN.dayOf(y + '-01-01');
-        const s0 = Math.max(r.tStart, dayOfYearStart[y]);
-        const s1 = Math.min(t1d, RN.dayOf((y + 1) + '-01-01'));   // 左闭右开 → Σ = t1d − tStart 精确
-        const days = s1 - s0;
-        if (days <= 0) continue;
-        const frac = days / 365;
-        const fSub = afOf(who, b.level, s0, s1);
-        fsumW += fSub * frac; yrW += frac;
-        facts1.push({ pid: r.pid, ev: b.ev, type: b.type, level: b.level, scope: b.scope, y, frac, score: frac * gL * rho * fSub * w });
-      }
-      /* 恒等校验样本：年度加权 f 均值应等于整段 f */
-      if (yrW > 0 && Math.abs(fsumW / yrW - f) > 0.02) segMismatch++;
+    acc.rows.push({ ev: b.ev, type: b.type, level: b.level, days: c.days, credit: years, f, fr, rho: rhoBar, w, gL, score, t0: r.tStart, t1: r.tEnd, vOut: r.vOut.value });
+    /* ── 年度分解（sixdim as-of 用）：与上面同一切片、同一乘子 → 恒等可拆 ── */
+    for (const p of parts) {
+      const frac = (p.days * scale) / 365;
+      facts1.push({ pid: r.pid, ev: b.ev, type: b.type, level: b.level, scope: b.scope, y: p.y, frac, score: frac * gL * p.fr * w });
     }
+    if (Math.abs(fw - years) > 1e-9) segMismatch++;
   }
 }
 
@@ -177,12 +265,17 @@ L.push('');
 L.push('## 口径');
 L.push('');
 L.push('```');
-L.push('M1 = Σ_段 [ min(T,30年)/365 × V_L × ρ_s × f_L × w_e ]    ← r ≡ 1');
+L.push('M1 = Σ_段 [ min(T,30年)/365 × V_L × w_e × ⟨f_L·ρ_s⟩ ]    ← r ≡ 1');
 L.push('  T   = 持有天数（被打破即止，未破按快照日）');
 L.push('  V_L = WR 1.0 / CR 0.4 / NR 0.15');
-L.push('  ρ_s = 级别属地竞争密度；f_L = 持有区间时代折算均值');
+L.push('  ρ_s = 竞争密度：WR ≡ 1；CR/NR = 属地当年累计 ÷ 全球当年累计（方案 B，按年）');
+L.push('  f_L = 时代折算：ln(1+属地当年累计) / ln(1+属地基准年累计)');
+L.push('  ⟨·⟩ = 持有区间上的乘积均值（按月中点采样）');
 L.push('  w_e = EV_WEIGHT_V2');
 L.push('```');
+L.push('');
+L.push(`> ρ 口径：**${RHO_MODE === 'time' ? 'B · 按年（生产）' : 'A · 当期快照（对比用）'}**｜` +
+  `NR 时代池：**${NR_F_MODE === 'country' ? '国家池（已修）' : '全球池（旧 bug）'}**`);
 L.push('');
 L.push(`数据：${num(R.total)} 选手｜有分 ${num(LIST.length)} 人｜records ${num(totalRec)} 条｜阶梯 ${num(Object.keys(LAD).length)}｜段 ${num([...Object.values(LAD)].reduce((a, b) => a + b.runs.length, 0))}`);
 L.push('');
@@ -190,7 +283,7 @@ L.push(`★ M1-F1 的「首段 r=0 不计分」边界已消失：${num(nFirst)} 
 L.push('');
 L.push('## 总分排行（前 30）');
 L.push('');
-L.push('| # | 选手 | 国家 | WR | CR | NR | 段数 | 平均 f | M1-F2 |');
+L.push('| # | 选手 | 国家 | WR | CR | NR | 段数 | 平均 f×ρ | M1-F2 |');
 L.push('|---|---|---|---|---|---|---|---|---|');
 for (let i = 0; i < Math.min(30, LIST.length); i++) {
   const x = LIST[i];
@@ -239,9 +332,11 @@ console.log('写出 纪录分_纯持有.md / M1_hold_full.tsv');
 
 /* =============================================================================
  * [dump版附加] 段级明细输出（只打印，不写文件）
- * 用法：node _m1_seg_dump.js 2009ZEMD01 333
+ * 用法：node _m1_seg_dump.js <pid> <ev>
+ * 注意：f 列为**纯 f_L 段内均值**，ρ 列为**ρ̄ 段内均值**，
+ *       段得分 = 计分年数 × V_L × (ρ̄·f) × w_e（ρ̄·f 即 ⟨f·ρ⟩，逐段精确相等）
  * ============================================================================= */
-{
+if (require.main === module) {
   const PID = process.argv[2] || '2009ZEMD01';
   const EVF = process.argv[3] || '333';
   const iso = (d) => (d == null ? '至今' : new Date(Math.round(d * 86400000)).toISOString().slice(0, 10));
@@ -253,36 +348,36 @@ console.log('写出 纪录分_纯持有.md / M1_hold_full.tsv');
   const P2 = (s) => O.push(s);
   P2(`# ${x.name} · ${EVF} 的 M1 段级账本`);
   P2('');
-  P2(`数据源：js/data.js 的 p.records → 按 (项目|轨道|级别|属地) 分桶 → buildLadder 建阶梯 → 每个 run = 一个持有段`);
-  P2(`共享池 total=${R.total} ｜ ρ洲(OC)=${ctx.rhoC('OC').toFixed(6)} ｜ ρ国(AU)=${ctx.rhoN('AU').toFixed(6)}`);
+  P2(`口径：ρ=${RHO_MODE === 'time' ? 'B 按年' : 'A 快照'}｜NR 时代池=${NR_F_MODE === 'country' ? '国家' : '全球'}`);
+  P2(`共享池 total=${R.total} ｜ ρ洲(${x.cont})=${ctx.rhoC(x.cont).toFixed(6)}（2026 快照，仅对照） ｜ ρ国(${x.country})=${ctx.rhoN(x.country).toFixed(6)}`);
   P2('');
   P2(`**${EVF} 共 ${segs.length} 个持有段，得分合计 ${F(tot)}**（对应 M1_facts 的 ${facts.length} 行年度拆分）`);
   P2('');
   P2('## 一、逐段明细（按得分降序）');
   P2('');
-  P2('| # | 轨 | 级别 | 属地 | 起始 | 结束 | 持有天数 | 计分年数 | V_L | ρ_s | f_L | w_e | 段得分 |');
+  P2('| # | 轨 | 级别 | 属地 | 起始 | 结束 | 持有天数 | 计分年数 | V_L | ρ̄ | f_L | w_e | 段得分 |');
   P2('|---|---|---|---|---|---|---|---|---|---|---|---|---|');
   segs.forEach((r, i) => {
-    P2(`| ${i + 1} | ${r.type === 'avg' ? '平均' : '单次'} | ${r.level} | ${r.level === 'WR' ? '世界' : r.level === 'CR' ? r.level : r.level} | ${iso(r.t0)} | ${iso(r.t1)} | ${r.days} | ${r.credit.toFixed(4)} | ${r.gL} | ${r.rho.toFixed(6)} | ${r.f.toFixed(4)} | ${r.w.toFixed(4)} | ${r.score.toFixed(4)} |`);
+    P2(`| ${i + 1} | ${r.type === 'avg' ? '平均' : '单次'} | ${r.level} | ${r.level === 'WR' ? '世界' : ''} | ${iso(r.t0)} | ${iso(r.t1)} | ${r.days} | ${r.credit.toFixed(4)} | ${r.gL} | ${r.rho.toFixed(6)} | ${r.f.toFixed(4)} | ${r.w.toFixed(4)} | ${r.score.toFixed(4)} |`);
   });
   P2(`| | | | | | | | **${segs.reduce((s, r) => s + r.credit, 0).toFixed(4)}** | | | | | **${tot.toFixed(4)}** |`);
   P2('');
   P2('## 二、按级别×轨道汇总');
   P2('');
-  P2('| 轨 | 级别 | 段数 | 合计年数 | 平均 f_L | 得分 | 占比 | 单段均值 |');
+  P2('| 轨 | 级别 | 段数 | 合计年数 | 平均 ρ̄ | 平均 f | 得分 | 占比 |');
   P2('|---|---|---|---|---|---|---|---|');
   const g = {};
-  for (const r of segs) { const k = r.type + '|' + r.level; g[k] = g[k] || { n: 0, y: 0, s: 0, f: 0 }; g[k].n++; g[k].y += r.credit; g[k].s += r.score; g[k].f += r.f; }
+  for (const r of segs) { const k = r.type + '|' + r.level; g[k] = g[k] || { n: 0, y: 0, s: 0, f: 0, rho: 0 }; g[k].n++; g[k].y += r.credit; g[k].s += r.score; g[k].f += r.f; g[k].rho += r.rho; }
   for (const k of Object.keys(g).sort((a, b) => g[b].s - g[a].s)) {
     const [type, level] = k.split('|'); const v = g[k];
-    P2(`| ${type === 'avg' ? '平均' : '单次'} | ${level} | ${v.n} | ${v.y.toFixed(4)} | ${(v.f / v.n).toFixed(4)} | **${v.s.toFixed(4)}** | ${(v.s / tot * 100).toFixed(2)}% | ${(v.s / v.n).toFixed(4)} |`);
+    P2(`| ${type === 'avg' ? '平均' : '单次'} | ${level} | ${v.n} | ${v.y.toFixed(4)} | ${(v.rho / v.n).toFixed(6)} | ${(v.f / v.n).toFixed(4)} | **${v.s.toFixed(4)}** | ${(v.s / tot * 100).toFixed(2)}% |`);
   }
-  P2(`| | **合计** | **${segs.length}** | **${segs.reduce((s, r) => s + r.credit, 0).toFixed(4)}** | | **${tot.toFixed(4)}** | 100.00% | |`);
+  P2(`| | **合计** | **${segs.length}** | **${segs.reduce((s, r) => s + r.credit, 0).toFixed(4)}** | | | **${tot.toFixed(4)}** | 100.00% |`);
   P2('');
   P2('## 三、校验');
   P2('');
-  P2(`- 段级求和 = **${tot.toFixed(4)}**；M1_facts 年度拆分求和 = **${facts.reduce((s, f) => s + f.score, 0).toFixed(4)}**（${facts.length} 行）`);
-  P2(`- 年度拆分行数 ${facts.length} ≠ 段数 ${segs.length}：一个跨年段会被拆成年行，所以行数恒 ≥ 段数`);
-  P2(`- 最长的段：${Math.max(...segs.map((r) => r.days))} 天（封顶 ${6042} = 30 年？cap=${10950} 天=30 年，按 365 折算 ${(10950 / 365).toFixed(2)} 年）`);
+  P2(`- 段级求和 = **${tot.toFixed(4)}**；M1_facts 年度拆分求和 = **${facts.reduce((s, f) => s + f.score, 0).toFixed(4)}**（${facts.length} 行，6 位小数序列化）`);
+  P2(`- 年度拆分行数 ${facts.length} ≥ 段数 ${segs.length}：跨年段按年切片（同一切片同时进段合计与 facts，故恒等闭合）`);
+  P2(`- 最长段 ${segs.length ? Math.max(...segs.map((r) => r.days)) : 0} 天（封顶 ${RN.CAP_DAYS_V2} 天 = 30 年）`);
   console.log('\n' + O.join('\n'));
 }
