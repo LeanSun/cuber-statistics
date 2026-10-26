@@ -116,9 +116,26 @@ ok(h1b !== h1 || h1b.length > 0, '单次口径可渲染');
 const h1c = tryRender('总榜（平均口径）', () => P.rank(Object.assign({}, base, { recType: 'avg' })));
 ok(h1c.length > 0, '平均口径可渲染');
 
+/* 样例数据没有六维分，堆叠条的「按维度」口径画不出来（维度分全为 0），
+   这类断言只在真实数据下强制执行。 */
+const HAS_SCORE = M.ranked.some(function (p) { return p.overall > 0; });
 const h2 = tryRender('总榜（单项目 333）', () => P.rank(Object.assign({}, base, { evSel: ['333'] })));
-ok(h2.indexOf('ministack') >= 0, '单项目模式保留七模块堆叠条');
 ok(h2.indexOf('ev-rank') >= 0, '单项目模式显示世界名次');
+/* 堆叠方式开关：默认（只看单项目）必须是「按维度」的六维堆叠，
+   否则整条只有一个单色块、看不出是哪几维在撑着这个分数（修复前正是如此）。 */
+ok(h2.indexOf('data-stack="ev"') >= 0 && h2.indexOf('data-stack="dim"') >= 0, '总榜工具栏给出「堆叠方式」开关（按项目 / 按维度）');
+if (HAS_SCORE) {
+  ok(h2.indexOf('ministack') >= 0, '单项目模式保留堆叠条');
+  ok(h2.indexOf('dimstack') >= 0 && h2.indexOf('evstack') < 0, '单项目默认按维度堆叠（六维分段，不再是整条单色）');
+  const dimSegs = (h2.match(/class="ministack dimstack"/g) || []).length;
+  ok(dimSegs > 0, '单项目：每行都有六维堆叠条（实得 ' + dimSegs + ' 行）');
+  const h2Ev = tryRender('总榜（单项目 · 按项目堆叠）', () => P.rank(Object.assign({}, base, { evSel: ['333'], stackMode: 'ev' })));
+  ok(h2Ev.indexOf('evstack') >= 0 && h2Ev.indexOf('dimstack') < 0, '显式选择「按项目」时切回项目堆叠');
+  const h1Dim = tryRender('总榜（默认 · 按维度堆叠）', () => P.rank(Object.assign({}, base, { stackMode: 'dim' })));
+  ok(h1Dim.indexOf('dimstack') >= 0, '未选项目时也可切换为按维度堆叠');
+} else {
+  console.log('  · 本次数据无六维分（样例数据），跳过堆叠条口径断言');
+}
 
 const h3 = tryRender('总榜（多项目 333+222+444）', () => P.rank(Object.assign({}, base, { evSel: ['333', '222', '444'] })));
 ok(h3.indexOf('ev-legend') >= 0, '多项目模式显示项目图例');

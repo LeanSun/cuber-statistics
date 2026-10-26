@@ -99,6 +99,8 @@
     tab: 'overall', sortKey: 'score', sortDir: 'desc', page: 1,
     group: 'all', customIds: [], evSel: [], country: '', continent: '', region: '',
     gender: 'all', y0: null, y1: null, retired: false, recType: 'all',
+    /* 总榜柱状图的堆叠方式：'' = 自动（只看单项目时按维度、其余按项目），'ev' / 'dim' = 显式选择 */
+    stackMode: '',
     scope: 'country', geo: '',
     pk: [], tlView: 'race', tlMode: 'cumulative', tlFy: 2025, tlStep: 'day', tlMetric: 'overall', tlLane: 'single', tlSmooth: false, tlPlaying: false, tlRegion: '', tlCountry: '', msPopOpen: false,
     topicTab: 'rec', topicStat: '', otherTab: 'king', nationMetric: 'total', counterZero: 'wr', topicBoard: ''
@@ -1097,7 +1099,7 @@
   }
 
   /* ---------- 全局事件委托 ---------- */
-  const DELEGATE = '[data-sort],[data-page],[data-expand],[data-prow],[data-tab],[data-type],[data-pkadd],[data-pkrm],[data-pktrayrm],[data-pktrayclear],[data-toggle],[data-expandall],[data-goto],[data-group],[data-gender],[data-retired],[data-tlmode],[data-tlview],[data-tlstep],[data-tlmetric],[data-tllane],[data-topic],[data-topicev],[data-topicboard],[data-other],[data-nation],[data-scope],[data-continent],[data-evpick],[data-evtab],[data-evtoggle],[data-evall],[data-evnone],[data-evsave],[data-gload],[data-gdel],[data-reclevel],[data-rectype],[data-podtier],[data-mdanchor],[data-mdsec],[data-msimport],[data-msreset],[data-msdel],[data-msedit],[data-msunhide],[data-msjump]';
+  const DELEGATE = '[data-sort],[data-page],[data-expand],[data-prow],[data-tab],[data-type],[data-stack],[data-pkadd],[data-pkrm],[data-pktrayrm],[data-pktrayclear],[data-toggle],[data-expandall],[data-goto],[data-group],[data-gender],[data-retired],[data-tlmode],[data-tlview],[data-tlstep],[data-tlmetric],[data-tllane],[data-topic],[data-topicev],[data-topicboard],[data-other],[data-nation],[data-scope],[data-continent],[data-evpick],[data-evtab],[data-evtoggle],[data-evall],[data-evnone],[data-evsave],[data-gload],[data-gdel],[data-reclevel],[data-rectype],[data-podtier],[data-mdanchor],[data-mdsec],[data-msimport],[data-msreset],[data-msdel],[data-msedit],[data-msunhide],[data-msjump]';
 
   document.addEventListener('click', function (e) {
     const el = e.target.closest ? e.target.closest(DELEGATE) : null;
@@ -1145,6 +1147,11 @@
     if (el.hasAttribute('data-type')) {
       state.recType = el.getAttribute('data-type'); state.page = 1;
       render(true); return;
+    }
+    /* 总榜柱状图堆叠方式：按项目（各项目六维小计）/ 按维度（六维加权贡献） */
+    if (el.hasAttribute('data-stack')) {
+      state.stackMode = el.getAttribute('data-stack');
+      render(); return;
     }
     if (el.hasAttribute('data-msjump')) {
       const idx = (P.tlDateToIdx ? P.tlDateToIdx(el.getAttribute('data-msjump')) : 0);
