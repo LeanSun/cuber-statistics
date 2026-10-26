@@ -8,15 +8,18 @@ WCA_export*
 !etl/sample/
 !etl/sample/*.tsv
 
-# 例外：六维站点分（etl/score/sixdim.js 产出的最终交付表，build.js 直接依赖；
-# 不入库的话 GitHub Actions 每周重建 js/data.js 时会拿不到六维分，全站总分归零）
+# 例外：六维站点分 + 按项目分解表（etl/score/sixdim.js 产出的最终交付表，build.js 直接依赖；
+# 不入库的话 GitHub Actions 每周重建 js/data.js 时会拿不到六维分，全站总分归零；
+# 缺 sixdim_by_event.tsv 时项目筛选无法按六维分重排）
 !etl/score/sixdim_site.tsv
+!etl/score/sixdim_by_event.tsv
 
 # 例外：六维模型脚本 / 封存文档 / 站点分表（模型真源，需随仓库版本化；
 # 中间事实表与诊断 TSV 仍然忽略，避免把几十 MB 的中间产物推上去）
 !etl/score/*.js
 !etl/score/*.md
 !etl/score/sixdim_site.tsv
+!etl/score/sixdim_by_event.tsv
 
 # Python
 __pycache__/

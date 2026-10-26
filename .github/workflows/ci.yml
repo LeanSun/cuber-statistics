@@ -87,6 +87,7 @@ jobs:
             if(!M.ranked.some(p=>p.yTop100>0)) bad("yTop100 all zero (annual ranking missing)");
             /* 六维交付表必须随仓库入库：否则 Actions 每周重建 js/data.js 会丢失六维分 */
             if(!require("fs").existsSync("etl/score/sixdim_site.tsv")) bad("etl/score/sixdim_site.tsv missing (six-dimension delivery table)");
+            if(!require("fs").existsSync("etl/score/sixdim_by_event.tsv")) bad("etl/score/sixdim_by_event.tsv missing (per-event six-dimension table, needed for event-filtered re-ranking)");
             console.log("extra assertions OK: iso="+iso+" zh="+M.countriesZh[iso]+" cont="+M.continentOf[iso]+" held="+st.heldLongest+" yTop10max="+Math.max.apply(null,M.ranked.map(p=>p.yTop10)));
           '
       - name: Page render smoke (DOM stubs)

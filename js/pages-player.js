@@ -17,28 +17,24 @@
   }
   function notation(sym) { return '\\(' + sym + '\\)'; }
 
-  /* ---------- 单项累加（总分 = Σ 单项分 × 项目权重） ---------- */
+  /* ---------- 按项目的六维分（选手页「各项目贡献」用）----------
+     口径与总榜一致：s_d[ev] 由 ETL 的 sixdim_by_event.tsv 下发，
+     Σ_ev s_d[ev] ≡ 全站维度分，故「各项目六维小计」之和 = 该选手总分。
+     旧的 evRows（单项分 = 100 × 世界名次^-γ）属已停用的 esum 口径，已删除。 */
   const EVCOL = ['#5b8cff', '#ff7a5c', '#3ecf8e', '#c084fc', '#f5c542', '#4dd0e1',
     '#ff8fb1', '#9ccc65', '#ffb74d', '#7e9cff', '#a3e635', '#f472b6'];
-  function EVG() { return (M.meta && M.meta.evGamma) || 0.35; }
-  /* 把 ETL 下发的紧凑串 '333:22;222:90;…' 展开成逐项明细，按贡献降序。
-     单项分 = 100 × 世界名次^(−γ)，贡献 = 单项分 × 项目权重。 */
   function evRows(p) {
-    if (!p || !p.evRk) return [];
-    const g = EVG();
+    const se = (p && p.sixEv) || null;
+    if (!se) return [];
     const out = [];
-    String(p.evRk).split(';').forEach(function (seg) {
-      const i = seg.indexOf(':');
-      if (i < 0) return;
-      const eid = seg.slice(0, i);
-      const rk = parseInt(seg.slice(i + 1), 10) || 0;
-      if (!eid || rk <= 0) return;
+    for (const eid in se) {
+      const a = se[eid];
       const ev = (M.EV && M.EV[eid]) || {};
-      const w = (ev.w != null) ? ev.w : 0.8;
-      const s = 100 * Math.pow(rk, -g);
-      out.push({ eid: eid, name: evName(ev), rk: rk, s: s, w: w, v: s * w });
-    });
-    out.sort(function (a, b) { return b.v - a.v; });
+      const t = a[6] || 0;
+      if (!(t > 0)) continue;
+      out.push({ eid: eid, name: evName(ev), t: t, s: a });
+    }
+    out.sort(function (a, b) { return b.t - a.t; });
     return out;
   }
 

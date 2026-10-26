@@ -41,6 +41,25 @@ const SIX = new Map();
   console.log('六维分数载入:', SIX.size, '人');
 })();
 
+/* ---------- 按项目分解的六维分（项目筛选后重排用）----------
+   同一归一分母，满足 Σ_ev s_d[ev] ≡ s_d、Σ_ev t_ev ≡ t：
+   全项目求和可精确复原全站分，单项目/多项目筛选则直接对所选项目求和。
+   没有这张表时前端退回「全站分 + 命中折减」，不会静默出错。 */
+const SIXEV = new Map();
+(function loadSixEv() {
+  const f = path.join(__dirname, 'score', 'sixdim_by_event.tsv');
+  if (!fs.existsSync(f)) { console.warn('⚠ 未找到 ' + f + ' —— 项目筛选将退回全站六维分；请先跑 etl/score/sixdim.js'); return; }
+  const lines = fs.readFileSync(f, 'utf8').trim().split('\n');
+  for (let i = 1; i < lines.length; i++) {
+    const c = lines[i].split('\t');
+    const arr = [+c[2], +c[3], +c[4], +c[5], +c[6], +c[7], +c[8]];
+    let m = SIXEV.get(c[0]);
+    if (!m) { m = {}; SIXEV.set(c[0], m); }
+    m[c[1]] = arr;
+  }
+  console.log('按项目六维分载入:', SIXEV.size, '人 /', (lines.length - 1), '条 选手×项目');
+})();
+
 /* ---------------- 参数 ---------------- */
 const argv = process.argv.slice(2);
 function arg(name, def) {
@@ -867,6 +886,7 @@ function computeModules() {
        否则同一张榜上会出现两套量纲。旧 esum 仍随包下发，仅供对照，不参与排名。 */
     const sd = SIX.get(p.wcaId);
     p.six = sd || null;
+    p.sixEv = SIXEV.get(p.wcaId) || null;
     p.overall = sd ? Math.round(sd.t * 100) / 100 : 0;
 
     // 领奖台补 field / factors / R
@@ -1178,7 +1198,7 @@ function buildEventMilestones() {
     id: p.id, wcaId: p.wcaId, name: p.name, nameZh: p.nameZh, country: p.country, gender: p.gender,
     start: p.start, end: p.end, comps: p.comps, mainEvent: p.mainEvent, events: p.events, hue: p.hue,
     m: p.m, pk: p.pk, career: p.career, peak: p.peak, overall: p.overall, esum: p.esum, evRk: p.evRk,
-    six: p.six || null,
+    six: p.six || null, sixEv: p.sixEv || null,
     balance: Math.round(Math.log(Math.max(p.career, 0.01) / Math.max(p.peak, 0.01)) * 1000) / 1000,
     wr: p.wr, cr: p.cr, nr: p.nr, nrW: Math.round((p.nrW || 0) * 100) / 100,
     recTotal: p.recTotal || 0, podTotal: p.podTotal || 0,
@@ -1195,8 +1215,16 @@ function buildEventMilestones() {
      不再冗余存储；约 150 字节/人，可把全部约 30 万 WCA 选手随包下发、可搜索。 */
   const SLIM_KEYS = ['id', 'name', 'country', 'gender', 'start', 'end', 'comps', 'mainEvent', 'events',
     'm', 'pk', 'esum', 'evRk', 'wr', 'cr', 'nr', 'resultRows', 'attempts', 'solves', 'dnf', 'cities',
-    'maxEventsPerComp', 'multiEventComp', 'six'];
+    'maxEventsPerComp', 'multiEventComp', 'six', 'sixEv'];
   const MODK = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm1s', 'm1a'];
+  /* 按项目六维分紧凑编码：'333:1.2,3.4,0,0,0,0.5,1.9;222:…'
+     3 位小数足够（排序与 1 位小数展示都不受影响），比对象数组省约一半字节。 */
+  function encSixEv(m) {
+    if (!m) return null;
+    const out = [];
+    for (const ev in m) out.push(ev + ':' + m[ev].map(function (v) { return Math.round((v || 0) * 1000) / 1000; }).join(','));
+    return out.join(';');
+  }
   const slimRows = slim.map((p) => {
     const row = SLIM_KEYS.map((k) => {
       if (k === 'm' || k === 'pk') {
@@ -1205,6 +1233,7 @@ function buildEventMilestones() {
       }
       if (k === 'events') return (p.events || []).join(',');
       if (k === 'six') return p.six ? SIXK.map((mk) => round2(p.six[mk])).concat([round2(p.six.t)]) : null;
+      if (k === 'sixEv') return encSixEv(p.sixEv);
       return p[k];
     });
     /* 精简档案不带 evS / 纪录明细，写完即释放，控制堆峰值 */
@@ -1301,6 +1330,7 @@ function buildEventMilestones() {
     '      var k = SLIM_KEYS[i], v = a[i];\n' +
     '      if (k === "m" || k === "pk") { var mo = {}; for (var j = 0; j < MODK.length; j++) mo[MODK[j]] = v[j]; o[k] = mo; }\n' +
     '      else if (k === "six") { if (v) { var so = {}; for (var j2 = 0; j2 < SIXK.length; j2++) so[SIXK[j2]] = v[j2]; so.t = v[SIXK.length]; o.six = so; } else o.six = null; }\n' +
+    '      else if (k === "sixEv") { if (v) { var se = {}; String(v).split(";").forEach(function (seg) { var q = seg.indexOf(":"); if (q < 0) return; se[seg.slice(0, q)] = seg.slice(q + 1).split(",").map(Number); }); o.sixEv = se; } else o.sixEv = null; }\n' +
     '      else if (k === "events") { o.events = v ? String(v).split(",") : []; }\n' +
     '      else o[k] = v;\n' +
     '    }\n' +

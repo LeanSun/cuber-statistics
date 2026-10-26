@@ -69,19 +69,54 @@
     const t = sixT(p);
     return { career: t, peak: t, overall: t, balance: 0 };
   }
-  function contribs(p, tab, rt) {
-    if (p.six) {
-      const w = sixWeights();
-      return MOD.map(function (k) {
-        const raw = p.six[k] || 0;
-        return { k: k, name: (M.meta && M.meta.sixNames && M.meta.sixNames[k]) || modName(k), raw: raw, w: w[k], v: w[k] * raw, color: MODC[k] };
-      });
+  /* ── 六维按项目分解（项目筛选后重排的真源）─────────────────────────
+     ETL 侧 sixdim_by_event.tsv 给出每位选手在**每个项目上**的六维分 s_d[ev]，
+     与全站分同一归一分母，因此 Σ_ev s_d[ev] ≡ s_d、Σ_ev t_ev ≡ t：
+       · 单项目筛选 → 直接取该项目那一组；
+       · 多项目筛选 → 对所选项目逐维求和；
+       · 不选项目     → 与全站 p.six 完全一致。
+     旧版在项目筛选下改用 esum（Σ 100×世界名次^-γ×项目权重，只看当前成绩），
+     与六维总分不是同一把尺子，这里整体替换。 */
+  const SIXD = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'];
+  const SIXW_DEF = { m1: 0.28, m2: 0.24, m3: 0.12, m4: 0.18, m5: 0.08, m6: 0.10 };
+  function sixW() { return (M.meta && M.meta.sixWeights) || SIXW_DEF; }
+  /* 这份数据是否带按项目分解的六维分（老 data.js 没有 → 退回全站分，不静默出错） */
+  let HAS_SIXEV = null;
+  function hasSixEv() {
+    if (HAS_SIXEV === null) {
+      HAS_SIXEV = false;
+      for (let i = 0; i < M.ranked.length; i++) if (M.ranked[i].sixEv) { HAS_SIXEV = true; break; }
     }
-    /* 没有六维分的选手（新模型口径下任一维都无得分）：六个维度一律记 0，
-       不再回退旧七模块，避免同一张榜上出现两套量纲。 */
+    return HAS_SIXEV;
+  }
+  /* 选手在项目集合 ids 内的六维分：返回 { s:[6], t, hit, parts:[{ev,t}] }；
+     无 sixEv 或 ids 为空时返回 null（调用方据此退回全站分）。 */
+  function sixIn(p, ids) {
+    const se = p && p.sixEv;
+    if (!se || !ids || !ids.length) return null;
+    const s = [0, 0, 0, 0, 0, 0], parts = [];
+    let hit = 0;
+    for (let i = 0; i < ids.length; i++) {
+      const a = se[ids[i]];
+      if (!a) continue;
+      for (let d = 0; d < 6; d++) s[d] += (a[d] || 0);
+      parts.push({ ev: ids[i], t: a[6] || 0 });
+      hit++;
+    }
+    const w = sixW();
+    let t = 0;
+    for (let d = 0; d < 6; d++) t += w[SIXD[d]] * s[d];
+    return { s: s, t: t, hit: hit, parts: parts };
+  }
+  /* 六维贡献明细：raw=维度分、w=权重、v=加权贡献。
+     vec 传入时用它覆盖维度分（项目筛选后只统计所选项目的那部分），
+     使展开行里的「六维贡献」与榜单上的排序数字始终是同一把尺子。 */
+  function contribs(p, tab, rt, vec) {
     const w = sixWeights();
-    return MOD.map(function (k) {
-      return { k: k, name: (M.meta && M.meta.sixNames && M.meta.sixNames[k]) || modName(k), raw: 0, w: w[k], v: 0, color: MODC[k] };
+    const src = vec || (p && p.six) || null;
+    return MOD.map(function (k, i) {
+      const raw = src ? (vec ? (vec[i] || 0) : (src[k] || 0)) : 0;
+      return { k: k, name: (M.meta && M.meta.sixNames && M.meta.sixNames[k]) || modName(k), raw: raw, w: w[k], v: w[k] * raw, color: MODC[k] };
     });
   }
   /* 行内迷你堆叠条（六维加权贡献） */
@@ -96,34 +131,49 @@
     s += '</div>';
     return s;
   }
-  /* 行内堆叠条（新口径：各项目对总分的贡献占比）。
-     总分 = Σ(单项分 × 项目权重)，所以色块宽度＝该项目贡献 ÷ 总分，
-     颜色按项目在 WCA 顺序里的固定位置取，保证同一项目全站同色。 */
   const EV_IX = {};
   (M.events || []).forEach(function (e, i) { EV_IX[e.id] = i; });
-  function evStackOf(p, tab, rt) {
-    /* 没有逐项目名次的精简档案：退回六维贡献堆叠条，保证行内条不空着 */
-    if (!p || !p.evRk) return tab ? miniStack(p, tab, rt) : '';
-    const g = (M.meta && M.meta.evGamma) || 0.35;
-    const items = [];
-    String(p.evRk).split(';').forEach(function (seg) {
-      const i = seg.indexOf(':');
-      if (i < 0) return;
-      const eid = seg.slice(0, i), rk = parseInt(seg.slice(i + 1), 10) || 0;
-      if (!eid || rk <= 0) return;
-      const ev = M.EV[eid] || {};
-      const w = (ev.w != null) ? ev.w : 0.8;
-      items.push({ eid: eid, rk: rk, v: 100 * Math.pow(rk, -g) * w });
-    });
-    const tot = items.reduce(function (a, x) { return a + x.v; }, 0);
-    if (!(tot > 0)) return '';
-    items.sort(function (a, b) { return b.v - a.v; });
-    return '<div class="ministack" role="img" aria-label="' + esc(t('rank.contribution')) + '">' +
-      items.map(function (x) {
-        const ev = M.EV[x.eid] || { zh: x.eid, en: x.eid };
-        return '<span style="width:' + (x.v / tot * 100).toFixed(1) + '%;background:' + evColor(EV_IX[x.eid] || 0) +
-          '" title="' + esc(evName(ev)) + ' No.' + x.rk + ' · ' + U.fmt(x.v, 1) + '"></span>';
-      }).join('') + '</div>';
+  /* 行内堆叠条：色块＝各项目对该选手总分的贡献占比（六维口径）。
+     宽度用「该项目上的六维小计 t_ev ÷ 合计」，与榜单排序同一把尺子；
+     旧的 100×世界名次^-γ×项目权重（esum）口径已停用。
+     没有按项目分解数据（老 data.js）时退回六维贡献条，保证条不空着。 */
+  function evStackOf(p, tab, rt, ids) {
+    const inEv = sixIn(p, ids);
+    if (inEv && inEv.parts && inEv.parts.length) {
+      const parts = inEv.parts.slice().sort(function (a, b) { return b.t - a.t; });
+      const tot = parts.reduce(function (a, x) { return a + x.t; }, 0) || 1;
+      return '<div class="ministack" role="img" aria-label="' + esc(t('rank.contribution')) + '">' +
+        parts.map(function (x) {
+          const ev = M.EV[x.ev] || { zh: x.ev, en: x.ev };
+          return '<span style="width:' + (x.t / tot * 100).toFixed(1) + '%;background:' + evColor(EV_IX[x.ev] || 0) +
+            '" title="' + esc(evName(ev)) + ' · ' + U.fmt(x.t, 1) + '"></span>';
+        }).join('') + '</div>';
+    }
+    if (!hasSixEv()) {
+      /* 老数据兜底：仍按旧的逐项目名次画（esum 口径），至少不出现空条 */
+      if (!p || !p.evRk) return tab ? miniStack(p, tab, rt) : '';
+      const g = (M.meta && M.meta.evGamma) || 0.35;
+      const items = [];
+      String(p.evRk).split(';').forEach(function (seg) {
+        const i = seg.indexOf(':');
+        if (i < 0) return;
+        const eid = seg.slice(0, i), rk = parseInt(seg.slice(i + 1), 10) || 0;
+        if (!eid || rk <= 0) return;
+        if (ids && ids.length && ids.indexOf(eid) < 0) return;
+        const ev = M.EV[eid] || {};
+        items.push({ eid: eid, rk: rk, v: 100 * Math.pow(rk, -g) * ((ev.w != null) ? ev.w : 0.8) });
+      });
+      const tot0 = items.reduce(function (a, x) { return a + x.v; }, 0);
+      if (!(tot0 > 0)) return '';
+      items.sort(function (a, b) { return b.v - a.v; });
+      return '<div class="ministack" role="img" aria-label="' + esc(t('rank.contribution')) + '">' +
+        items.map(function (x) {
+          const ev = M.EV[x.eid] || { zh: x.eid, en: x.eid };
+          return '<span style="width:' + (x.v / tot0 * 100).toFixed(1) + '%;background:' + evColor(EV_IX[x.eid] || 0) +
+            '" title="' + esc(evName(ev)) + ' No.' + x.rk + ' · ' + U.fmt(x.v, 1) + '"></span>';
+        }).join('') + '</div>';
+    }
+    return tab ? miniStack(p, tab, rt) : '';
   }
   function ecBox(type, data, opts, h) {
     const payload = { type: type, data: data, opts: opts || {} };
@@ -308,28 +358,29 @@
   const EVCOL = ['#5b8cff', '#ff7a5c', '#3ecf8e', '#c084fc', '#f5c542', '#4dd0e1', '#ff8fb1', '#9ccc65', '#ffb74d', '#7e9cff'];
   function evColor(i) { return EVCOL[i % EVCOL.length]; }
 
-  /* 只累加指定项目集合的分：Σ(单项分 × 项目权重)，ids 为空/未给则累加全部。
-     这是「总分 = Σ 单项分 × 权重」的自然推论——筛了几个项目就只算这几项，
-     所以项目筛选不再需要额外的「广度折减」来硬凑差异，两把尺子天然一致。 */
-  function esumOf(p, ids) {
-    /* 返回 null 表示这份数据没有逐项目名次（旧版 data.js / 极老缓存），
-       调用方据此退回旧的广度折减逻辑，避免筛选后分数全变 0。 */
-    if (!p || !p.evRk) return null;
-    const g = (M.meta && M.meta.evGamma) || 0.35;
-    let sum = 0;
-    String(p.evRk).split(';').forEach(function (seg) {
-      const i = seg.indexOf(':');
-      if (i < 0) return;
-      const eid = seg.slice(0, i);
-      if (ids && ids.length && ids.indexOf(eid) < 0) return;
-      const rk = parseInt(seg.slice(i + 1), 10) || 0;
-      if (rk <= 0) return;
-      const w = (M.EV[eid] && M.EV[eid].w) || 0.8;
-      sum += 100 * Math.pow(rk, -g) * w;
-    });
-    return sum;
+  /* 项目口径：只有**显式选择**（多选事件 / 单个项目 / 预设分组 / 自定义分组）
+     才按所选项目重新计分；默认的「不显示停办项目」只收窄选手池，不改变总分口径——
+     否则总榜算的是「剔除停办项目后的分」，选手页显示的却是含停办项目的 p.six，两处对不上。
+     返回值 null 表示不收窄（用全站六维总分）。 */
+  function evScopeIds(state) {
+    let sel = null;
+    if (state.evSel && state.evSel.length) sel = state.evSel.slice();
+    else if (state.group === 'custom') sel = (state.customIds && state.customIds.length) ? state.customIds.slice() : null;
+    else if (state.group && state.group !== 'all') {
+      if (M.EV[state.group]) sel = [state.group];
+      else {
+        const g = M.presetGroups.filter(function (x) { return x.id === state.group; })[0];
+        sel = (g && g.ids) ? g.ids.slice() : null;
+      }
+    }
+    if (!sel || !sel.length) return null;
+    if (!state.retired) {
+      const keep = sel.filter(function (id) { return !(M.EV[id] && M.EV[id].retired); });
+      /* 全被滤掉＝选的就是停办项目本身，保留原选择 */
+      if (keep.length) return keep;
+    }
+    return sel;
   }
-
   P.filtered = function (state) {
     const pool = eventSet(state);
     const rt = state.recType || 'all';
@@ -358,37 +409,18 @@
     const evs = sev ? [] : modeEvents(state);
     const bd = sev ? eventBoard(sev) : null;
     const bdM = evs.length >= 2 ? evs.map(function (ev) { return { ev: ev, b: eventBoard(ev), w: evWeight(ev) }; }) : null;
+    /* 项目口径：显式选了项目就只统计这些项目上的六维分，名次与条尾数字随之重排。 */
+    const scope = evScopeIds(state);
+    const useEv = !!scope && hasSixEv();
     rows = rows.map(function (p) {
       const sc = scoreOf(p, rt);
-      /* 统一口径：三种选择方式（全部 / 单项目 / 多项目）一律按「历史地位分」排序。
-         项目筛选只做两件事，且两者对三种方式完全一致：
-           1) 选手池：只保留在该选择下有成绩的选手；
-           2) 广度折减：命中所选项目越少，折减越多（0.45~1.00）。
-         单项目时命中必然为 1/1，折减恒等于 1，因此与「只看该项目」的历史地位分完全相同。
-         早前版本在多项目下会把分数整个替换成「各项目世界名次的加权平均」，
-         与单项目/全项目不是同一把尺子，这里已统一。 */
-      let score = sc[state.tab] || sc.overall;
-      const tab = state.tab || 'overall';
-      /* 总分（overall）：筛了项目就只累加所选项目的贡献——这正是
-         「总分 = Σ(单项分 × 项目权重)」的自然推论，不需要再乘广度折减。
-         三个 tab（生涯 / 巅峰 / 综合）现已合并为同一个六维总分。 */
-      if (tab === 'overall') {
-        if (scoped) {
-          const e2 = esumOf(p, pool);
-          if (e2 != null) score = e2;
-          else {
-            const hit = p.events.filter(function (e) { return pool.indexOf(e) >= 0; }).length;
-            score = score * (0.45 + 0.55 * (hit / pool.length));
-          }
-        }
-      } else if (state.group === 'custom' && state.customIds && state.customIds.length) {
-        const hit = p.events.filter(function (e) { return state.customIds.indexOf(e) >= 0; }).length;
-        score = score * (0.45 + 0.55 * (hit / state.customIds.length));
-      } else if (scoped && state.group !== 'custom') {
-        const hit = p.events.filter(function (e) { return pool.indexOf(e) >= 0; }).length;
-        score = score * (0.45 + 0.55 * (hit / pool.length));
+      let score = sc.overall, vec = null, inEv = null;
+      if (useEv) {
+        inEv = sixIn(p, scope);
+        score = inEv ? inEv.t : 0;
+        vec = inEv ? inEv.s : null;
       }
-      const row = { p: p, score: score, sc: sc, ev: sev || '', be: bd ? (bd.idx[p.id] || null) : null, bdLen: bd ? bd.len : 0, evs: null, evHit: 0, evSum: 0, orderVal: score };
+      const row = { p: p, score: score, sc: sc, six: vec, ev: sev || '', be: bd ? (bd.idx[p.id] || null) : null, bdLen: bd ? bd.len : 0, evs: null, evHit: inEv ? inEv.hit : 0, evSum: 0, orderVal: score };
       /* 多项目：额外算出每个所选项目上的世界名次，用于「色块」展示与排序。 */
       if (bdM) {
         let sw = 0, sv = 0, hit = 0;
@@ -402,10 +434,12 @@
         row.evHit = hit;
         row.evSum = sw > 0 ? sv / sw : 0;
       }
-      /* 排序键：一律用 row.score（＝所选项目范围内的 Σ 单项分×权重），
+      /* 排序键：row.score ＝ 所选项目范围内的六维总分（未收窄时＝全站六维总分），
          单项目 / 多项目 / 全部项目共用同一把尺子，名次与条尾数字永远一致。 */
       return row;
     });
+    /* 项目筛选下，在该范围内没有任何六维得分的选手不进榜（分数为 0 无意义） */
+    if (useEv) rows = rows.filter(function (r) { return r.score > 0; });
     if (bdM) rows = rows.filter(function (r) { return r.evHit > 0; });
     return sortRows(rows, state);
   };
@@ -418,19 +452,25 @@
       switch (k) {
       case 'score':
       case 'total':
-        /* 选中项目时按该项目（们）的世界名次排序（orderVal 已是「越大越靠前」），
-           未选项目时按历史地位分排序。 */
-        return row.orderVal != null ? row.orderVal : row.score;
+        return row.score;
       case 'player': return p.name;
       case 'country': return p.country;
       case 'gender': return p.gender;
         default:
-          /* 单维排名一律取六维维度分 p.six[k]（旧 p.m / p.pk 属已停用的七模块口径） */
-          if (MOD.indexOf(k) >= 0) return (p.six && p.six[k] != null) ? p.six[k] : 0;
+          /* 单维排名取六维维度分；项目筛选生效时用「所选项目范围内」的维度分
+             （row.six 由 sixIn 逐维求和得到），保证与榜单总分同一口径。 */
+          if (MOD.indexOf(k) >= 0) {
+            const ix = SIXD.indexOf(k);
+            if (row.six && ix >= 0) return row.six[ix] || 0;
+            return (p.six && p.six[k] != null) ? p.six[k] : 0;
+          }
           if (k === 'wr') return p.wr;
           if (k === 'wc') return p.wcGold;
           if (k === 'months') return p.months1;
-          if (k === 'dom') return (p.six && p.six.m4 != null) ? p.six.m4 : 0;
+          if (k === 'dom') {
+            if (row.six) return row.six[3] || 0;
+            return (p.six && p.six.m4 != null) ? p.six.m4 : 0;
+          }
           return 0;
       }
     };
@@ -518,38 +558,34 @@
       h += '<td class="tl gcol">' + genderBadge(p) + '</td>';
       h += '<td class="tl"><span class="region-cell">' + flag(p.country) + '<span class="rname">' + esc(countryName(p.country)) + '</span></span></td>';
       if (multiMode && row.evs) {
-        /* 多项目：主数字与条宽＝历史地位分（与全项目 / 单项目同一把尺子）；
-           堆叠色块＝各所选项目上的世界名次相对位置（越满＝该项目名次越靠前），仅作参考。 */
-        /* 多项目：色块宽度＝该所选项目的贡献 ÷ 所选项目贡献合计。
-           贡献 = 100 × 世界名次^(−γ) × 项目权重，与总分同一口径。 */
-        const _g = (M.meta && M.meta.evGamma) || 0.35;
-        const contr = row.evs.map(function (c) { return c.e ? 100 * Math.pow(c.e.r, -_g) * c.w : 0; });
+        /* 多项目：主数字与条宽＝所选项目范围内的六维总分（与全项目同一把尺子）；
+           堆叠色块＝各所选项目上的六维小计占比（越满＝该项目贡献越大）。 */
+        const se = p.sixEv || {};
+        const contr = row.evs.map(function (c) { return (se[c.ev] && se[c.ev][6]) || 0; });
         const cTot = contr.reduce(function (a, b) { return a + b; }, 0) || 1;
         let segs = '';
         row.evs.forEach(function (c, ci) {
-          if (!c.e) return;
+          if (!(contr[ci] > 0)) return;
           const rel = contr[ci] / cTot * 100;
           segs += '<span style="width:' + Math.max(1.5, Math.min(100, rel)).toFixed(1) + '%;background:' + evColor(ci) + '" title="' +
-            esc(evName(M.EV[c.ev] || { zh: c.ev, en: c.ev })) + ' No.' + c.e.r + ' · ' + U.fmt(contr[ci], 1) + '"></span>';
+            esc(evName(M.EV[c.ev] || { zh: c.ev, en: c.ev })) + ' · ' + U.fmt(contr[ci], 1) + '"></span>';
         });
-        /* 各项目名次只以堆叠色块呈现（越满＝该项目名次越靠前），
-           按需求不再在后面罗列「#265」这类名次徽章，也不再显示「已覆盖 x/y」。 */
         h += '<td class="barcell bars-full"><div class="bar-row evmode"><div class="bar-track">' +
           '<div class="bar-grow" style="width:' + bw.toFixed(1) + '%"><div class="ministack evstack">' + segs + '</div></div></div>' +
           '<span class="bar-total">' + U.fmt(score, 1) + '</span>' +
           '<span class="ev-hitnote">' + row.evHit + '/' + evsShown.length + '</span></div></td>';
       } else if (evMode) {
-        /* 单项目：按「历史地位分（GOAT 分）」排序，条长＝分数占比；
-           条尾给出分数（与排序同一把尺子），并以 No. 标注该项目的世界名次作为参考。 */
+        /* 单项目：分数＝该项目上的六维总分，条长＝占榜首比例，排序同一把尺子。 */
         const be = row.be;
         h += '<td class="barcell bars-full"><div class="bar-row evmode"><div class="bar-track">' +
-          '<div class="bar-grow" style="width:' + bw.toFixed(1) + '%">' + evStackOf(p, modTab, rt) + '</div></div>' +
+          '<div class="bar-grow" style="width:' + bw.toFixed(1) + '%">' + evStackOf(p, modTab, rt, evsShown.length ? evsShown : [evMode]) + '</div></div>' +
           '<span class="bar-total">' + U.fmt(score, 1) + '</span>' +
-          (be ? '<span class="ev-rank" title="' + esc(t('player.rankWorld')) + '">No.' + be.r + '</span>' : '') +
+          /* 世界名次只作参考（排序按六维分），放在 tooltip 里避免又被读成排序依据 */
+          (be ? '<span class="ev-rank" title="' + esc(t('rank.evRankTip')) + '">No.' + be.r + '</span>' : '') +
           '</div></td>';
       } else {
         h += '<td class="barcell bars-full"><div class="bar-row"><div class="bar-track">' +
-          '<div class="bar-grow" style="width:' + bw.toFixed(1) + '%">' + evStackOf(p, modTab, rt) + '</div></div>' +
+          '<div class="bar-grow" style="width:' + bw.toFixed(1) + '%">' + evStackOf(p, modTab, rt, null) + '</div></div>' +
           '<span class="bar-total">' + U.fmt(score, 1) + '</span></div></td>';
       }
       h += '<td class="tl exp-col"><button class="expand-btn" data-expand="' + p.id + '" aria-label="' + esc(t('ui.more')) + '">›</button></td>';
@@ -584,9 +620,13 @@
      取代旧版左右两栏里数字堆叠的排布。 */
   P.expandBody = function (p, state) {
     const rt = (state && state.recType) || 'all';
+    /* 项目筛选生效时，展开行也要显示「所选项目范围内」的六维分，
+       否则榜上数字与展开明细对不上（旧版这里恒显示全站分）。 */
+    const evPool = (state && hasSixEv()) ? evScopeIds(state) : null;
+    const inEv = evPool ? sixIn(p, evPool) : null;
     const sc = scoreOf(p, rt);
     const tab = (state && state.tab === 'peak') ? 'peak' : 'career';
-    const cs = contribs(p, tab, rt);
+    const cs = contribs(p, tab, rt, inEv ? inEv.s : null);
     const tot = cs.reduce(function (a, c) { return a + c.v; }, 0) || 1;
     const st = M.stats(p);
     const wcaUrl = 'https://www.worldcubeassociation.org/persons/' + encodeURIComponent(String(p.wcaId || p.id).toUpperCase());
@@ -610,16 +650,17 @@
       '<span class="dot">·</span><span>' + esc(String(p.wcaId || p.id)) + '</span>' +
       '</div></div></div>';
     h += '<div class="exp-v3-scores">';
-    /* 只展示一个口径：六维加权总分（旧模型的生涯 / 巅峰拆分已停用）。 */
-    h += '<div class="exp-v3-score lead"><span class="k">' + esc(t('rank.tab.overall')) + '</span>' +
-      '<span class="v grad">' + U.fmt(sc.overall, 1) + '</span></div>';
+    /* 只展示一个口径：六维加权总分（旧模型的生涯 / 巅峰拆分已停用）。
+       项目筛选生效时显示所选项目范围内的总分，与榜单名次一致。 */
+    h += '<div class="exp-v3-score lead"><span class="k">' + esc(inEv ? t('rank.evScore') : t('rank.tab.overall')) + '</span>' +
+      '<span class="v grad">' + U.fmt(inEv ? inEv.t : sc.overall, 1) + '</span></div>';
     h += '<div class="exp-v3-score"><span class="k">' + esc(t('player.rankWorld')) + '</span>' +
       '<span class="v">No.' + worldNo + '</span></div>';
     h += '</div></div>';
 
     /* ── 中部：六维贡献（横向条） ─────────────────────────── */
     h += '<div class="exp-v3-mods">';
-    h += '<div class="exp-v3-mods-h"><span>' + esc(t('rank.module')) + '</span>' +
+    h += '<div class="exp-v3-mods-h"><span>' + esc(t('rank.module')) + (inEv ? ' · ' + esc(t('rank.evScope')) : '') + '</span>' +
       '<span class="tiny muted">' + esc(t('player.contrib')) + ' · Σ = ' + U.fmt(tot, 2) + '</span></div>';
     /* 列头：让右侧四列数字（原始分 / 权重 / 加权贡献 / 占比）各自有名字，
        否则展开后只剩一串「100.0 51% 50.78 67.0%」看不出含义。 */

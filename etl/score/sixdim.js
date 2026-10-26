@@ -285,6 +285,25 @@ if (OPT.csv && noFilter) {
     site.push([x.pid, ...s, x.total.toFixed(4)].join('\t'));
   }
   fs.writeFileSync(path.join(D, 'sixdim_site.tsv'), site.join('\n') + '\n', 'utf8');
+  /* ── 按项目分解的六维分（站点「项目筛选后按六维总分排序」用）──
+     s_d[ev] = (v_d,ev / max_d,ev) × evW(ev) × 100 / wSum，与 sixdim_site.tsv 同一归一分母，
+     因此 Σ_ev s_d[ev] ≡ s_d、Σ_d w_d·s_d[ev] ≡ t_ev，全项目求和可精确复原全站分。 */
+  const byEv = ['pid\tev\ts1\ts2\ts3\ts4\ts5\ts6\tt'];
+  let beLines = 0;
+  for (const x of rowsOut) {
+    for (const [ev, dmap] of x.perEv) {
+      const s = DIM_KEYS.map((dim) => {
+        const v = dmap[dim] || 0, mx = maxOf[dim].get(ev) || 0;
+        return (v > 0 && mx > 0) ? (v / mx) * evW(ev) * 100 / wSum : 0;
+      });
+      let t = 0;
+      DIM_KEYS.forEach((k, i) => { t += DIMS[k].w * s[i]; });
+      byEv.push([x.pid, ev, ...s.map((v) => v.toFixed(4)), t.toFixed(4)].join('\t'));
+      beLines++;
+    }
+  }
+  fs.writeFileSync(path.join(D, 'sixdim_by_event.tsv'), byEv.join('\n') + '\n', 'utf8');
+  console.log(`→ 已写 etl/score/sixdim_by_event.tsv（${beLines} 条 选手×项目 记录）`);
   const compact = rowsOut.map((x, i) => {
     const d = {};
     for (const dim of DIM_KEYS) {

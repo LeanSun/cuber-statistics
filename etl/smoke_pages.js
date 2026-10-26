@@ -167,24 +167,63 @@ ok(h3.indexOf('bar-track') >= 0, '条形外层有可收缩的弹性轨道（bar-
   const topOf = (rs) => rs.slice(0, 5).map((r) => r.p.id);
   const a = topOf(rowsAll), b = topOf(rowsMulti), c = topOf(rowsOne);
   ok(a.length === 5 && b.length > 0 && c.length > 0, '三种口径均能取到榜单');
+  /* 未选项目时：分数必须就是全站六维总分（与选手页 p.six.t 同一数字），
+     不能因为「默认不显示停办项目」就偷偷换一把尺子。 */
+  ok(!rowsAll[0].p.six || Math.abs(rowsAll[0].score - rowsAll[0].p.six.t) < 0.02,
+    '未选项目：分数＝全站六维总分 (' + rowsAll[0].score + ' vs ' + (rowsAll[0].p.six ? rowsAll[0].p.six.t : 'n/a') + ')');
   ok(b.every((id) => a.includes(id)) || a.some((id) => b.includes(id)),
     '多项目榜单仍以历史地位分为主序（与全项目同一把尺子）');
-  /* 单项目：总分口径是 Σ(单项分×权重)，所以只选一个项目时
-     分数必须恰好等于「该项目贡献 = 100 × 名次^-γ × 权重」，且与名次严格同序。 */
+  const hasEv = M.ranked.some(function (p) { return p.sixEv && p.sixEv['333']; });
+  /* 单项目：分数必须恰好等于「该项目上的六维总分 t_ev」，
+     而不是旧的 100×世界名次^-γ×项目权重（esum，只看当前成绩）。 */
   const r1 = rowsOne[0];
-  const _g = (M.meta && M.meta.evGamma) || 0.35;
-  const _w = ((M.EV && M.EV['333']) || {}).w || 0.8;
-  ok(!r1 || !r1.p.evRk || (r1.be && Math.abs(r1.score - 100 * Math.pow(r1.be.r, -_g) * _w) < 0.01),
-    '单项目：分数＝该项目贡献（单项分×权重）: ' +
-    (r1 && r1.be ? r1.score + ' vs ' + (100 * Math.pow(r1.be.r, -_g) * _w).toFixed(2) : 'n/a'));
+  const evT = r1 && r1.p.sixEv ? (r1.p.sixEv['333'] || [])[6] : null;
+  ok(!hasEv || (evT != null && Math.abs(r1.score - evT) < 0.02),
+    '单项目：分数＝该项目上的六维总分: ' + (r1 ? r1.score.toFixed(3) + ' vs ' + (evT == null ? 'n/a' : evT.toFixed(3)) : 'n/a'));
   let mono = true;
   for (let i = 1; i < rowsOne.length; i++) {
     if (rowsOne[i].score > rowsOne[i - 1].score + 1e-9) { mono = false; break; }
   }
-  ok(mono, '单项目：分数随该项目世界名次单调递减（排序与名次一致）');
-  /* 多项目：条尾数字必须是历史地位分，而不是 evSum */
+  ok(mono, '单项目：榜单按该项目的六维总分降序（分数与名次严格同序）');
+  /* 三阶榜的名次必须与「按 sixEv 三阶总分排序」完全一致 —— 即真正重排，
+     而不是拿全站总分过一遍筛子（旧版正是不重排，被反馈为「按当前成绩排序」）。 */
+  if (hasEv) {
+    /* 期望值用与前端完全相同的方式算（t = Σ w_d·s_d），
+       避免 3 位小数存储值与重算值在 0.0005 边界上互相打架。 */
+    const SW = (M.meta && M.meta.sixWeights) || { m1: 0.28, m2: 0.24, m3: 0.12, m4: 0.18, m5: 0.08, m6: 0.10 };
+    const SK = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'];
+    const expect = M.ranked.filter(function (p) { return p.sixEv && p.sixEv['333']; })
+      .map(function (p) {
+        const a = p.sixEv['333'];
+        let t = 0;
+        for (let d = 0; d < 6; d++) t += SW[SK[d]] * (a[d] || 0);
+        return { id: p.id, t: t };
+      })
+      .filter(function (x) { return x.t > 0 && M.ranked.some(function (p) { return p.id === x.id && (p.events || []).indexOf('333') >= 0; }); })
+      .sort(function (x, y) { return y.t - x.t; });
+    let same = expect.length === rowsOne.length;
+    for (let i = 0; same && i < Math.min(20, expect.length); i++) if (expect[i].id !== rowsOne[i].p.id) same = false;
+    const nm = M.ranked.reduce(function (m, p) { m[p.id] = p.name; return m; }, {});
+    let firstDiff = -1;
+    for (let i = 0; i < Math.min(20, expect.length); i++) if (expect[i].id !== rowsOne[i].p.id) { firstDiff = i; break; }
+    if (firstDiff >= 0) {
+      console.log('   · 第 ' + (firstDiff + 1) + ' 名不一致：期望 ' + nm[expect[firstDiff].id] + '(' + expect[firstDiff].t.toFixed(2) +
+        ') / 实得 ' + rowsOne[firstDiff].p.name + '(' + rowsOne[firstDiff].score.toFixed(2) + ')');
+    }
+    ok(same, '单项目：榜单为该项目内真实重排（前 20 名与按 t_ev 排序一致，共 ' + expect.length + ' 人 / 榜上 ' + rowsOne.length + ' 人）');
+    const allTop = rowsAll[0].p.id;
+    console.log('   · 全站榜首 ' + rowsAll[0].p.name + ' / 三阶榜首 ' + rowsOne[0].p.name + (allTop === rowsOne[0].p.id ? '（同一人）' : '（已重排）'));
+  }
+  /* 多项目：条尾数字必须是所选项目范围内的六维总分 */
   ok(h3.indexOf('>' + rowsMulti[0].score.toFixed(1) + '<') >= 0,
-    '多项目条尾数字为历史地位分（已与全项目/单项目统一）');
+    '多项目条尾数字为所选项目范围内的六维总分');
+  if (hasEv) {
+    const m1 = rowsMulti[0].p;
+    let exp = 0;
+    ['333', '222', '444'].forEach(function (e) { if (m1.sixEv && m1.sixEv[e]) exp += m1.sixEv[e][6]; });
+    ok(Math.abs(rowsMulti[0].score - exp) < 0.05,
+      '多项目：分数＝所选项目六维小计之和 (' + rowsMulti[0].score.toFixed(2) + ' vs ' + exp.toFixed(2) + ')');
+  }
   void c;
 }
 
