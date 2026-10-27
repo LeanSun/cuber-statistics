@@ -622,19 +622,15 @@
       h += '<span class="tag acc ev-tag">' + esc(label) + ' · ' + esc(t('rank.evMode')) + '</span>';
       h += '<span class="tiny muted">' + esc(t('rank.evNote', { ev: label })) + '</span>';
     } else {
-      /* 六维模型已把「生涯 / 巅峰 / 综合」三档合并为一个总分口径，RANK_TABS 仅剩 ['overall']。
-         单选项若仍渲染成按钮，用户点了会觉得「按钮不起作用」（反馈原话）。
-         因此只有多于一个口径时才画可点的分段控件，否则退化为纯标签。 */
+      /* 2026-10-27 用户要求：六维模型下只剩一个总分口径，「总分」按钮与它后面那句
+         「综合两者，几何平均惩罚偏科」的旧口径说明一并删除，工具栏直接从「柱状图堆叠方式」开始。 */
       if (RANK_TABS.length > 1) {
         h += '<div class="seg" id="tabSeg">';
         RANK_TABS.forEach(function (tb) {
           h += '<button data-tab="' + tb + '" class="' + (state.tab === tb ? 'on' : '') + '">' + esc(t('rank.tab.' + tb)) + '</button>';
         });
         h += '</div>';
-      } else {
-        h += '<span class="tag acc">' + esc(t('rank.tab.' + RANK_TABS[0])) + '</span>';
       }
-      h += '<span class="tiny muted">' + esc(t('rank.tab.' + state.tab + '.d')) + '</span>';
     }
     /* 柱状图堆叠方式开关：按项目（各项目六维小计相加）/ 按维度（六维加权贡献相加）。
        两者只是「把总分拆成几段的切法」不同，段宽合计都等于该行总分。 */
@@ -891,11 +887,17 @@
       if (longest) {
         const lt = longest;
         const ltEv = evName(M.EV[lt.ev] || { zh: lt.ev, en: lt.ev });
-        const ltType = lt.type === 'avg' ? (t.isEn() ? 'avg' : '平均') : (lt.type === 'single' ? (t.isEn() ? 'single' : '单次') : '');
-        const ltTip = ltEv + ' · ' + lt.level + (ltType ? '（' + ltType + '）' : '') + ' · ' +
-          esc(t('rec.value')) + ' ' + esc(lt.value) + ' · ' + esc(t('rec.date')) + ' ' + esc(lt.date) +
-          ' · ' + esc(t('rec.held')) + ' ' + esc(heldText(lt.held)) + (lt.comp ? ' · ' + esc(lt.comp) : '');
-        h += '<span class="rec-chip" title="' + esc(ltTip) + '"><b>' + esc(t('rec.heldLongest')) + '</b> ' + esc(heldText(lt.held)) + '</span>';
+        const ltType = lt.type === 'avg' ? (t.isEn() ? 'average' : '平均') : (lt.type === 'single' ? (t.isEn() ? 'single' : '单次') : '');
+        /* 悬浮提示：原生 title 有 1 秒延迟、样式不可控（手机上干脆不弹），
+           用户反馈「移上去什么都没有」——改为 data-tip 由 app.js 的浮层接管。
+           内容按需求给全：哪个纪录（项目·单次/平均·层级）、成绩、持续时间。 */
+        const tipLines = [];
+        tipLines.push(ltEv + ' · ' + (ltType || '-') + ' · ' + lt.level + (lt.rr && lt.rr !== lt.level ? '（' + lt.rr + '）' : ''));
+        tipLines.push((t.isEn() ? 'Result: ' : '成绩：') + lt.value);
+        tipLines.push((t.isEn() ? 'Set on: ' : '达成：') + lt.date + (lt.comp ? ' · ' + lt.comp : ''));
+        tipLines.push((t.isEn() ? 'Held for: ' : '持续时间：') + heldText(lt.held) + (lt.current ? (t.isEn() ? ' (still held)' : '（仍在保持）') : ''));
+        h += '<span class="rec-chip rec-chip-tip" data-tip="' + esc(tipLines.join('\n')) + '">' +
+          '<b>' + esc(t('rec.heldLongest')) + '</b> ' + esc(heldText(lt.held)) + '</span>';
       }
       if (evPool && evPool.length) h += '<span class="rec-chip rec-scope">' + esc(t('rank.evScope')) + '</span>';
     }
@@ -917,7 +919,7 @@
     if (m < 1) return d + ' ' + (t.isEn() ? 'days' : '天');
     if (m < 12) return m + ' ' + (t.isEn() ? 'mo' : '个月');
     const y = Math.floor(m / 12), mo = m % 12;
-    return y + ' ' + (t.isEn() ? 'y' : '年') + (mo ? ' ' + mo + (t.isEn() ? 'mo' : '个月') : '');
+    return y + ' ' + (t.isEn() ? 'y' : '年') + (mo ? ' ' + mo + ' ' + (t.isEn() ? 'mo' : '个月') : '');
   }
   P.heldText = heldText;
   P.util.heldText = heldText;

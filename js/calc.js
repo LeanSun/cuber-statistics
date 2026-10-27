@@ -551,7 +551,11 @@
       const c = contOfIso(iso) || continentRaw[p.country] || continentRaw[iso] || '';
       if (c && !continentMap[iso]) continentMap[iso] = c;
     });
-    const countryList = Object.keys(countries);
+    /* WCA 国家表里有 8 个 X 开头的「多国（亚洲）/（欧洲）…」伪国家（XA/XE/XF/XM/XN/XO/XS/XW），
+       它们是团体赛占位符，**没有任何一名选手属于它们**（实测 0 人），
+       却会混进国家筛选下拉与参数页的国家配色表里，看起来像数据错误。这里统一剔除。 */
+    const isPseudoCountry = function (iso) { return /^X[A-Z]$/.test(String(iso || '').toUpperCase()); };
+    const countryList = Object.keys(countries).filter(function (iso) { return !isPseudoCountry(iso); });
 
     /* 选手 country 归一化为 ISO2（前端旗帜 / 中文名 / 洲际筛选都依赖它） */
     players.forEach(function (p) { p.country = isoNorm(p.country) || p.country; });

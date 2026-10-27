@@ -702,6 +702,10 @@ tr:hover .pname .linkish,tr:hover .pname .pname-txt{
 .board-card .table-wrap{border:none}
 .ev-filter-head{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
 .ev-filter-label{font-size:12px;font-weight:600;color:var(--text-3);letter-spacing:.02em}
+/* 趣味统计页的筛选行：与顶部筛选条同一套 .fgroup/.flabel/.fctl，横向排布 */
+.row.topic-fbar{align-items:flex-start;gap:20px;margin:2px 0 12px}
+.topic-fbar .fgroup{min-width:0;max-width:100%}
+.topic-fbar .fctl{gap:8px}
 .ev-strip-topic{margin-top:0;flex-direction:row;flex-wrap:wrap;gap:8px}
 .ev-strip-topic .ev-tab{width:auto;height:auto;padding:6px 10px;gap:6px;flex:0 0 auto}
 .ev-strip-topic .ev-tab .ev-ic{width:22px;height:22px;font-size:22px}
@@ -1061,6 +1065,17 @@ tr[data-prow]:hover .pname .linkish,.pname:hover .linkish{
 .rec-chip.lv-CR{background:color-mix(in srgb,#38bdf8 18%,transparent);border-color:#38bdf8}
 .rec-chip.lv-NR{background:color-mix(in srgb,#4ade80 18%,transparent);border-color:#4ade80}
 .rec-chip.rec-scope{background:var(--bg-soft-2);border-color:var(--border);color:var(--text-3);font-weight:600}
+/* 胶囊上的「最长纪录」可交互提示：原生 title 有延迟且样式不可控，改用自绘浮层 */
+.rec-chip-tip{cursor:help;border-style:dashed;border-color:color-mix(in srgb,var(--accent) 55%,var(--border))}
+.rec-chip-tip:hover{border-color:var(--accent);color:var(--text);background:var(--accent-soft)}
+/* 通用轻量浮层（data-tip）：白底深字，跟随目标元素居中弹出，越界自动收进视口 */
+.wb-tip{position:fixed;left:0;top:0;z-index:9999;pointer-events:none;
+  max-width:300px;padding:9px 12px;border-radius:10px;
+  background:var(--bg-elev);color:var(--text);border:1px solid var(--border-2);
+  box-shadow:0 12px 32px rgba(0,0,0,.28);
+  font-size:12px;line-height:1.62;white-space:pre-line;
+  opacity:0;transform:translateY(4px);transition:opacity .14s ease,transform .14s ease}
+.wb-tip.on{opacity:1;transform:none}
 /* 各维度计算过程卡片 */
 .dimcalc{border-top:1px dashed var(--border);padding:12px 2px 4px;margin-top:4px}
 .dimcalc:first-of-type{border-top:none;margin-top:0}
@@ -1073,8 +1088,18 @@ tr[data-prow]:hover .pname .linkish,.pname:hover .linkish{
 .dc-formula{margin:8px 0;overflow-x:auto;font-size:13px}
 .dc-formula mjx-container{margin:4px 0!important}
 /* 各维度「原始分」计算方式（大白话版，纯文本） */
-.dc-raw{margin:9px 0 2px;font-size:12px;line-height:1.6;color:var(--text-3);
-  background:var(--bg-soft);border-left:3px solid var(--accent);border-radius:0 8px 8px 0;padding:7px 11px}
+.dc-raw{margin:6px 0 2px;font-size:12.5px;line-height:1.65;color:var(--text-2);
+  background:var(--bg-soft);border-left:3px solid var(--accent);border-radius:0 8px 8px 0;padding:8px 12px}
+/* 三步编号：① 原始分口径 → ② 代入数值 → ③ 归一与加权 */
+.dc-step{display:flex;align-items:center;gap:7px;margin:11px 0 5px;font-size:12px;color:var(--text-2)}
+.dc-step b{font-weight:700;letter-spacing:.2px}
+.dc-no{display:inline-flex;align-items:center;justify-content:center;flex:none;
+  width:17px;height:17px;border-radius:50%;font-size:11px;font-weight:700;
+  color:#fff;background:var(--accent);box-shadow:0 1px 4px color-mix(in srgb,var(--accent) 45%,transparent)}
+/* 统治力（M4）的人话说明 */
+.dc-mean{margin:8px 0 2px;padding:9px 12px;border-radius:9px;font-size:12px;line-height:1.7;
+  color:var(--text-2);background:var(--accent-soft);
+  border:1px dashed color-mix(in srgb,var(--accent) 40%,transparent)}
 .dimcalc-wrap>summary{cursor:pointer;list-style:none}
 .dimcalc-wrap>summary::-webkit-details-marker{display:none}
 .dimcalc-wrap>summary .sum-caret{margin-left:auto;transition:transform .2s ease;color:var(--text-3)}
@@ -1240,8 +1265,8 @@ tr[data-prow]:hover .pname .linkish,.pname:hover .linkish{
 
 /* ============ 重大事件：浮在分数竞速图右下角的可折叠弹窗 ============ */
 .tl-stage{position:relative}
-.ms-pop{position:absolute;right:12px;bottom:12px;z-index:6;max-width:min(540px,90%);
-  display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.ms-pop{position:absolute;right:14px;bottom:14px;z-index:6;max-width:min(760px,94%);
+  display:flex;flex-direction:column;align-items:flex-end;gap:8px}
 .ms-pop-tab{display:inline-flex;align-items:center;gap:8px;cursor:pointer;
   padding:8px 15px;border-radius:999px;font-size:13.5px;font-weight:600;
   color:var(--text-2);background:var(--bg-elev);
@@ -1258,18 +1283,38 @@ tr[data-prow]:hover .pname .linkish,.pname:hover .linkish{
 .ms-pop-tab.on b{background:rgba(255,255,255,.22);color:#fff}
 .ms-pop-caret{font-style:normal;font-size:10px;transition:transform .25s}
 .ms-pop-tab.on .ms-pop-caret{transform:rotate(180deg)}
-/* 弹窗：加长（max-height 380→480）、顶部一道 accent 彩条、平滑滚动、更柔的入场动效 */
-.ms-pop-body{width:100%;max-height:480px;overflow:auto;padding:15px 16px 16px;
-  border-radius:14px;background:var(--bg-elev);
-  border:1px solid var(--border-2);border-top:3px solid var(--accent);
-  box-shadow:0 14px 40px rgba(0,0,0,.24);scroll-behavior:smooth;
-  animation:msPopIn .26s cubic-bezier(.22,1.1,.46,1)}
-@keyframes msPopIn{from{opacity:0;transform:translateY(14px) scale(.96)}to{opacity:1;transform:none}}
-.ms-pop-h{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;
-  font-size:12.5px;font-weight:700;color:var(--accent);
-  padding-bottom:8px;margin-bottom:10px;border-bottom:1px solid var(--border)}
-.ms-pop-list{display:flex;gap:6px;flex-wrap:wrap}
-.ms-pop-list .ms-rail-item{margin-top:0}
+/* 弹窗：加长加宽（540→760 宽、480→62vh 高）、顶部渐变彩条 + 内层柔光、
+   事件条目改为两列卡片网格、入场动效换成更明显的上浮 + 轻微回弹 */
+.ms-pop-body{width:100%;max-height:min(62vh,560px);overflow:auto;padding:18px 20px 20px;
+  border-radius:16px;background:var(--bg-elev);
+  border:1px solid var(--border-2);
+  box-shadow:0 20px 56px rgba(0,0,0,.30),0 0 0 1px color-mix(in srgb,var(--accent) 12%,transparent);
+  scroll-behavior:smooth;
+  background-image:linear-gradient(180deg,color-mix(in srgb,var(--accent) 9%,transparent),transparent 72px);
+  animation:msPopIn .34s cubic-bezier(.16,1.15,.3,1)}
+@keyframes msPopIn{
+  from{opacity:0;transform:translateY(26px) scale(.965);filter:blur(3px)}
+  60%{opacity:1;filter:blur(0)}
+  to{opacity:1;transform:none;filter:blur(0)}
+}
+.ms-pop-body::before{content:"";display:block;height:3px;border-radius:3px;margin:-6px 0 12px;
+  background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 55%,#7a3cff))}
+.ms-pop-h{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;
+  font-size:14.5px;font-weight:800;letter-spacing:.2px;
+  color:var(--text);padding-bottom:11px;margin-bottom:13px;
+  border-bottom:1px solid var(--border)}
+.ms-pop-h .tiny{margin-left:auto;font-weight:600}
+.ms-pop-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(212px,1fr));gap:8px}
+.ms-pop-list .ms-rail-item{margin-top:0;max-width:none;border-radius:11px;
+  padding:8px 11px;display:flex;align-items:baseline;gap:8px;
+  white-space:normal;line-height:1.45;text-align:left;
+  transition:transform .16s ease,border-color .16s,background .16s,color .16s,box-shadow .16s}
+.ms-pop-list .ms-rail-item b{flex:none;font-size:11px;font-weight:700;
+  padding:1px 6px;border-radius:6px;
+  background:var(--accent-soft);color:var(--accent)}
+.ms-pop-list .ms-rail-item:hover{transform:translateY(-2px);color:var(--text);
+  border-color:var(--accent);box-shadow:0 8px 20px color-mix(in srgb,var(--accent) 22%,transparent)}
+.ms-pop-list .ms-rail-item:hover b{background:var(--accent);color:#fff}
 
 /* 时间轴推进到某个事件的日期时，在右下角弹出的提示卡 */
 .ms-toast{position:absolute;right:0;bottom:38px;z-index:7;

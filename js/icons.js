@@ -98,10 +98,7 @@
     },
     /* 八面体 / Octahedron (FTO)：WCA 官方导出暂无此项目数据，这里仅提供与其它项目
        同风格的图标，避免「项目领域」等图表里 FTO 落到通用方格占位符显得像渲染错误。 */
-    'fto': function () {
-      return S('<path d="M12 2.8 20.2 12 12 21.2 3.8 12z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>' +
-        '<path d="M3.8 12h16.4M12 2.8v18.4M6.9 6.9l10.2 10.2M17.1 6.9 6.9 17.1" stroke="currentColor" stroke-width="1" opacity=".5" stroke-linejoin="round"/>');
-    },
+    /* 八面体 FTO 已改用官方图标字体 unofficial-fto（见 CUBING_UNOFFICIAL），此处不再手绘 */
     '333ft': function () {
       return S('<rect x="8.5" y="6.5" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.5"/>' +
         '<path d="M12 3.5v3M12 13.5v3M5.5 10h3M15.5 10h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>' +
@@ -149,13 +146,20 @@
   };
 
   /* 官方 cubing.net 图标字体覆盖的事件（其余回退内联 SVG）。
-     字体与 CSS 已本地化到 vendor/cubing-icons.*，包含 event-333mbo（旧多盲）。 */
+     字体与 CSS 已本地化到 vendor/cubing-icons.*，包含 event-333mbo（旧多盲）。
+     unofficial-* 是官方字体里的「非 WCA 项目」图标集，八面体 FTO 对应 unofficial-fto
+     （来源 https://icons.cubing.net/ —— 用户指定用它，而不是手绘 SVG）。 */
   const CUBING = {
     '222': 1, '333': 1, '333bf': 1, '333fm': 1, '333ft': 1, '333mbf': 1, '333mbo': 1, '333oh': 1,
     '444': 1, '444bf': 1, '555': 1, '555bf': 1, '666': 1, '777': 1,
     'clock': 1, 'magic': 1, 'minx': 1, 'mmagic': 1, 'pyram': 1, 'skewb': 1, 'sq1': 1
   };
+  /* 非 WCA 项目：直接吃官方字体的 unofficial-* 字形 */
+  const CUBING_UNOFFICIAL = { fto: 'unofficial-fto' };
   function eventIcon(id, cls) {
+    if (CUBING_UNOFFICIAL[id]) {
+      return '<span class="cubing-icon ' + CUBING_UNOFFICIAL[id] + ' ev-ic ' + (cls || '') + '" aria-hidden="true"></span>';
+    }
     if (CUBING[id]) {
       return '<span class="cubing-icon event-' + id + ' ev-ic ' + (cls || '') + '" aria-hidden="true"></span>';
     }

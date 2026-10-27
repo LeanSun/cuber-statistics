@@ -8,19 +8,52 @@
   const esc = U.esc;
   const { avatar, flag, playerLink, modName, ecBox, scoreOf, infoTip, evName, contName, countryName } = P.util;
 
-  /* 国家配色：主要国家用本国标志性色，其余按 iso 稳定取色。
-     可在「评分原理说明」页逐国自定义（localStorage 持久化，用户覆盖优先）。
-     中国红与国旗红几乎同色，图上容易和国旗本身混为一谈 —— 默认已改用更深的绛红。 */
+  /* 国家配色：取**该国国旗上的主色/标志色**（用户要求「选手颜色匹配国旗颜色，全局统一」）。
+     2026-10-27 从 36 国扩充到 130+ 国：此前只有预置国是国旗色，其余全走哈希随机色，
+     泳道图上就出现「名字旁边是国旗、色块却是任意紫绿蓝」的割裂感。
+     少数深色旗（德/澳/新等纯黑或深藏青在深色主题上几乎看不见）改用同旗的次级亮色，
+     保证既认得出是哪面旗、又能和深色背景分开。
+     可在「参数设置 → 国家配色」逐国自定义（localStorage 持久化，用户覆盖优先）。 */
   const CCOL_KEY = 'goat-countrycolors-v1';
   const COUNTRY_COLORS = {
+    /* —— 东亚 / 东南亚 —— */
     CN: '#a4121a', HK: '#8f1420', MO: '#00703c', TW: '#1f3d8f',
-    US: '#1f4fd8', JP: '#bc002d', KR: '#0047a0', DE: '#111111', GB: '#012169',
-    FR: '#0055a4', NL: '#ec0000', PL: '#dc143c', SE: '#006aa7', IT: '#008c45',
-    ES: '#aa151b', RU: '#0039a6', UA: '#005bbb', CA: '#d80621', AU: '#00843d',
-    BR: '#009b3a', MX: '#006847', IN: '#ff671f', ID: '#e70011', MY: '#010080',
-    SG: '#ef3340', TH: '#2d2a4a', VN: '#da251d', PH: '#0038a8', NZ: '#00247d',
-    CH: '#d52b1e', NG: '#008751', KE: '#006600', EG: '#ce1126', ZA: '#002395',
-    AR: '#5b8cc4', CL: '#0033a0'
+    JP: '#bc002d', KR: '#003478', KP: '#024fa2', MN: '#c4272f',
+    SG: '#ef3340', MY: '#cc0001', TH: '#a51931', VN: '#da251d',
+    ID: '#ce1126', PH: '#0038a8', BN: '#f7e017', KH: '#032ea1',
+    LA: '#ce1126', MM: '#fecb00', TL: '#dc241f',
+    /* —— 南亚 / 中亚 / 西亚 —— */
+    IN: '#ff9933', PK: '#01411c', BD: '#006a4e', LK: '#8d153a', NP: '#dc143c',
+    KZ: '#00afca', UZ: '#1eb53a', KG: '#e8112d', TJ: '#cc0000', TM: '#00843d',
+    AF: '#d32011', IR: '#239f40', IQ: '#007a3d', IL: '#0038b8',
+    SA: '#006c35', AE: '#00732f', QA: '#8a1538', KW: '#007a3d',
+    BH: '#ce1126', OM: '#db161b', JO: '#007a3d', LB: '#ee161f', SY: '#ce1126',
+    TR: '#e30a17', GE: '#ff0000', AM: '#d90012', AZ: '#0092bc',
+    /* —— 欧洲 —— */
+    DE: '#d4a017', FR: '#0055a4', GB: '#1b3a8f', IE: '#169b62',
+    NL: '#ec0000', BE: '#fdda24', LU: '#00a1de', CH: '#d52b1e', AT: '#ed2939',
+    IT: '#008c45', ES: '#aa151b', PT: '#046a38', GR: '#0d5eaf', CY: '#d57800',
+    MT: '#cf142b', SM: '#5eb6e4', AD: '#10069f', MC: '#ce1126', LI: '#002b7f',
+    SE: '#006aa7', NO: '#ba0c2f', DK: '#c8102e', FI: '#002f6c', IS: '#02529c',
+    PL: '#dc143c', CZ: '#11457e', SK: '#0b4ea2', HU: '#ce2939', RO: '#002b7f',
+    BG: '#00966e', RS: '#c6363c', HR: '#171796', SI: '#005da4', BA: '#002f6c',
+    MK: '#d20000', AL: '#e41e20', ME: '#c40308', XK: '#1f3a93',
+    RU: '#0039a6', UA: '#0057b7', BY: '#c8313e', MD: '#0046ae',
+    EE: '#0072ce', LV: '#9e3039', LT: '#fdb913',
+    /* —— 美洲 —— */
+    US: '#b22234', CA: '#d80621', MX: '#006847', BR: '#009c3b', AR: '#74acdf',
+    CL: '#d52b1e', PE: '#d91023', CO: '#fcd116', VE: '#ffcc00', EC: '#ffd100',
+    BO: '#007934', PY: '#d52b1e', UY: '#0038a8', CR: '#002b7f', GT: '#4997d0',
+    PA: '#005293', DO: '#002d62', CU: '#002a8f', JM: '#009b3a', TT: '#da1a35',
+    BS: '#00778b', BB: '#00267f', HT: '#00209f', SV: '#0f47af', HN: '#0073cf',
+    NI: '#0067c6', PR: '#ed0000',
+    /* —— 大洋洲 / 非洲 —— */
+    AU: '#1e3d8f', NZ: '#c8102e', FJ: '#68bfe5', PG: '#ce1126',
+    ZA: '#007a4d', NG: '#008751', KE: '#bb0000', EG: '#c8102e', MA: '#c1272d',
+    TN: '#e70013', DZ: '#006233', GH: '#006b3f', ET: '#078930', TZ: '#1eb53a',
+    UG: '#fcdc04', ZW: '#006400', SN: '#00853f', CI: '#f77f00', CM: '#007a5e',
+    MU: '#ea2839', MG: '#fc3d32', AO: '#ce1126', MZ: '#007168', BW: '#6da9d2',
+    NA: '#003580', ZM: '#198a00', RW: '#00a1de', SO: '#4189dd'
   };
   /* YYYYMMDD → YYYY-MM-DD（泳道清单用；非法值统一显示为「至今」） */
   function laneDate(dn) {
@@ -168,7 +201,7 @@
     const mode = 'cumulative';
     const step = 'day';
     const metric = 'overall';
-    const fy = state.tlFy || 2025;
+    const fy = state.tlFy || P.tlEndFy();
     const sl = tlSlider(step, fy);
     const rate = loadRate();
 
@@ -353,6 +386,10 @@
   function tlWeekStart(k) { return new Date(TL_START.getTime() + k * 7 * 86400000); }
   function tlPad(n) { return (n < 10 ? '0' : '') + n; }
   function tlDateLabel(d) { return d.getFullYear() + '-' + tlPad(d.getMonth() + 1) + '-' + tlPad(d.getDate()); }
+  /* 时间轴「最新时刻」：默认落点应该是数据的**最后一天**，而不是写死的 2025 年初。
+     之前 state.tlFy 默认 2025，打开图表看到的是「2025-01-01 的排名」，
+     用户自然觉得「数据进入 2026 年就不动了」。现在默认直接落在最新日期。 */
+  P.tlEndFy = function () { return tlDateToFy(TL_END); };
   function tlFyToDayIdx(fy) {
     const y = Math.max(2003, Math.min(TL_END.getFullYear(), Math.floor(fy)));
     const jan1 = new Date(y, 0, 1);
@@ -414,7 +451,7 @@
     if (!box || !window.Charts || !window.Charts.has()) return null;
     const view = box.getAttribute('data-view');
     const mode = box.getAttribute('data-mode');
-    const fy = parseFloat(box.getAttribute('data-fy')) || 2025;
+    const fy = parseFloat(box.getAttribute('data-fy')) || P.tlEndFy();
     const metric = box.getAttribute('data-metric') || 'overall';
     const lane = box.getAttribute('data-lane') || 'single';
     const smooth = box.getAttribute('data-smooth') === '1';
@@ -654,11 +691,11 @@
 
   /* 暴露给冒烟测试：验证筛选项目确实改变了竞速图结果 */
   P.tlSnapshot = function (evs, fy, rtype, gender, country) {
-    return snapshot('cumulative', fy == null ? 2025 : fy, false, '', country || '', evs || [], gender || 'all', rtype || 'all');
+    return snapshot('cumulative', fy == null ? P.tlEndFy() : fy, false, '', country || '', evs || [], gender || 'all', rtype || 'all');
   };
   /* 暴露给冒烟测试：直接检查泳道 / 竞速图的图表配置（dim 传入 m1..m6 可测单维竞速） */
   P.tlOption = function (view, mode, fy, smooth, metric, region, country, lane, evs, gender, rtype, dim) {
-    return tlOption(view || 'race', mode || 'cumulative', fy == null ? 2025 : fy, !!smooth,
+    return tlOption(view || 'race', mode || 'cumulative', fy == null ? P.tlEndFy() : fy, !!smooth,
       metric || 'overall', region || '', country || '', lane || 'single', evs || [], gender || 'all', rtype || 'all', null, dim || '');
   };
 
@@ -790,7 +827,9 @@
   P.topics = function (state) {
     const tab = state.topicTab || 'rec';
     let h = '<div class="page-head reveal"><h1>' + esc(t('top.title')) + '</h1></div>';
-    h += '<div class="tabs" id="topicTabs">';
+    /* 2026-10-27：顶端五个分类标签改用与「图表可视化」页完全相同的 .seg 分段控件，
+       不再用下划线 tab —— 用户要求「与其他两个板块风格一致」。 */
+    h += '<div class="seg reveal" id="topicTabs">';
     TABS.forEach(function (x) {
       h += '<button data-topic="' + x[0] + '" class="' + (tab === x[0] ? 'on' : '') + '">' + Ic.glyph(x[2]) + ' ' + esc(t(x[1])) + '</button>';
     });
@@ -802,17 +841,20 @@
        否则顶部筛选条在另类统计页会完全失效 */
     const pool = P.util.topicPool(state);
 
-    /* 二级筛选表头：按项目过滤（停办项目也可用，与筛选条口径一致） */
+    /* 二级筛选表头：按项目过滤（停办项目也可用，与筛选条口径一致）。
+       结构与顶部筛选条一致：.fgroup > .flabel + .fctl，视觉上与其他两页同一个控件系统。 */
     const te = state.topicEvent || '';
-    h += '<div class="ev-filter-head reveal"><span class="ev-filter-label">' + esc(t('top.eventFilter')) + '</span>' +
-      '<div class="ev-strip ev-strip-topic" role="group" aria-label="' + esc(t('top.eventFilter')) + '">';
+    h += '<div class="row topic-fbar reveal">';
+    h += '<div class="fgroup"><span class="flabel">' + esc(t('top.eventFilter')) + '</span>' +
+      '<div class="fctl"><div class="ev-strip ev-strip-topic" role="group" aria-label="' + esc(t('top.eventFilter')) + '">';
     h += '<button class="ev-tab' + (!te ? ' on' : '') + '" data-topicev="">' + esc(t('f.all')) + '</button>';
     M.events.slice().sort(function (a, b) { return (a.retired ? 1 : 0) - (b.retired ? 1 : 0) || a.rank - b.rank; })
       .forEach(function (e) {
         h += '<button class="ev-tab' + (te === e.id ? ' on' : '') + (e.retired ? ' retired' : '') + '" data-topicev="' + e.id + '" title="' + esc(t.isEn() ? e.en : e.zh) + '">' +
           window.Icons.event(e.id) + '<span>' + esc(t.isEn() ? e.en : e.zh) + '</span></button>';
       });
-    h += '</div></div>';
+    h += '</div></div></div>';
+    h += '</div>'; /* /.topic-fbar（项目筛选） */
 
     const defs = M.boards[tab] || [];
     h += '<div class="note-box reveal">' + Ic.glyph('info') + '<div>' + esc(t('top.' + tab + '.d')) +
@@ -823,11 +865,14 @@
     /* 指标筛选：同一 tab 下只展示选中的一个排行，其余通过此处切换 */
     const tbKey = (state.topicBoard && defs.some(function (b) { return b.k === state.topicBoard; })) ? state.topicBoard : (defs[0] && defs[0].k);
     if (defs.length > 1) {
-      h += '<div class="ev-filter-head reveal"><span class="ev-filter-label">' + esc(t('top.board')) + '</span><div class="seg" role="group" aria-label="' + esc(t('top.board')) + '">';
+      h += '<div class="row topic-fbar reveal">';
+      h += '<div class="fgroup"><span class="flabel">' + esc(t('top.board')) + '</span>' +
+        '<div class="fctl"><div class="seg" role="group" aria-label="' + esc(t('top.board')) + '">';
       defs.forEach(function (b) {
         h += '<button class="chip' + (b.k === tbKey ? ' on' : '') + '" data-topicboard="' + b.k + '">' + esc(t('stat.' + b.k)) + '</button>';
       });
-      h += '</div></div>';
+      h += '</div></div></div>';
+      h += '</div>'; /* /.topic-fbar（排行切换） */
     }
 
     const d = defs.filter(function (b) { return b.k === tbKey; })[0];

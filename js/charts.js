@@ -298,18 +298,25 @@
       /* 上下留白 30：Y 轴范围 1..n 时，第 1 名 / 第 n 名的条形中心正好贴在
          网格上下边界，条形高约 24px，留白不够上半条 / 下半条会被切掉。
          同时 series.clip 关掉（见下），双保险：就算有极端行高也不会被裁。 */
-      /* 底部留白加宽到 46：第 15 名的条形中心贴在网格底边、半条高约 10px 落入留白区，
-         而分数轴（x 轴）的刻度标签也画在网格最下方，留白不够时两者会重叠
-         （用户反馈「坐标轴被第 15 名遮挡」正是这个）。加宽后标签与末条分离。 */
-      grid: { left: 34, right: 86, top: 30, bottom: 46, containLabel: false },
+      /* 2026-10-27 彻底修「x 轴刻度被第 15 名遮挡」：
+         之前只是把 grid.bottom 从 30 加到 46 —— 但那没用，因为末名的条形中心就画在
+         网格**底边**上（yAxis max = n），条形下半截本来就探进了 x 轴刻度所在的留白区，
+         留白加大只是把刻度推得更远，条形照样压在刻度上。
+         真正的解法是给 Y 轴多留一格（max = n + 1）并隐藏这一格的标签：
+         末名条形整体上移半格，x 轴刻度与其下方留白完全空出来，两者物理上不再重叠。 */
+      grid: { left: 34, right: 86, top: 30, bottom: 34, containLabel: false },
       xAxis: Object.assign({ type: 'value', max: function (v) { return Math.max(v.max, 1) * 1.05; } }, axisCommon()),
       /* 轴范围 1..n（原来是 0.5..n+0.5）：条形画在整数名次上，而刻度原来落在
          0.5/1.5/2.5… 上，两者错开半格 —— 这就是「序号与行对不齐」的根因。
          现在刻度值与名次 1:1 对应，序号与条形中心严格同一条水平线。
          序号文字去掉 '#'（用户要求 1、2、3）。 */
       yAxis: Object.assign(axisCommon(), {
-        type: 'value', inverse: true, min: 1, max: n, interval: 1,
-        axisLabel: { color: T.text3, fontSize: 11, formatter: function (v) { return String(Math.round(v)); } },
+        type: 'value', inverse: true, min: 1, max: n + 1, interval: 1,
+        axisLabel: {
+          color: T.text3, fontSize: 11,
+          /* 第 n+1 格只是留给末名的「缓冲行」，不画序号 */
+          formatter: function (v) { return v > n ? '' : String(Math.round(v)); }
+        },
         axisLine: { lineStyle: { color: T.border }, show: false },
         axisTick: { show: false },
         splitLine: { show: false }

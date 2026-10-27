@@ -188,16 +188,24 @@
     h += '</div>';
 
     /* 核心数据：按需求上移到「选手信息」下方、「六维加权贡献」上方 */
+    /* 世界前十年数：**不跨项目累加**。
+       p.months10 是 M4 把所有项目、两个轨道的前十占席时长直接相加的结果，
+       一个人同时在 8 个项目里待过前十就会得到 8 倍时长（Feliks 会算出 199 年，显然荒谬）。
+       用户要求「只考虑全项目全维度的世界前十排名」，因此改用
+       js/top10years.js（由 M4_facts.tsv 逐 (项目,轨道,年份) 事实表按年去重生成）：
+       数的是「有多少个自然年里，至少有一个项目待在世界前十」，同一年多个项目只算一次。 */
+    const t10y = (window.T10Y && window.T10Y[p.wcaId] != null)
+      ? window.T10Y[p.wcaId]
+      : Math.max(0, Math.round((p.months10 || 0) / 12));
     h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('player.coreStats')) + '</h2></div><div class="grid grid-4">';
     /* 洲锦 / 国家赛冠军此前恒为 0：p.ccGold / p.ncGold 是在领奖台明细被截断成前 10 条
        **之后**才统计的，而明细按 R 排序，洲锦 / 国家赛几乎进不了前十。
        现在改读 ETL 在截断前算好的 podGold（旧数据无该字段时退回逐条统计）。 */
     [['col.wr', p.wr, ''], ['rec.level.CR', p.cr, t('player.crTip')], ['rec.level.NR', p.nr, ''], ['col.wc', podGoldCount(p, 'WC'), ''],
     ['pod.level.CC', podGoldCount(p, 'CC'), ''], ['pod.level.NC', podGoldCount(p, 'NC'), ''],
-    /* 在位月数：该选手在各项目上「世界第一」的累计月数（M4 引擎的 d1 时长 × 12，
-       跨项目累加）。从未坐上过任何一个项目的世界第一即为 0 —— 这是真实值，不是缺失。 */
-    ['col.top10years', round(p.months10 / 12, 1), tt('你停留在「世界前十」的累计年数（跨项目累加），即统治力 M4 的真实口径；不是某一天的名次，而是以什么名次、在前十里待了多久。',
-      'Cumulative years you spent inside the world top ten (summed across events) — the literal meaning of dominance (M4): not a single-day rank, but how long and at what rank you stayed in the top ten.')],
+    /* 世界前十年数：见上。从未进过任何项目前十即为 0 —— 真实值，不是缺失。 */
+    ['col.top10years', t10y, tt('有多少个自然年里，你至少有一个项目待在世界前十（同一年的多个项目只算一次，不跨项目累加）。这是统治力 M4 的直观读法：不是某一天的名次，而是「在前十里待了多久」。',
+      'Number of calendar years in which you held a world top-ten seat in at least one event (multiple events in the same year count once — no cross-event summing). The intuitive reading of dominance (M4).')],
     ['col.m4', (p.six && p.six.m4) || 0, ''], ['stat.podiumTotal', st.podiumTotal, ''], ['player.comps', p.comps, '']].forEach(function (s) {
       h += '<div class="stat"><div class="k">' + esc(t(s[0])) + (s[2] ? ' ' + infoTip(s[2]) : '') + '</div><div class="v">' + U.num(s[1]) + '</div></div>';
     });
@@ -447,7 +455,20 @@
          「公开赛」一栏沿用逐条统计（ETL 未下发按赛级的公开赛冠军数）。 */
       m2: [['世锦冠军', podGoldCount(p, 'WC')], ['洲锦冠军', podGoldCount(p, 'CC')], ['国锦冠军', podGoldCount(p, 'NC')], ['公开赛冠军', podGoldCount(p, 'OP')], ['ΣP', U.fmt(podR, 1)]],
       m3: [['大赛纪录(估)', champRec], ['WR', recByLv.WR], ['CR', recByLv.CR], ['NR', recByLv.NR]],
-      m4: [['世界前十', round(p.months10 / 12, 1) + ' 年'], ['世界第一', (p.months1 || 0) + ' 月'], ['当前世界排名', '#' + rk.world]],
+      /* 「世界第一 X 月」原来读 p.months1，但 ETL 的 M4_seats.tsv 没有随仓库下发，
+         线上 data.js 里 months1/months10 全是 0（实测 5447 人无一例外），
+         继续显示只会让人以为数据坏了。改为两个真实可算的量：
+         ①世界前十年数（js/top10years.js，按年去重）②进过世界前十的项目数（sixEv 的 M4 分量 > 0）。 */
+      m4: [['世界前十',
+        ((window.T10Y && window.T10Y[p.wcaId] != null) ? window.T10Y[p.wcaId]
+          : Math.round((p.months10 || 0) / 12)) + ' 年（按年去重）'],
+      ['进过前十的项目', (function () {
+        const e = p.sixEv; if (!e) return 0;
+        let n = 0;
+        Object.keys(e).forEach(function (k) { if (e[k] && e[k][3] > 0) n++; });
+        return n;
+      })() + ' 个'],
+      ['当前世界排名', '#' + rk.world]],
       m5: [['当前世界排名', '#' + rk.world]],
       m6: [['WR 链条数', recByLv.WR]]
     };
@@ -461,15 +482,24 @@
       h += '<div class="dc-head"><i class="dc-dot" style="background:' + c.color + '"></i>' +
         '<b>' + esc(c.name) + '</b><span class="dc-q">' + esc(DIM_ANS[k]) + '</span>' +
         '<span class="dc-w">权重 ' + U.fmt(c.w * 100, 0) + '%</span></div>';
+      /* 2026-10-27 用户反馈：「计算过程只看到分数×权重，没看到原始分怎么来」。
+         因此把三步拆开显式编号 —— ①原始分口径 ②本选手代入的数值 ③归一与加权，
+         让「原始分」自己成为主角，而不是被 s×w 那一步盖住。 */
+      h += '<div class="dc-step"><span class="dc-no">1</span><b>' + esc(t('player.rawHow')) + '</b></div>';
+      h += '<div class="dc-raw">' + esc(t.isEn() ? DIM_FORMULA[k][1] : DIM_FORMULA[k][0]) + '</div>';
+      if (k === 'm4') {
+        /* 统治力最容易被误解成「某天排第几」，这里给一段人话说明 */
+        h += '<div class="dc-mean">' + esc(t('m4.desc')) + '</div>';
+      }
+      h += '<div class="dc-step"><span class="dc-no">2</span><b>' + esc(t('player.rawInputs')) + '</b></div>';
       h += '<div class="dc-inputs">';
       (metrics[k] || []).forEach(function (m) {
         h += '<span class="dc-in"><b>' + esc(String(m[1])) + '</b>' + esc(m[0]) + '</span>';
       });
       h += '</div>';
-      /* 该维度「原始分」的计算方式（大白话版，与 M1–M6 封存文档一致） */
-      h += '<div class="dc-raw">' + esc(t.isEn() ? DIM_FORMULA[k][1] : DIM_FORMULA[k][0]) + '</div>';
-      /* 计算过程：原始维度分先按榜首归一为 1000 得到维度分 s，再 × 权重 w ＝ 加权贡献 v */
-      h += '<div class="dc-process">原始维度分按榜首归一为 1000 → <b>s = ' + U.fmt(c.raw, 2) + '</b>' +
+      h += '<div class="dc-step"><span class="dc-no">3</span><b>' + esc(t('player.rawNorm')) + '</b></div>';
+      /* 计算过程：原始分先按该维榜首归一为 1000 得到维度分 s，再 × 权重 w ＝ 加权贡献 v */
+      h += '<div class="dc-process">原始分 ÷ 该维榜首值 × 1000 → <b>维度分 s = ' + U.fmt(c.raw, 2) + '</b>' +
         '<span class="op">×</span> 权重 <b>' + U.fmt(c.w * 100, 0) + '%</b>' +
         '<span class="op">=</span> 加权贡献 <b class="dc-v">' + U.fmt(c.v, 2) + '</b></div>';
       h += '</div>';

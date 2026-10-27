@@ -116,7 +116,7 @@
     /* 总榜柱状图的堆叠方式：'' = 自动（只看单项目时按维度、其余按项目），'ev' / 'dim' = 显式选择 */
     stackMode: '',
     scope: 'country', geo: '',
-    pk: [], tlView: 'race', tlMode: 'cumulative', tlFy: 2025, tlStep: 'day', tlMetric: 'overall', tlLane: 'single', tlSmooth: false, tlPlaying: false, tlRegion: '', tlCountry: '', tlDim: '', msPopOpen: false,
+    pk: [], tlView: 'race', tlMode: 'cumulative', tlFy: 0, tlStep: 'day', tlMetric: 'overall', tlLane: 'single', tlSmooth: false, tlPlaying: false, tlRegion: '', tlCountry: '', tlDim: '', msPopOpen: false,
     topicTab: 'rec', topicStat: '', otherTab: 'king', nationMetric: 'total', counterZero: 'wr', topicBoard: '', dimSel: ''
   };
 
@@ -324,6 +324,13 @@
   function renderFilterBar(route) {
     if (route !== 'rank' && route !== 'timeline' && route !== 'topics') { fbEl.hidden = true; fbEl.innerHTML = ''; return; }
     fbEl.hidden = false;
+    /* 年份下拉原本硬编码到 2025，导致「数据进入 2026 年后就没有变动」的错觉：
+       既选不到 2026，默认值还停在 2025。这里改成按数据实际最新年份动态生成。 */
+    const YMAX = (function () {
+      const u = (M.meta && M.meta.updated) || '';
+      const m = String(u).match(/^(\d{4})/);
+      return m ? +m[1] : new Date().getFullYear();
+    })();
     let h = '<div class="filterbar-inner">';
 
     /* ---------- 预设分组（快速筛选） + 事件图标多选（仅总榜 / 图表可视化；趣味统计页用页面内筛选） ---------- */
@@ -405,10 +412,10 @@
 
       h += '<div class="fgroup"><span class="flabel">' + esc(t('f.period')) + '</span><div class="fctl">';
       h += '<select id="fgY0"><option value="">1982</option>';
-      for (let y = 2003; y <= 2025; y++) h += '<option value="' + y + '"' + (state.y0 === y ? ' selected' : '') + '>' + y + '</option>';
+      for (let y = 2003; y <= YMAX; y++) h += '<option value="' + y + '"' + (state.y0 === y ? ' selected' : '') + '>' + y + '</option>';
       h += '</select><span class="tiny muted">–</span>';
-      h += '<select id="fgY1">';
-      for (let y = 2003; y <= 2025; y++) h += '<option value="' + y + '"' + ((state.y1 === y || (state.y1 == null && y === 2025)) ? ' selected' : '') + '>' + y + '</option>';
+      h += '<select id="fgY1"><option value=""' + (state.y1 == null ? ' selected' : '') + '>' + esc(t('f.now')) + '</option>';
+      for (let y = 2003; y <= YMAX; y++) h += '<option value="' + y + '"' + (state.y1 === y ? ' selected' : '') + '>' + y + '</option>';
       h += '</select></div></div>';
 
       h += '<div class="fgroup"><span class="flabel">' + esc(t('f.retired')) + '</span><div class="fctl">';
@@ -417,10 +424,10 @@
     } else if (route === 'topics') {
       h += '<div class="fgroup"><span class="flabel">' + esc(t('f.period')) + '</span><div class="fctl">';
       h += '<select id="fgY0"><option value="">1982</option>';
-      for (let y = 2003; y <= 2025; y++) h += '<option value="' + y + '"' + (state.y0 === y ? ' selected' : '') + '>' + y + '</option>';
+      for (let y = 2003; y <= YMAX; y++) h += '<option value="' + y + '"' + (state.y0 === y ? ' selected' : '') + '>' + y + '</option>';
       h += '</select><span class="tiny muted">–</span>';
-      h += '<select id="fgY1">';
-      for (let y = 2003; y <= 2025; y++) h += '<option value="' + y + '"' + ((state.y1 === y || (state.y1 == null && y === 2025)) ? ' selected' : '') + '>' + y + '</option>';
+      h += '<select id="fgY1"><option value=""' + (state.y1 == null ? ' selected' : '') + '>' + esc(t('f.now')) + '</option>';
+      for (let y = 2003; y <= YMAX; y++) h += '<option value="' + y + '"' + (state.y1 === y ? ' selected' : '') + '>' + y + '</option>';
       h += '</select></div></div>';
 
       h += '<div class="fgroup"><span class="flabel">' + esc(t('f.retired')) + '</span><div class="fctl">';
@@ -768,7 +775,7 @@
             if (id) location.hash = '#/player/' + id;
           });
         }
-        if (P.tlHighlightRail) P.tlHighlightRail(state.tlFy || 2025);
+        if (P.tlHighlightRail) P.tlHighlightRail(state.tlFy || (P.tlEndFy ? P.tlEndFy() : 2026));
       }
     }
 
@@ -1187,7 +1194,9 @@
   }
 
   /* ---------- 全局事件委托 ---------- */
-  const DELEGATE = '[data-sort],[data-page],[data-expand],[data-prow],[data-tab],[data-type],[data-stack],[data-pkadd],[data-pkrm],[data-pktrayrm],[data-pktrayclear],[data-toggle],[data-expandall],[data-goto],[data-group],[data-gender],[data-retired],[data-tlmode],[data-tlview],[data-tlstep],[data-tlmetric],[data-tllane],[data-topic],[data-topicev],[data-topicboard],[data-other],[data-nation],[data-scope],[data-continent],[data-evpick],[data-evtab],[data-evtoggle],[data-evall],[data-evnone],[data-evsave],[data-gload],[data-gdel],[data-reclevel],[data-rectype],[data-podtier],[data-mdanchor],[data-mdsec],[data-msimport],[data-msreset],[data-msdel],[data-msedit],[data-msunhide],[data-msjump]';
+  /* ⚠ 这里少一个选择器，对应的按钮就「点了没反应」——2026-10-27 的六维筛选按钮
+     正是因为漏了 [data-dim]/[data-tldim]，事件委托根本收不到点击，才表现为「加了按钮但没功能」。 */
+  const DELEGATE = '[data-sort],[data-page],[data-expand],[data-prow],[data-tab],[data-type],[data-stack],[data-dim],[data-tldim],[data-pkadd],[data-pkrm],[data-pktrayrm],[data-pktrayclear],[data-toggle],[data-expandall],[data-goto],[data-group],[data-gender],[data-retired],[data-tlmode],[data-tlview],[data-tlstep],[data-tlmetric],[data-tllane],[data-topic],[data-topicev],[data-topicboard],[data-other],[data-nation],[data-scope],[data-continent],[data-evpick],[data-evtab],[data-evtoggle],[data-evall],[data-evnone],[data-evsave],[data-gload],[data-gdel],[data-reclevel],[data-rectype],[data-podtier],[data-mdanchor],[data-mdsec],[data-msimport],[data-msreset],[data-msdel],[data-msedit],[data-msunhide],[data-msjump]';
 
   document.addEventListener('click', function (e) {
     const el = e.target.closest ? e.target.closest(DELEGATE) : null;
@@ -1480,6 +1489,55 @@
     hashConsumed = next;
     location.hash = next;
     render(!!keepScroll);
+  }
+
+  /* ---------- 通用悬浮提示（data-tip） ----------
+     为什么不用原生 title：浏览器有 ~1 秒延迟、样式随系统、触屏设备根本不弹，
+     用户反馈「鼠标移到『最长纪录保持』胶囊上什么都不显示」就是它。
+     这里用一个 body 级的单例浮层接管所有 [data-tip]，内容统一走 textContent（天然防注入），
+     换行用 white-space:pre-line 呈现。 */
+  let TIP_BOX = null;
+  function tipBox() {
+    if (TIP_BOX && TIP_BOX.parentNode) return TIP_BOX;
+    TIP_BOX = document.createElement('div');
+    TIP_BOX.className = 'wb-tip';
+    document.body.appendChild(TIP_BOX);
+    return TIP_BOX;
+  }
+  function hideTip() { if (TIP_BOX) TIP_BOX.classList.remove('on'); }
+  function placeTip(anchor) {
+    const el = tipBox();
+    const r = anchor.getBoundingClientRect();
+    /* 先归零再量尺寸，否则会用上一次的内容宽度算位置 */
+    el.style.left = '0px'; el.style.top = '0px';
+    const w = el.offsetWidth, hh = el.offsetHeight;
+    const vw = window.innerWidth || 1024, vh = window.innerHeight || 768;
+    let x = r.left + r.width / 2 - w / 2;
+    x = Math.max(8, Math.min(x, vw - w - 8));
+    let y = r.bottom + 8;
+    if (y + hh > vh - 8) y = Math.max(8, r.top - hh - 8); /* 下方放不下就翻到上方 */
+    el.style.left = x + 'px'; el.style.top = y + 'px';
+  }
+  if (document.addEventListener) {
+    document.addEventListener('mouseover', function (e) {
+      const a = e.target.closest ? e.target.closest('[data-tip]') : null;
+      if (!a) return;
+      const txt = a.getAttribute('data-tip') || '';
+      if (!txt) return;
+      const el = tipBox();
+      el.textContent = txt;
+      el.classList.add('on');
+      placeTip(a);
+    });
+    document.addEventListener('mouseout', function (e) {
+      const a = e.target.closest ? e.target.closest('[data-tip]') : null;
+      if (!a) return;
+      const to = e.relatedTarget;
+      if (to && a.contains(to)) return; /* 仍在同一胶囊内部移动 */
+      hideTip();
+    });
+    /* 页面滚动 / 重新渲染后，浮层若还停在原位就会「飘」在无关内容上，直接收起 */
+    window.addEventListener('scroll', hideTip, true);
   }
 
   document.getElementById('themeBtn').addEventListener('click', toggleTheme);
