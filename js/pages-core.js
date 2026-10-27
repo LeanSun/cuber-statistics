@@ -165,6 +165,12 @@
   }
   const EV_IX = {};
   (M.events || []).forEach(function (e, i) { EV_IX[e.id] = i; });
+  /* WCA 官方项目默认顺序（正阶 → 单手 → 盲拧 → 最少步 → 异形 → 已停办）。
+     项目贡献明细与「按项目」堆叠条都按此固定顺序罗列，而不是按贡献值大小临时重排
+     —— 用户要求：点「按项目」时，选手的项目贡献按 WCA 官方排序。 */
+  const WCA_ORDER = ['333', '222', '444', '555', '666', '777', '333oh', '333bf', '444bf', '555bf', '333mbf', '333fm', 'clock', 'minx', 'pyram', 'skewb', 'sq1', '333ft', 'magic', 'mmagic', '333mbo'];
+  const WCA_IX = {}; WCA_ORDER.forEach(function (id, i) { WCA_IX[id] = i; });
+  function evOrderOf(id) { return (WCA_IX[id] != null) ? WCA_IX[id] : 999; }
   /* ── 柱状图内部堆叠条：两种口径，由工具栏「堆叠方式」开关自由切换 ──────
      · ev  —— 按项目：色块＝各项目的六维小计 t_ev ÷ 合计（Σ 各段 = 榜上总分）
      · dim —— 按维度：色块＝各维度的加权贡献 w_d·s_d ÷ 合计（Σ 各段 = 榜上总分）
@@ -234,7 +240,7 @@
     const keys = (ids && ids.length) ? ids : Object.keys(se);
     const all = keys.map(function (id) { return { ev: id, t: (se[id] && se[id][6]) || 0 }; })
       .filter(function (x) { return x.t > 0; })
-      .sort(function (a, b) { return b.t - a.t; });
+      .sort(function (a, b) { return evOrderOf(a.ev) - evOrderOf(b.ev); });
     const tot = all.reduce(function (a, x) { return a + x.t; }, 0);
     if (!(tot > 0)) return '';
     /* 项目太多时（未筛选的全项目可达 18 段）只保留头部，其余并成灰色「其他」，
@@ -513,6 +519,10 @@
     /* 项目口径：显式选了项目就只统计这些项目上的六维分，名次与条尾数字随之重排。 */
     const scope = evScopeIds(state);
     const useEv = !!scope && hasSixEv();
+    /* 六维单独筛选：state.dimSel 取 m1..m6 之一时，榜上分数改用该维度的维度分 s_d，
+       等于「只看这一维」的单维排行榜（与项目筛选叠加时取所选项目范围内的该维分）。 */
+    const dimSel = (state.dimSel && MOD.indexOf(state.dimSel) >= 0) ? state.dimSel : '';
+    const dimIx = dimSel ? SIXD.indexOf(dimSel) : -1;
     rows = rows.map(function (p) {
       const sc = scoreOf(p, rt);
       let score = sc.overall, vec = null, inEv = null;
@@ -520,6 +530,12 @@
         inEv = sixIn(p, scope);
         score = inEv ? inEv.t : 0;
         vec = inEv ? inEv.s : null;
+      }
+      if (dimSel) {
+        /* inEv.s 是数组形式的六维向量，sixVec() 返回的是 {m1..m6} 对象 —— 取值方式不同，必须分开处理。
+           （此前误把对象当数组用 dimIx 下标取值，结果恒为 undefined，单维榜整页空掉。） */
+        if (inEv) score = (dimIx >= 0 ? (inEv.s[dimIx] || 0) : 0);
+        else { const svv = sixVec(p, rt); score = (svv && svv[dimSel] != null) ? svv[dimSel] : 0; }
       }
       const row = { p: p, score: score, sc: sc, six: vec, ev: sev || '', be: bd ? (bd.idx[p.id] || null) : null, bdLen: bd ? bd.len : 0, evs: null, evHit: inEv ? inEv.hit : 0, evSum: 0, orderVal: score };
       /* 多项目：额外算出每个所选项目上的世界名次，用于「色块」展示与排序。 */
@@ -542,6 +558,7 @@
     /* 项目筛选下，在该范围内没有任何六维得分的选手不进榜（分数为 0 无意义） */
     if (useEv) rows = rows.filter(function (r) { return r.score > 0; });
     if (bdM) rows = rows.filter(function (r) { return r.evHit > 0; });
+    if (dimSel) rows = rows.filter(function (r) { return r.score > 0; });
     return sortRows(rows, state);
   };
 
@@ -605,11 +622,18 @@
       h += '<span class="tag acc ev-tag">' + esc(label) + ' · ' + esc(t('rank.evMode')) + '</span>';
       h += '<span class="tiny muted">' + esc(t('rank.evNote', { ev: label })) + '</span>';
     } else {
-      h += '<div class="seg" id="tabSeg">';
-      RANK_TABS.forEach(function (tb) {
-        h += '<button data-tab="' + tb + '" class="' + (state.tab === tb ? 'on' : '') + '">' + esc(t('rank.tab.' + tb)) + '</button>';
-      });
-      h += '</div>';
+      /* 六维模型已把「生涯 / 巅峰 / 综合」三档合并为一个总分口径，RANK_TABS 仅剩 ['overall']。
+         单选项若仍渲染成按钮，用户点了会觉得「按钮不起作用」（反馈原话）。
+         因此只有多于一个口径时才画可点的分段控件，否则退化为纯标签。 */
+      if (RANK_TABS.length > 1) {
+        h += '<div class="seg" id="tabSeg">';
+        RANK_TABS.forEach(function (tb) {
+          h += '<button data-tab="' + tb + '" class="' + (state.tab === tb ? 'on' : '') + '">' + esc(t('rank.tab.' + tb)) + '</button>';
+        });
+        h += '</div>';
+      } else {
+        h += '<span class="tag acc">' + esc(t('rank.tab.' + RANK_TABS[0])) + '</span>';
+      }
       h += '<span class="tiny muted">' + esc(t('rank.tab.' + state.tab + '.d')) + '</span>';
     }
     /* 柱状图堆叠方式开关：按项目（各项目六维小计相加）/ 按维度（六维加权贡献相加）。
@@ -621,6 +645,15 @@
     h += '<div class="seg stack-seg" id="stackSeg" title="' + esc(t('rank.stackTip')) + '" role="group" aria-label="' + esc(t('rank.stackLabel')) + '">';
     h += '<button data-stack="ev" class="' + (stackMode === 'ev' ? 'on' : '') + '" aria-pressed="' + (stackMode === 'ev' ? 'true' : 'false') + '">' + esc(t('rank.stackEv')) + '</button>';
     h += '<button data-stack="dim" class="' + (stackMode === 'dim' ? 'on' : '') + '" aria-pressed="' + (stackMode === 'dim' ? 'true' : 'false') + '">' + esc(t('rank.stackDim')) + '</button>';
+    h += '</div>';
+    /* 六维单独筛选：全部 / M1…M6 —— 选中某一维后，榜单只按该维度分排序（单维排行榜）。 */
+    const dimCur = (state.dimSel && MOD.indexOf(state.dimSel) >= 0) ? state.dimSel : '';
+    h += '<span class="tiny muted">' + esc(t('rank.dimLabel')) + '</span>';
+    h += '<div class="seg dim-seg" id="dimSeg" role="group" aria-label="' + esc(t('rank.dimLabel')) + '" title="' + esc(t('rank.dimTip')) + '">';
+    h += '<button data-dim="" class="' + (!dimCur ? 'on' : '') + '">' + esc(t('f.all')) + '</button>';
+    MOD.forEach(function (k) {
+      h += '<button data-dim="' + k + '" class="' + (dimCur === k ? 'on' : '') + '">' + esc(modName(k)) + '</button>';
+    });
     h += '</div>';
     h += '<span class="spacer"></span>';
     /* 成绩口径（总计 / 单次 / 平均）已由顶部筛选条统一提供，
@@ -660,7 +693,7 @@
       if (c.k === 'bars') {
         const isTotSorted = (state.sortKey || 'score') === 'score';
         const totArw = isTotSorted ? (state.sortDir === 'asc' ? '▲' : '▼') : '';
-        h += '<th class="bars-head bars-full' + (isTotSorted ? ' sorted' : '') + '" data-sort="score">' + esc(t(evMode ? 'rank.evScore' : c.label)) + '<span class="arw">' + totArw + '</span></th>';
+        h += '<th class="bars-head bars-full' + (isTotSorted ? ' sorted' : '') + '" data-sort="score">' + esc(dimCur ? modName(dimCur) : t(evMode ? 'rank.evScore' : c.label)) + '<span class="arw">' + totArw + '</span></th>';
         return;
       }
       h += '<th class="' + (c.cls || '') + (isSorted ? ' sorted' : '') + '" data-sort="' + c.k + '">' +
@@ -779,7 +812,7 @@
         const tEv = (p.sixEv[id] && p.sixEv[id][6]) || 0;
         if (tEv > 0) { evItems.push({ id: id, t: tEv }); evTot += tEv; }
       });
-      evItems.sort(function (a, b) { return b.t - a.t; });
+      evItems.sort(function (a, b) { return evOrderOf(a.id) - evOrderOf(b.id); });
       h += '<div class="exp-v3-mods-h"><span>' + esc(t('rank.evContrib')) + (inEv ? ' · ' + esc(t('rank.evScope')) : '') + '</span>' +
         '<span class="tiny muted">' + esc(t('player.contrib')) + ' · Σ = ' + U.fmt(evTot, 2) + '</span></div>';
       h += '<div class="exp-v3-mod exp-v3-mod-head">' +

@@ -568,6 +568,17 @@
       tooltip: {
         confine: true, backgroundColor: T.elev, borderColor: T.border, borderWidth: 1,
         textStyle: { color: T.text, fontSize: 12 },
+        /* 弹出框放在光标「上方」并跟随鼠标（ECharts 默认在右下，会盖住泳道色块）；
+           水平居中于光标、越出视口时自动收进来。 */
+        position: function (point, params, dom, rect, size) {
+          const cw = (size && size.contentSize ? size.contentSize[0] : 200);
+          const ch = (size && size.contentSize ? size.contentSize[1] : 80);
+          const vw = (size && size.viewSize ? size.viewSize[0] : 800);
+          let x = point[0] - cw / 2;
+          x = Math.max(4, Math.min(x, vw - cw - 4));
+          const y = Math.max(2, point[1] - ch - 14);
+          return [x, y];
+        },
         /* 跟随鼠标：把姓名 + 国旗 + 起止时间 + 持有天数直接显示在光标旁，
            取代原先图表下方那份冗长的持有者清单 */
         extraCssText: 'box-shadow:0 6px 20px rgba(0,0,0,.14);border-radius:10px;',

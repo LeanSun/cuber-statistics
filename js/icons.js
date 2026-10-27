@@ -96,6 +96,12 @@
         '<path d="M4.6 12h14.8" stroke="currentColor" stroke-width="1.4"/>' +
         '<path d="M8 4.2v15.6M16 4.2v15.6" stroke="currentColor" stroke-width="1" opacity=".5"/>');
     },
+    /* 八面体 / Octahedron (FTO)：WCA 官方导出暂无此项目数据，这里仅提供与其它项目
+       同风格的图标，避免「项目领域」等图表里 FTO 落到通用方格占位符显得像渲染错误。 */
+    'fto': function () {
+      return S('<path d="M12 2.8 20.2 12 12 21.2 3.8 12z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>' +
+        '<path d="M3.8 12h16.4M12 2.8v18.4M6.9 6.9l10.2 10.2M17.1 6.9 6.9 17.1" stroke="currentColor" stroke-width="1" opacity=".5" stroke-linejoin="round"/>');
+    },
     '333ft': function () {
       return S('<rect x="8.5" y="6.5" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.5"/>' +
         '<path d="M12 3.5v3M12 13.5v3M5.5 10h3M15.5 10h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>' +

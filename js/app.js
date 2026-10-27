@@ -116,8 +116,8 @@
     /* 总榜柱状图的堆叠方式：'' = 自动（只看单项目时按维度、其余按项目），'ev' / 'dim' = 显式选择 */
     stackMode: '',
     scope: 'country', geo: '',
-    pk: [], tlView: 'race', tlMode: 'cumulative', tlFy: 2025, tlStep: 'day', tlMetric: 'overall', tlLane: 'single', tlSmooth: false, tlPlaying: false, tlRegion: '', tlCountry: '', msPopOpen: false,
-    topicTab: 'rec', topicStat: '', otherTab: 'king', nationMetric: 'total', counterZero: 'wr', topicBoard: ''
+    pk: [], tlView: 'race', tlMode: 'cumulative', tlFy: 2025, tlStep: 'day', tlMetric: 'overall', tlLane: 'single', tlSmooth: false, tlPlaying: false, tlRegion: '', tlCountry: '', tlDim: '', msPopOpen: false,
+    topicTab: 'rec', topicStat: '', otherTab: 'king', nationMetric: 'total', counterZero: 'wr', topicBoard: '', dimSel: ''
   };
 
   /* 播放原点（天索引 / 起始毫秒），供拖动时间轴实时跳转而保留连续播放 */
@@ -1232,6 +1232,11 @@
       state.tab = el.getAttribute('data-tab'); state.page = 1; state.sortKey = 'score'; state.sortDir = 'desc';
       render(); return;
     }
+    /* 六维单独筛选（总榜）：选某一维后榜单按该维度分重排 */
+    if (el.hasAttribute('data-dim')) {
+      state.dimSel = el.getAttribute('data-dim') || ''; state.page = 1; state.sortKey = 'score'; state.sortDir = 'desc';
+      render(); return;
+    }
     if (el.hasAttribute('data-type')) {
       state.recType = el.getAttribute('data-type'); state.page = 1;
       render(true); return;
@@ -1348,6 +1353,7 @@
     }
     if (el.hasAttribute('data-tlmetric')) { state.tlMetric = el.getAttribute('data-tlmetric'); render(true); return; }
     if (el.hasAttribute('data-tllane')) { state.tlLane = el.getAttribute('data-tllane'); render(true); return; }
+    if (el.hasAttribute('data-tldim')) { state.tlDim = el.getAttribute('data-tldim') || ''; render(true); return; }
     if (el.hasAttribute('data-topic')) { state.topicTab = el.getAttribute('data-topic'); state.topicBoard = ''; render(true); return; }
     if (el.hasAttribute('data-topicev')) { state.topicEvent = el.getAttribute('data-topicev'); state.evSel = []; render(true); return; }
     if (el.hasAttribute('data-topicboard')) { state.topicBoard = el.getAttribute('data-topicboard'); render(true); return; }

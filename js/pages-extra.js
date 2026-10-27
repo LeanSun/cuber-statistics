@@ -181,6 +181,17 @@
       h += '<button data-tlview="' + v[0] + '" class="' + (view === v[0] ? 'on' : '') + '">' + Ic.glyph(v[2]) + ' ' + esc(t(v[1])) + '</button>';
     });
     h += '</div></div>';
+    /* 六维单独筛选（仅竞速图）：总分 / M1…M6。选中某一维后，竞速图按该维度分比拼。 */
+    if (view === 'race') {
+      const dimCur = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'].indexOf(state.tlDim) >= 0 ? state.tlDim : '';
+      h += '<div class="fgroup"><span class="flabel">' + esc(t('tl.dimLabel')) + '</span>' +
+        '<div class="seg dim-seg" id="tlDimSeg" title="' + esc(t('tl.dimTip')) + '" role="group" aria-label="' + esc(t('tl.dimLabel')) + '">';
+      h += '<button data-tldim="" class="' + (!dimCur ? 'on' : '') + '">' + esc(t('f.all')) + '</button>';
+      ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'].forEach(function (k) {
+        h += '<button data-tldim="' + k + '" class="' + (dimCur === k ? 'on' : '') + '">' + esc(t('m' + k[1] + '.name')) + '</button>';
+      });
+      h += '</div></div>';
+    }
     h += '<span class="spacer"></span>';
     /* 「3 期滑动平滑」已按需求移除：它只在中间帧起作用，用户感知不到差别反而多一个开关。 */
     h += '</div>';
@@ -247,7 +258,7 @@
     h += '<div class="chart-box tl-chart-link" id="tlChart" style="height:' + chH + 'px" data-view="' + view + '" data-mode="' + mode +
       '" data-fy="' + fy + '" data-metric="' + metric + '" data-lane="' + state.tlLane + '" data-smooth="' + (state.tlSmooth ? 1 : 0) +
       '" data-region="' + geoRegion + '" data-country="' + geoCountry + '" data-ev="' + evsBox.join(',') +
-      '" data-gender="' + (state.gender || 'all') + '" data-type="' + (state.recType || 'all') + '"></div>';
+      '" data-gender="' + (state.gender || 'all') + '" data-type="' + (state.recType || 'all') + '" data-dim="' + (state.tlDim || '') + '"></div>';
 
     /* 纪录持有图：按需求不再在图表下方罗列持有者清单（原 laneList /「纪录内容」），
        姓名 / 国旗 / 起止时间改为鼠标移到色块上时跟随光标显示（见 Charts.lanes 的 tooltip）。 */
@@ -412,6 +423,7 @@
     const evs = (box.getAttribute('data-ev') || '').split(',').filter(Boolean);
     const gender = box.getAttribute('data-gender') || '';
     const rtype = box.getAttribute('data-type') || 'all';
+    const dim = box.getAttribute('data-dim') || '';
     /* 容器尚不可见（刚切视图 / 父级尚未布局完成）时宽高为 0，此时 init 出来的画布是 0×0，
        之后即使 DOM 有了尺寸也只会显示空白。先等尺寸就绪再画，最多重试 12 帧（约 200ms），
        超过后仍画一次，保证不会因为容器一直隐藏而彻底不画。 */
@@ -432,12 +444,12 @@
       return null;
     }
     try {
-      const opt = tlOption(view, mode, fy, smooth, metric, region, country, lane, evs, gender, rtype, box);
+      const opt = tlOption(view, mode, fy, smooth, metric, region, country, lane, evs, gender, rtype, box, dim);
       if (!opt) return null;
       opt.backgroundColor = 'transparent';
       window.Charts.resolveDeep ? window.Charts.resolveDeep(opt) : (function () { })(opt);
       /* 结构（视图 / 模式 / 维度 / 单均 / 项目 / 性别）不变时做增量合并，名次与分数丝滑过渡 */
-      const sig = view + '|' + mode + '|' + metric + '|' + lane + '|' + evs.join('+') + '|' + gender + '|' + rtype + '|' + region + '|' + country + '|' + (smooth ? 1 : 0);
+      const sig = view + '|' + mode + '|' + metric + '|' + lane + '|' + evs.join('+') + '|' + gender + '|' + rtype + '|' + region + '|' + country + '|' + (smooth ? 1 : 0) + '|' + dim;
       const sameStruct = box.__tlSig === sig;
       /* 播放时每帧都在重画，换位过渡必须短于帧间隔的几倍，否则名次变化会「追不上」
          当前帧、看起来一顿一顿。动画时长滑杆直接决定这段补间的快慢。 */
@@ -555,7 +567,7 @@
     return t2;
   }
 
-  function snapshot(mode, fy, smooth, region, country, evs, gender, rtype) {
+  function snapshot(mode, fy, smooth, region, country, evs, gender, rtype, dim) {
     /* 选中项目（单项目 / 多项目）时，整张图切换成「所选项目的六维能力分排名」，与上方筛选项目实时联动：
          分数取每个所选项目的六维总分（p.sixEv 已含 per-event 六维分 a[6]=t_ev）求和，
          与「历史地位排名」单 / 多项目筛选共用同一把六维尺子（不再依赖缺失的逐项目按年统计）。
@@ -612,15 +624,26 @@
         return;
       }
       const all = cum(p, END_Y);
-      if (all <= 0) return;
+      /* 六维单独筛选：直接用该维度的维度分作为基准分，再乘同一条年度进度曲线，
+         这样「只看 M3」的竞速图里条形只按大赛破纪录这一维比拼。
+         该维没有年度荣誉累计（all=0，如仅靠当前排名拿分）时，进度曲线取 1
+         （显示其当前维度分），而不是把整条丢弃。 */
+      const dimMode = (dim && ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'].indexOf(dim) >= 0);
+      if (all <= 0 && !dimMode) return;
       let cf = cumF(p, fy);
       if (smooth) cf = (cumF(p, fy) + cumF(p, fy - 1) + cumF(p, fy - 2)) / 3;
-      const ratio = Math.max(0, Math.min(1, cf / all));
+      const ratio = all > 0 ? Math.max(0, Math.min(1, cf / all)) : 1;
       if (ratio <= 0) return;
-      const sc = P.util.scoreOf(p, rtype);
-      const career = sc.career * ratio;
-      const ratio2 = Math.max(0.05, Math.min(3, sc.peak / Math.max(sc.career, 0.01)));
-      const v = career * Math.pow(ratio2, 0.4);
+      let v;
+      if (dimMode) {
+        const sv = rtype === 'single' ? (p.sixS || p.six) : (rtype === 'avg' ? (p.sixA || p.six) : p.six);
+        v = (sv ? (sv[dim] || 0) : 0) * ratio;
+      } else {
+        const sc = P.util.scoreOf(p, rtype);
+        const career = sc.career * ratio;
+        const ratio2 = Math.max(0.05, Math.min(3, sc.peak / Math.max(sc.career, 0.01)));
+        v = career * Math.pow(ratio2, 0.4);
+      }
       if (v <= 0) return;
       rows.push({ name: p.name, country: p.country, hue: p.hue, id: p.id, iso: p.country, value: v, color: countryColor(p.country), flag: window.Charts.flagUri(p.country) });
     });
@@ -633,10 +656,10 @@
   P.tlSnapshot = function (evs, fy, rtype, gender, country) {
     return snapshot('cumulative', fy == null ? 2025 : fy, false, '', country || '', evs || [], gender || 'all', rtype || 'all');
   };
-  /* 暴露给冒烟测试：直接检查泳道 / 竞速图的图表配置 */
-  P.tlOption = function (view, mode, fy, smooth, metric, region, country, lane, evs, gender, rtype) {
+  /* 暴露给冒烟测试：直接检查泳道 / 竞速图的图表配置（dim 传入 m1..m6 可测单维竞速） */
+  P.tlOption = function (view, mode, fy, smooth, metric, region, country, lane, evs, gender, rtype, dim) {
     return tlOption(view || 'race', mode || 'cumulative', fy == null ? 2025 : fy, !!smooth,
-      metric || 'overall', region || '', country || '', lane || 'single', evs || [], gender || 'all', rtype || 'all');
+      metric || 'overall', region || '', country || '', lane || 'single', evs || [], gender || 'all', rtype || 'all', null, dim || '');
   };
 
   /* 重大事件到达提示：给定「上一步 / 当前」两个日期（YYYY-MM-DD），
@@ -691,7 +714,7 @@
     };
   }
 
-  function tlOption(view, mode, fy, smooth, metric, region, country, lane, evs, gender, rtype, box) {
+  function tlOption(view, mode, fy, smooth, metric, region, country, lane, evs, gender, rtype, box, dim) {
     if (window.Charts.setLaneI18n) window.Charts.setLaneI18n({ mo: (t.isEn() ? 'mo' : '个月'), y: (t.isEn() ? 'y' : '年'), day: (t.isEn() ? 'd' : '天') });
     if (view === 'lane') {
       /* 泳道顺序严格按 WCA 官方项目默认顺序（正阶→单手→盲拧→最少步→异形→已停办），
@@ -709,15 +732,15 @@
     }
     const TOP = 15;
     const rate = loadRate();
-    const all = snapshot(mode, fy, smooth, region, country, evs, gender, rtype); // 已按 value 降序，带 no
+    const all = snapshot(mode, fy, smooth, region, country, evs, gender, rtype, dim); // 已按 value 降序，带 no
     /* 竞速图需要「按选手 id 键控」才能在名次变化时让条形与姓名一起滑动。
        这里维护一个稳定的「选手宇宙」(box.__raceU)：首次或筛选口径变化时，用逐年采样
        把历年进过前 N 名的选手都收进来；之后每帧只在宇宙内更新名次/分数，
        保证 id→数据下标稳定，过渡动画连续（条形、姓名、国旗、分数整体滑动）。 */
-    const raceSig = [mode, smooth ? 1 : 0, region, country, evs.join('+'), gender, rtype].join('|');
+    const raceSig = [mode, smooth ? 1 : 0, region, country, evs.join('+'), gender, rtype, dim || ''].join('|');
     let universe = (box && box.__raceU && box.__raceSig === raceSig) ? box.__raceU : null;
     if (box && !universe) {
-      universe = buildUniverse(mode, smooth, region, country, evs, gender, rtype, TOP);
+      universe = buildUniverse(mode, smooth, region, country, evs, gender, rtype, TOP, dim);
       box.__raceU = universe;
       box.__raceSig = raceSig;
     }
@@ -743,13 +766,13 @@
   /* 构建竞速图「选手宇宙」：在若干代表年份采样，把历年进过前 N 名的选手一次性收进来，
      使整段播放过程中名次更替都在已知 id 集合内发生，过渡动画连续。
      只取代表性年份（而非逐年），既覆盖各时代强者，又避免对每位选手逐项目逐年扫描的过高开销。 */
-  function buildUniverse(mode, smooth, region, country, evs, gender, rtype, TOP) {
+  function buildUniverse(mode, smooth, region, country, evs, gender, rtype, TOP, dim) {
     const ids = [], seen = {};
     const sampleYears = evs && evs.length
       ? [2006, 2010, 2014, 2018, 2022, 2025]
       : [2005, 2010, 2015, 2020, 2025];
     sampleYears.forEach(function (y) {
-      const s = snapshot(mode, y, smooth, region, country, evs, gender, rtype).slice(0, TOP + 8);
+      const s = snapshot(mode, y, smooth, region, country, evs, gender, rtype, dim).slice(0, TOP + 8);
       for (let i = 0; i < s.length; i++) {
         const id = s[i].id;
         if (!seen[id]) { seen[id] = 1; ids.push(id); }
@@ -1160,7 +1183,15 @@
 
     /* 国家配色：竞速图 / 泳道图按国籍取色，逐国可自定义 */
     const CC = P.countryColorDefaults || {};
-    const ccKeys = Object.keys(CC).sort();
+    /* 国家配色列表此前只列 COUNTRY_COLORS 里预置的 38 国，用户反馈「有的国家没有显示」。
+       这里改为合并「预置国 + 数据里实际出现过的全部国家（M.countryList）」，
+       按本地化国名排序；未预置的国家仍由 countryColor() 按国码稳定自动取色，可在此逐个改。 */
+    const ccSet = {};
+    Object.keys(CC).forEach(function (k) { ccSet[k] = 1; });
+    (M.countryList || []).forEach(function (k) { if (k) ccSet[k] = 1; });
+    const ccKeys = Object.keys(ccSet).sort(function (a, b) {
+      return String(countryName(a) || a).localeCompare(String(countryName(b) || b), 'zh');
+    });
     h += '<div class="card reveal md-colors" id="mdCountryColors"><div class="md-params-title">' + Ic.glyph('flag') + ' ' +
       esc(t('md.countryColors')) + '</div>' +
       '<p class="tiny muted" style="margin:6px 0 10px">' + esc(t('md.countryColorsHint')) + '</p>' +
