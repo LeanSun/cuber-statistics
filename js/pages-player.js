@@ -18,23 +18,20 @@
   /* ── 六维雷达的逐轴满分 ────────────────────────────────────────────
      维度分 s_d 是「Σ_项目 (v/max × 项目权重 × 1000)」，是**跨项目累加**值，
      可以远大于 1000（Feliks 的 M3 = 5640），所以拿 1000 当满分时整张图会冲出去。
-     现按需求改为：满分 = 该维度**世界前十的分值平均值**，个别选手可超出，
-     超出部分在 charts.radar() 里封顶显示（悬停仍看真实值）。 */
+     满分 = 该维度**历史第一（GOAT）分值 × 0.7**：绝大多数顶尖选手落在环内，
+     世界第一稳定超出约 1.43×（capAt=1.5 兜底，不会撞顶被裁），既能凸显伟大、
+     又让六轴尺度可比。 */
   let SIX_AXIS_MAX = null;
   function sixAxisMax() {
     if (SIX_AXIS_MAX) return SIX_AXIS_MAX;
     const out = {};
     MOD.forEach(function (k) {
-      const vals = [];
+      let mx = 1;
       for (let i = 0; i < M.ranked.length; i++) {
         const v = M.ranked[i].six && M.ranked[i].six[k];
-        if (v > 0) vals.push(v);
+        if (v > mx) mx = v;
       }
-      vals.sort(function (a, b) { return b - a; });
-      const t = vals.slice(0, 10);
-      let s = 0;
-      for (let i = 0; i < t.length; i++) s += t[i];
-      out[k] = t.length ? Math.round(s / t.length * 100) / 100 : 1;
+      out[k] = Math.round(mx * 0.7 * 100) / 100;
     });
     SIX_AXIS_MAX = out;
     return out;
@@ -171,7 +168,7 @@
        旧模型的「生涯 / 巅峰 / 均衡」三档已随七模块停用。 */
     h += '<div class="pcard-sub">';
     h += '<div class="sc-row">';
-    h += '<div class="sc-mini"><span>' + esc(t('m4.name')) + '</span><b>' + U.fmt((p.six && p.six.m4) || 0, 2) + '</b></div>';
+    h += '<div class="sc-mini"><span>' + esc(t('m4.name')) + infoTip(t('m4.desc')) + '</span><b>' + U.fmt((p.six && p.six.m4) || 0, 2) + '</b></div>';
     h += '<div class="sc-mini"><span>' + esc(t('m5.name')) + '</span><b>' + U.fmt((p.six && p.six.m5) || 0, 2) + '</b></div>';
     h += '</div>';
     h += '<button class="btn btn-primary pkadd-btn" data-pkadd="' + p.id + '">' + Ic.glyph('pk') + ' ' + esc(t('player.compare')) + '</button>';
@@ -199,8 +196,8 @@
     ['pod.level.CC', podGoldCount(p, 'CC'), ''], ['pod.level.NC', podGoldCount(p, 'NC'), ''],
     /* 在位月数：该选手在各项目上「世界第一」的累计月数（M4 引擎的 d1 时长 × 12，
        跨项目累加）。从未坐上过任何一个项目的世界第一即为 0 —— 这是真实值，不是缺失。 */
-    ['col.months', p.months1 || 0, tt('在任一项目上位居世界第一的累计月数（跨项目累加）。从未登顶过任何项目即为 0。',
-      'Cumulative months ranked world #1 across all events. Zero means they never held #1 in any event.')],
+    ['col.top10years', round(p.months10 / 12, 1), tt('你停留在「世界前十」的累计年数（跨项目累加），即统治力 M4 的真实口径；不是某一天的名次，而是以什么名次、在前十里待了多久。',
+      'Cumulative years you spent inside the world top ten (summed across events) — the literal meaning of dominance (M4): not a single-day rank, but how long and at what rank you stayed in the top ten.')],
     ['col.m4', (p.six && p.six.m4) || 0, ''], ['stat.podiumTotal', st.podiumTotal, ''], ['player.comps', p.comps, '']].forEach(function (s) {
       h += '<div class="stat"><div class="k">' + esc(t(s[0])) + (s[2] ? ' ' + infoTip(s[2]) : '') + '</div><div class="v">' + U.num(s[1]) + '</div></div>';
     });
@@ -251,13 +248,13 @@
     if (cmp) {
       const AX = sixAxisMax();
       h += '<div class="cmp-radar-wrap"><div class="pk-radar-wrap">' + ecBox('radar', { rows: cmp.series, indicators: cmp.indicators },
-        { max: MOD.map(function (k) { return AX[k]; }), radius: '46%', capAt: 2 }, 500) + '</div></div>';
+        { max: MOD.map(function (k) { return AX[k]; }), radius: '46%', capAt: 1.5 }, 500) + '</div></div>';
       h += '<p class="tiny muted" style="text-align:center;margin-bottom:8px">' + esc(t('player.cmp.note')) + '</p>';
       h += '<p class="tiny muted" style="text-align:center;margin-bottom:8px">' + esc(tt(
-        '外圈 = 该维度世界前十的分值平均值（' + MOD.map(function (k) { return modName(k) + ' ' + U.fmt(AX[k], 0); }).join(' / ') +
-        '）；单维超出外圈时封顶显示，悬停看真实值。',
-        'Outer ring = the top-10 average of each dimension (' + MOD.map(function (k) { return modName(k) + ' ' + U.fmt(AX[k], 0); }).join(' / ') +
-        '); values beyond it are capped on the chart — hover for the true figure.')) + '</p>';
+        '外圈 = 该维度历史第一（GOAT）分值 × 0.7（' + MOD.map(function (k) { return modName(k) + ' ' + U.fmt(AX[k], 0); }).join(' / ') +
+        '）；世界第一稳定超出约 1.43×（封顶 1.5 倍显示），悬停看真实值。',
+        'Outer ring = the all-time leader’s score × 0.7 for each dimension (' + MOD.map(function (k) { return modName(k) + ' ' + U.fmt(AX[k], 0); }).join(' / ') +
+        '); the world #1 stably exceeds it by ~1.43× (capped at 1.5× on the chart) — hover for the true figure.')) + '</p>';
     }
     h += '</div>';
 
@@ -410,6 +407,22 @@
     m1: '破的纪录守了多久', m2: '拿过多少冠亚季军', m3: '锦标赛上突破的加成',
     m4: '保持在世界前十有多久', m5: '此刻站在世界各榜什么位置', m6: '破纪录瞬间把人类前沿推远多少'
   };
+  /* 各维度「原始分」的计算方式（与 M1–M6 封存文档一致，用本选手能看懂的大白话写出），
+     不是 s×w=v 的加权，而是「维度分 s 在被归一前的真实累加口径」。 */
+  const DIM_FORMULA = {
+    m1: ['每条纪录按「实际持有天数(封顶30年) × 层级价值(WR&gt;CR&gt;NR) × 项目权重 × 同线递减 × 属地系数」逐段累加，再按榜首归一为 1000。',
+      'Per record: held days (cap 30y) × tier value (WR>CR>NR) × event weight × same-line decay × locality, summed over all segments, then normalised to leader = 1000.'],
+    m2: ['每次冠/亚/季军按「赛级系数(世锦/洲锦1.6，国锦/公开1.0) × 名次权重(1/0.6/0.4) × 赛事强度CSI × 项目权重」累加，本人实力与对手实力各占一半(α=0.5)。',
+      'Per podium: tier factor (WC/CC 1.6, NC/open 1.0) × place weight (1/0.6/0.4) × field strength CSI × event weight; own strength and field strength each weigh half (α=0.5).'],
+    m3: ['每次在锦标赛上打破的 WR/CR/NR，按「纪录层级(WR1.0/CR0.4/NR0.15) × 赛级(世锦1.0/洲锦0.6/国锦0.4)」累加；公开赛不计。',
+      'Per record broken at a championship: record tier (WR1.0/CR0.4/NR0.15) × event tier (WC1.0/CC0.6/NC0.4), summed; opens do not count.'],
+    m4: ['对每个项目、每个处世界前十的时间段，按「项目权重 × 段长(年) × 名次函数(r⁻¹) × 年代系数(当年参赛人数对数比)」累加；当年零参赛则该年不计分。',
+      'Per event and per spell in the top ten: event weight × spell length (y) × rank function (r⁻¹) × era factor (log ratio of that year’s field size), summed; a year with no competitors scores nothing.'],
+    m5: ['对每个项目取前100名，按「项目权重 × 名次⁻¹ × 末次参赛新鲜度衰减 × PB新鲜度衰减」累加（双衰减，5年降到0.2地板）。',
+      'Per event, top 100 only: event weight × rank⁻¹ × recency decay (last appearance) × PB decay, both decaying to a 0.2 floor over 5 years.'],
+    m6: ['对每条WR链条，取 min(ln(前值/新值), 0.5) 累加（截顶0.5≈65%幅度，自我刷新也计，不做人数或时代折算）。',
+      'Per WR chain: min(ln(prev/new), 0.5) summed (cap 0.5 ≈ 65% margin; self-refreshes count; no field or era discount).']
+  };
   function dimCalcCard(p, cs) {
     const rec = p.records || [], pod = p.podiums || [];
     const recByLv = { WR: 0, CR: 0, NR: 0 };
@@ -434,7 +447,7 @@
          「公开赛」一栏沿用逐条统计（ETL 未下发按赛级的公开赛冠军数）。 */
       m2: [['世锦冠军', podGoldCount(p, 'WC')], ['洲锦冠军', podGoldCount(p, 'CC')], ['国锦冠军', podGoldCount(p, 'NC')], ['公开赛冠军', podGoldCount(p, 'OP')], ['ΣP', U.fmt(podR, 1)]],
       m3: [['大赛纪录(估)', champRec], ['WR', recByLv.WR], ['CR', recByLv.CR], ['NR', recByLv.NR]],
-      m4: [['在位 #1', (p.months1 || 0) + ' 月'], ['当前世界排名', '#' + rk.world]],
+      m4: [['世界前十', round(p.months10 / 12, 1) + ' 年'], ['世界第一', (p.months1 || 0) + ' 月'], ['当前世界排名', '#' + rk.world]],
       m5: [['当前世界排名', '#' + rk.world]],
       m6: [['WR 链条数', recByLv.WR]]
     };
@@ -453,8 +466,10 @@
         h += '<span class="dc-in"><b>' + esc(String(m[1])) + '</b>' + esc(m[0]) + '</span>';
       });
       h += '</div>';
-      /* 计算过程：维度分 s（已按该维榜首归一为 100）× 权重 w ＝ 加权贡献 v */
-      h += '<div class="dc-process">维度分 <b>s = ' + U.fmt(c.raw, 2) + '</b>' +
+      /* 该维度「原始分」的计算方式（大白话版，与 M1–M6 封存文档一致） */
+      h += '<div class="dc-raw">' + esc(t.isEn() ? DIM_FORMULA[k][1] : DIM_FORMULA[k][0]) + '</div>';
+      /* 计算过程：原始维度分先按榜首归一为 1000 得到维度分 s，再 × 权重 w ＝ 加权贡献 v */
+      h += '<div class="dc-process">原始维度分按榜首归一为 1000 → <b>s = ' + U.fmt(c.raw, 2) + '</b>' +
         '<span class="op">×</span> 权重 <b>' + U.fmt(c.w * 100, 0) + '%</b>' +
         '<span class="op">=</span> 加权贡献 <b class="dc-v">' + U.fmt(c.v, 2) + '</b></div>';
       h += '</div>';
@@ -543,7 +558,7 @@
       h += '<div class="pk-radar-wrap">' + ecBox('radar', {
         rows: [a, b].map(function (p, i) { return { name: p.name, color: colors[i], values: MOD.map(function (k) { return sixK(p, k); }) }; }),
         indicators: labels
-      }, { radius: '46%', max: AXM, capAt: 2 }, 360) + '</div></div>';
+      }, { radius: '46%', max: AXM, capAt: 1.5 }, 360) + '</div></div>';
       h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('pk.advantage')) + '</h2>' + infoTip(t('pk.advantage.d')) + '</div>';
       h += ecBox('diverging', MOD.map(function (k) {
         return { name: modName(k), d: [sixW(k) * sixK(a, k), sixW(k) * sixK(b, k)] };
@@ -562,7 +577,7 @@
       h += '<div class="pk-radar-wrap">' + ecBox('radar', {
         rows: ps.map(function (p, i) { return { name: p.name, color: colors[i], values: MOD.map(function (k) { return sixK(p, k); }) }; }),
         indicators: labels
-      }, { radius: '46%', max: MOD.map(function (k) { return sixAxisMax()[k]; }), capAt: 2 }, 360) + '</div>';
+      }, { radius: '46%', max: MOD.map(function (k) { return sixAxisMax()[k]; }), capAt: 1.5 }, 360) + '</div>';
       h += '</div>';
 
       /* 加权贡献堆叠 */

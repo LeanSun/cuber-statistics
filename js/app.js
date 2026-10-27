@@ -9,6 +9,20 @@
   const toastEl = document.getElementById('toast');
   const esc = U.esc;
 
+  /* ---------- 注入展示用项目 FTO（八面体 / Octahedron） ----------
+     WCA 官方导出里没有 FTO 数据，故它不计入任何榜单 / 评分；
+     这里仅为让「项目领域」「筛选项目」「趣味统计筛选项」与官方项目口径一致地出现 FTO，
+     所有选手在 FTO 上均显示「未参与（—）」。如日后有数据源，只需在 build.js 的 events Map 里补数据即可。 */
+  (function injectFTO() {
+    if (!M || !M.EV) return;
+    if (!M.EV.fto) {
+      M.EV.fto = { id: 'fto', zh: '八面体', en: 'Octahedron (FTO)', format: '', w: 0.5, rank: 99, retired: false };
+    }
+    if (M.events && !M.events.some(function (e) { return e.id === 'fto'; })) {
+      M.events.push({ id: 'fto', zh: '八面体', en: 'Octahedron (FTO)', format: '', w: 0.5, rank: 99, retired: false });
+    }
+  })();
+
   /* ---------- 长尾名册（懒加载） ----------
      js/data.js 只带可排名的头部选手；其余选手（全部 30 万 WCA 注册者）压缩在
      js/roster.js 里，首屏不阻塞，用户开始搜索时才按需载入并合并进搜索索引，

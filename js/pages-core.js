@@ -191,7 +191,7 @@
     });
     const tot = items.reduce(function (a, x) { return a + x.v; }, 0);
     if (!(tot > 0)) return '';
-    items.sort(function (a, b) { return b.v - a.v; });
+    /* 严格按 M1→M6 固定顺序（不再按贡献大小重排），与图例、下拉贡献、雷达轴保持一致 */
     return '<div class="ministack dimstack" role="img" aria-label="' + esc(t('rank.contribution')) + '">' +
       items.map(function (x) {
         if (!(x.v > 0)) return '';
@@ -657,7 +657,12 @@
       const isSorted = (state.sortKey || 'score') === c.k;
       const arw = isSorted ? (state.sortDir === 'asc' ? '▲' : '▼') : '';
       if (c.k === 'exp') { h += '<th class="tl exp-col"></th>'; return; }
-      if (c.k === 'bars') { h += '<th class="bars-head bars-full">' + esc(t(evMode ? 'rank.evScore' : c.label)) + '</th>'; return; }
+      if (c.k === 'bars') {
+        const isTotSorted = (state.sortKey || 'score') === 'score';
+        const totArw = isTotSorted ? (state.sortDir === 'asc' ? '▲' : '▼') : '';
+        h += '<th class="bars-head bars-full' + (isTotSorted ? ' sorted' : '') + '" data-sort="score">' + esc(t(evMode ? 'rank.evScore' : c.label)) + '<span class="arw">' + totArw + '</span></th>';
+        return;
+      }
       h += '<th class="' + (c.cls || '') + (isSorted ? ' sorted' : '') + '" data-sort="' + c.k + '">' +
         esc(c.label ? t(c.label) : '') + '<span class="arw">' + arw + '</span></th>';
     });
@@ -733,8 +738,8 @@
     const wcaUrl = 'https://www.worldcubeassociation.org/persons/' + encodeURIComponent(String(p.wcaId || p.id).toUpperCase());
     const worldNo = (M.ranked.indexOf(p) + 1) || p.rank || 0;
 
-    /* 模块按贡献从大到小排，条形长度即贡献占比，扫一眼就知道靠什么进的榜 */
-    const csDesc = cs.slice().sort(function (a, b) { return b.v - a.v; });
+    /* 严格按 M1→M6 固定顺序（不再按贡献大小重排），与堆叠条、雷达轴、图例一致 */
+    const csDesc = cs;
 
     let h = '<div class="exp-inner exp-v3">';
 
@@ -764,38 +769,66 @@
       '<span class="v">No.' + worldNo + '</span></div>';
     h += '</div></div>';
 
-    /* ── 中部：六维贡献（横向条） ─────────────────────────── */
+    /* ── 中部：贡献明细（横向条）── 工具栏选「按项目」时切到「项目贡献」，否则「六维贡献」 ── */
+    const evModeStack = (state && state.stackMode === 'ev' && p.sixEv);
     h += '<div class="exp-v3-mods">';
-    h += '<div class="exp-v3-mods-h"><span>' + esc(t('rank.sixContrib')) + (inEv ? ' · ' + esc(t('rank.evScope')) : '') + '</span>' +
-      '<span class="tiny muted">' + esc(t('player.contrib')) + ' · Σ = ' + U.fmt(tot, 2) + '</span></div>';
-    /* 列头：让右侧四列数字（原始分 / 权重 / 加权贡献 / 占比）各自有名字，
-       否则展开后只剩一串「100.0 51% 50.78 67.0%」看不出含义。 */
-    h += '<div class="exp-v3-mod exp-v3-mod-head">' +
-      '<span class="nm">' + esc(t('rank.dimCol')) + '</span>' +
-      /* 表头这一格原先输出一个带 track 类的空 span，渲染出来是「一条灰色空柱」，
-         看着像是漏画了数据。现在只留一个无样式的占位格保住网格对齐。 */
-      '<span class="track-slot" aria-hidden="true"></span>' +
-      '<span class="raw" title="' + esc(t('expCol.rawD')) + '">' + esc(t('player.raw')) + '</span>' +
-      '<span class="w" title="' + esc(t('expCol.wD')) + '">' + esc(t('player.weight')) + '</span>' +
-      '<span class="v" title="' + esc(t('expCol.vD')) + '">' + esc(t('player.contrib')) + '</span>' +
-      '<span class="pc" title="' + esc(t('expCol.pcD')) + '">' + esc(t('player.pct')) + '</span></div>';
-    /* 条长 = 该维加权贡献占**总分**的真实比例（2026-10-27 回滚方案 A）。
-       此前曾改成「相对最大贡献归一」（最大那条撑满轨道），条长不再等于真实占比，
-       读数会失真 —— 现已恢复：条长与右侧「占比」列同一把尺子，
-       六条相加正好铺满整条轨道。 */
-    csDesc.forEach(function (c) {
-      const pct = c.v / tot * 100;
-      const bw = Math.max(1.5, pct);
-      h += '<div class="exp-v3-mod">' +
-        '<span class="nm"><i style="background:' + c.color + '"></i>' + esc(c.name) + '</span>' +
-        '<span class="track" title="' + esc(t('player.contrib')) + ' ' + U.fmt(c.v, 2) +
-        '（占总分 ' + U.fmt(pct, 1) + '%）"><i style="width:' +
-        bw.toFixed(1) + '%;background:' + c.color + '"></i></span>' +
-        '<span class="raw" title="' + esc(t('player.raw')) + '">' + U.fmt(c.raw, 2) + '</span>' +
-        '<span class="w" title="' + esc(t('player.weight')) + '">' + U.fmt(c.w * 100, 0) + '%</span>' +
-        '<span class="v">' + U.fmt(c.v, 2) + '</span>' +
-        '<span class="pc">' + U.fmt(pct, 1) + '%</span></div>';
-    });
+    if (evModeStack) {
+      const evItems = [];
+      let evTot = 0;
+      Object.keys(p.sixEv).forEach(function (id) {
+        const tEv = (p.sixEv[id] && p.sixEv[id][6]) || 0;
+        if (tEv > 0) { evItems.push({ id: id, t: tEv }); evTot += tEv; }
+      });
+      evItems.sort(function (a, b) { return b.t - a.t; });
+      h += '<div class="exp-v3-mods-h"><span>' + esc(t('rank.evContrib')) + (inEv ? ' · ' + esc(t('rank.evScope')) : '') + '</span>' +
+        '<span class="tiny muted">' + esc(t('player.contrib')) + ' · Σ = ' + U.fmt(evTot, 2) + '</span></div>';
+      h += '<div class="exp-v3-mod exp-v3-mod-head">' +
+        '<span class="nm">' + esc(t('rank.evCol')) + '</span>' +
+        '<span class="track-slot" aria-hidden="true"></span>' +
+        '<span class="raw" title="' + esc(t('expCol.rawD')) + '">' + esc(t('rank.evSubtotal')) + '</span>' +
+        '<span class="w" title="' + esc(t('expCol.wD')) + '">—</span>' +
+        '<span class="v" title="' + esc(t('expCol.vD')) + '">' + esc(t('rank.evSubtotal')) + '</span>' +
+        '<span class="pc" title="' + esc(t('expCol.pcD')) + '">' + esc(t('player.pct')) + '</span></div>';
+      evItems.forEach(function (it) {
+        const nm = evName(M.EV[it.id] || { zh: it.id, en: it.id });
+        const col = evColorOf(it.id);
+        const pct = evTot > 0 ? it.t / evTot * 100 : 0;
+        const bw = Math.max(1.5, pct);
+        h += '<div class="exp-v3-mod">' +
+          '<span class="nm"><i style="background:' + col + '"></i>' + esc(nm) + '</span>' +
+          '<span class="track" title="' + esc(nm) + ' ' + U.fmt(it.t, 2) + '（' + U.fmt(pct, 1) + '%）"><i style="width:' + bw.toFixed(1) + '%;background:' + col + '"></i></span>' +
+          '<span class="raw">' + U.fmt(it.t, 2) + '</span>' +
+          '<span class="w">—</span>' +
+          '<span class="v">' + U.fmt(it.t, 2) + '</span>' +
+          '<span class="pc">' + U.fmt(pct, 1) + '%</span></div>';
+      });
+    } else {
+      h += '<div class="exp-v3-mods-h"><span>' + esc(t('rank.sixContrib')) + (inEv ? ' · ' + esc(t('rank.evScope')) : '') + '</span>' +
+        '<span class="tiny muted">' + esc(t('player.contrib')) + ' · Σ = ' + U.fmt(tot, 2) + '</span></div>';
+      h += '<div class="exp-v3-mod exp-v3-mod-head">' +
+        '<span class="nm">' + esc(t('rank.dimCol')) + '</span>' +
+        '<span class="track-slot" aria-hidden="true"></span>' +
+        '<span class="raw" title="' + esc(t('expCol.rawD')) + '">' + esc(t('player.raw')) + '</span>' +
+        '<span class="w" title="' + esc(t('expCol.wD')) + '">' + esc(t('player.weight')) + '</span>' +
+        '<span class="v" title="' + esc(t('expCol.vD')) + '">' + esc(t('player.contrib')) + '</span>' +
+        '<span class="pc" title="' + esc(t('expCol.pcD')) + '">' + esc(t('player.pct')) + '</span></div>';
+      /* 条长 = 该维加权贡献占**总分**的真实比例（2026-10-27 回滚方案 A）。
+         此前曾改成「相对最大贡献归一」（最大那条撑满轨道），条长不再等于真实占比，
+         读数会失真 —— 现已恢复：条长与右侧「占比」列同一把尺子，六条相加正好铺满整条轨道。 */
+      csDesc.forEach(function (c) {
+        const pct = c.v / tot * 100;
+        const bw = Math.max(1.5, pct);
+        h += '<div class="exp-v3-mod">' +
+          '<span class="nm"><i style="background:' + c.color + '"></i>' + esc(c.name) + '</span>' +
+          '<span class="track" title="' + esc(t('player.contrib')) + ' ' + U.fmt(c.v, 2) +
+          '（占总分 ' + U.fmt(pct, 1) + '%）"><i style="width:' +
+          bw.toFixed(1) + '%;background:' + c.color + '"></i></span>' +
+          '<span class="raw" title="' + esc(t('player.raw')) + '">' + U.fmt(c.raw, 2) + '</span>' +
+          '<span class="w" title="' + esc(t('player.weight')) + '">' + U.fmt(c.w * 100, 0) + '%</span>' +
+          '<span class="v">' + U.fmt(c.v, 2) + '</span>' +
+          '<span class="pc">' + U.fmt(pct, 1) + '%</span></div>';
+      });
+    }
     h += '</div>';
 
     /* ── 底部：成绩速览 + 纪录亮点 + 操作 ───────────────────── */
@@ -822,7 +855,15 @@
         if (!byLv[lv]) return;
         h += '<span class="rec-chip lv-' + lv + '">' + lv + ' ×' + byLv[lv] + '</span>';
       });
-      if (longest) h += '<span class="rec-chip"><b>' + esc(t('rec.heldLongest')) + '</b> ' + esc(heldText(longest.held)) + '</span>';
+      if (longest) {
+        const lt = longest;
+        const ltEv = evName(M.EV[lt.ev] || { zh: lt.ev, en: lt.ev });
+        const ltType = lt.type === 'avg' ? (t.isEn() ? 'avg' : '平均') : (lt.type === 'single' ? (t.isEn() ? 'single' : '单次') : '');
+        const ltTip = ltEv + ' · ' + lt.level + (ltType ? '（' + ltType + '）' : '') + ' · ' +
+          esc(t('rec.value')) + ' ' + esc(lt.value) + ' · ' + esc(t('rec.date')) + ' ' + esc(lt.date) +
+          ' · ' + esc(t('rec.held')) + ' ' + esc(heldText(lt.held)) + (lt.comp ? ' · ' + esc(lt.comp) : '');
+        h += '<span class="rec-chip" title="' + esc(ltTip) + '"><b>' + esc(t('rec.heldLongest')) + '</b> ' + esc(heldText(lt.held)) + '</span>';
+      }
       if (evPool && evPool.length) h += '<span class="rec-chip rec-scope">' + esc(t('rank.evScope')) + '</span>';
     }
     h += '</div>';

@@ -818,7 +818,7 @@
           esc(t('col.player')) + '</th><th class="tl">' + esc(t('col.country')) + '</th><th>' + esc(t('stat.' + d.k)) + '</th></tr></thead><tbody>';
         list.forEach(function (row, i) {
           h += '<tr><td class="tl">' + (i + 1) + '</td>' +
-            '<td class="tl"><div class="pname">' + avatar(row.p, 'sm') + playerLink(row.p) + '</div></td>' +
+            '<td class="tl"><div class="pname">' + playerLink(row.p) + '</div></td>' +
             '<td class="tl">' + flag(row.p.country) + '</td>' +
             '<td class="num"><b>' + (d.pct ? U.fmt(row.v * 100, 1) + '%' : U.num(row.v)) + '</b></td></tr>';
         });
@@ -885,7 +885,7 @@
         esc(t('col.player')) + '</th><th>' + esc(t('col.total')) + '</th><th>' + esc(t('col.months')) + '</th><th>' +
         esc(t('col.m4')) + '</th><th>' + esc(t('stat.yearsTop10')) + '</th></tr></thead><tbody>';
       list.forEach(function (p, i) {
-        h += '<tr><td class="tl">' + (i + 1) + '</td><td class="tl"><div class="pname">' + avatar(p, 'sm') + playerLink(p) + '</div></td>' +
+        h += '<tr><td class="tl">' + (i + 1) + '</td><td class="tl"><div class="pname">' + playerLink(p) + '</div></td>' +
           '<td class="num">' + U.fmt(scoreOf(p).overall, 2) + '</td><td class="num">' + p.months1 + '</td>' +
           '<td class="num">' + U.fmt((p.six && p.six.m4) || 0, 2) + '</td><td class="num">' + Math.round(p.months10 / 12) + '</td></tr>';
       });
@@ -910,7 +910,7 @@
       after.forEach(function (p, i) {
         const before = base.indexOf(p) + 1;
         const d = before - (i + 1);
-        h += '<tr><td class="tl"><div class="pname">' + avatar(p, 'sm') + playerLink(p) + '</div></td><td class="num">' + before + '</td>' +
+        h += '<tr><td class="tl"><div class="pname">' + playerLink(p) + '</div></td><td class="num">' + before + '</td>' +
           '<td class="num" style="color:' + (d > 0 ? 'var(--m4)' : (d < 0 ? 'var(--m1)' : 'var(--text-3)')) + '">' +
           (d > 0 ? '↑' : (d < 0 ? '↓' : '·')) + ' ' + Math.abs(d) + '</td>' +
           '<td class="num">' + U.fmt(scoreOf(p).overall * factor(p), 2) + '</td></tr>';
@@ -1085,22 +1085,10 @@
     const secId = state.mdSection || (MD[0] && MD[0].id) || 'overview';
     let h = '<div class="page-head reveal"><h1>' + esc(t('md.title')) + '</h1><p class="sub">' + esc(t('md.sub')) + '</p></div>';
 
-    /* ---- 总分口径（现行）：六维加权 t = Σ_d w_d · s_d ----
-       放在页面最上方，避免读者把下面各维的公式误当成别的合成方式。 */
+    /* 六维权重 / 六维名称：被下方的「六维占比自定义」与「预设」复用，必须在使用前定义。
+       注意：原先附带的「总分口径（现行）」卡片已按需求删除，这里只保留两个常量声明。 */
     const SW = (P.util.sixW && P.util.sixW()) || (M.meta && M.meta.sixWeights) || { m1: 0.28, m2: 0.24, m3: 0.12, m4: 0.18, m5: 0.08, m6: 0.10 };
     const SN = (M.meta && M.meta.sixNames) || { m1: '纪录持有', m2: '领奖台', m3: '大赛破纪录', m4: '统治力', m5: '当前排名', m6: '突破幅度' };
-    h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('md.total.title')) + '</h2></div>' +
-      '<p class="tiny muted" style="margin-bottom:10px">' + esc(t('md.total.d')) + '</p>' +
-      '<p class="tiny muted" style="margin-bottom:12px">\\[\\displaystyle t=\\sum_{d} w_{d}\\,s_{d},\\qquad s_{d}=1000\\cdot\\frac{x_{d}}{\\max_{p}x_{d}}\\]</p>' +
-      '<div class="breakdown-table">' +
-      '<div class="breakdown-row bk-head"><span>' + esc(t('rank.module')) + '</span><span></span>' +
-      '<span class="bk-num">' + esc(t('player.weight')) + '</span></div>';
-    MOD.forEach(function (k) {
-      h += '<div class="breakdown-row"><span class="bk-name">' + esc(SN[k] || modName(k)) + ' · ' + k.toUpperCase() + '</span><span></span>' +
-        '<span class="bk-num"><b>' + U.fmt((SW[k] || 0) * 100, 0) + '%</b></span></div>';
-    });
-    h += '</div>' +
-      '<p class="tiny muted" style="margin-top:8px">' + esc(t('md.total.note')) + '</p></div>';
 
     /* ---- 六维占比自定义：每行「滑杆 + 数字框」，全站榜单立即重排 ----
        旧版是六根竖柱 + 上下拖动柱顶调高度：柱子只有 40 来像素高，

@@ -1072,6 +1072,9 @@ tr[data-prow]:hover .pname .linkish,.pname:hover .linkish{
   background:var(--accent-soft);padding:1px 9px;border-radius:999px}
 .dc-formula{margin:8px 0;overflow-x:auto;font-size:13px}
 .dc-formula mjx-container{margin:4px 0!important}
+/* 各维度「原始分」计算方式（大白话版，纯文本） */
+.dc-raw{margin:9px 0 2px;font-size:12px;line-height:1.6;color:var(--text-3);
+  background:var(--bg-soft);border-left:3px solid var(--accent);border-radius:0 8px 8px 0;padding:7px 11px}
 .dimcalc-wrap>summary{cursor:pointer;list-style:none}
 .dimcalc-wrap>summary::-webkit-details-marker{display:none}
 .dimcalc-wrap>summary .sum-caret{margin-left:auto;transition:transform .2s ease;color:var(--text-3)}
@@ -1197,14 +1200,18 @@ tr[data-prow]:hover .pname .linkish,.pname:hover .linkish{
    不居中的话矮格子里的图标 / 名称 / 名次会贴着格子顶部，横着一排看是歪的。 */
 .cov-cell{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
   padding:12px 8px 10px;
-  border:1px solid var(--border);border-radius:12px;background:var(--bg-soft);
+  border:1px solid var(--border);border-radius:12px;background:var(--bg-elev);
   position:relative;overflow:hidden;transition:transform .18s,border-color .18s}
+/* 参与过的项目：顶部始终带一层 accent 底色（即使名次靠后 --a 很低，也至少有 18% 的色），
+   与「未参与」的灰色斜纹格一眼区分；名次越靠前色越实。 */
 .cov-cell::before{content:"";position:absolute;inset:0;
-  background:linear-gradient(180deg,color-mix(in srgb,var(--accent) calc(var(--a,0)*70%),transparent),transparent);
-  opacity:calc(.25 + var(--a,0)*.75);pointer-events:none}
+  background:linear-gradient(180deg,color-mix(in srgb,var(--accent) calc(18% + var(--a,0)*58%),transparent),transparent);
+  opacity:1;pointer-events:none}
 .cov-cell:hover{transform:translateY(-2px) scale(1.04);border-color:var(--accent)}
-.cov-cell.empty{opacity:.4;border-style:dashed;background:transparent}
+/* 未参与的项目：中性灰斜纹 + 虚线边框 + 内容降透明度，明确读作「空 / 未参赛」 */
+.cov-cell.empty{opacity:.95;border-style:dashed;background:repeating-linear-gradient(135deg,var(--bg-soft) 0,var(--bg-soft) 7px,transparent 7px,transparent 14px)}
 .cov-cell.empty::before{display:none}
+.cov-cell.empty .ev-mini,.cov-cell.empty .cov-name,.cov-cell.empty .cov-rank{opacity:.5}
 /* 图标给一个固定高度的居中盒子：cubing-icons 的字形自带上下留白且不对称，
    直接按 line-height:1 排列时视觉重心会偏离文字中线，看着「没对齐」。 */
 .cov-cell .ev-mini{font-size:22px;line-height:1;flex:none;margin-bottom:0;
@@ -1236,27 +1243,31 @@ tr[data-prow]:hover .pname .linkish,.pname:hover .linkish{
 .ms-pop{position:absolute;right:12px;bottom:12px;z-index:6;max-width:min(540px,90%);
   display:flex;flex-direction:column;align-items:flex-end;gap:6px}
 .ms-pop-tab{display:inline-flex;align-items:center;gap:8px;cursor:pointer;
-  padding:7px 14px;border-radius:999px;font-size:13.5px;font-weight:600;
+  padding:8px 15px;border-radius:999px;font-size:13.5px;font-weight:600;
   color:var(--text-2);background:var(--bg-elev);
   border:1px solid var(--border-2);box-shadow:var(--shadow);
-  transition:color .16s,border-color .16s,background .16s}
-.ms-pop-tab:hover{color:var(--accent);border-color:var(--accent)}
-.ms-pop-tab.on{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
+  transition:color .16s,border-color .16s,background .16s,box-shadow .16s,transform .16s}
+.ms-pop-tab:hover{color:var(--accent);border-color:var(--accent);transform:translateY(-1px)}
+.ms-pop-tab.on{color:#fff;border-color:transparent;background:linear-gradient(135deg,var(--accent),color-mix(in srgb,var(--accent) 70%,#7a3cff));
+  box-shadow:0 6px 18px color-mix(in srgb,var(--accent) 38%,transparent)}
 .ms-pop-tab svg,.ms-pop-tab .ic{width:14px;height:14px;flex:none}
 .ms-pop-tab b{display:inline-flex;align-items:center;justify-content:center;
   min-width:18px;height:18px;padding:0 5px;border-radius:999px;
   background:var(--bg-soft-2);color:var(--text-2);font-size:10.5px;
   font-variant-numeric:tabular-nums}
-.ms-pop-caret{font-style:normal;font-size:10px;transition:transform .2s}
+.ms-pop-tab.on b{background:rgba(255,255,255,.22);color:#fff}
+.ms-pop-caret{font-style:normal;font-size:10px;transition:transform .25s}
 .ms-pop-tab.on .ms-pop-caret{transform:rotate(180deg)}
-.ms-pop-body{width:100%;max-height:380px;overflow:auto;padding:14px 15px;
-  border-radius:13px;background:var(--bg-elev);
-  border:1px solid var(--border-2);box-shadow:0 10px 30px rgba(0,0,0,.20);
-  animation:msPopIn .22s cubic-bezier(.34,1.3,.64,1)}
-@keyframes msPopIn{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:none}}
+/* 弹窗：加长（max-height 380→480）、顶部一道 accent 彩条、平滑滚动、更柔的入场动效 */
+.ms-pop-body{width:100%;max-height:480px;overflow:auto;padding:15px 16px 16px;
+  border-radius:14px;background:var(--bg-elev);
+  border:1px solid var(--border-2);border-top:3px solid var(--accent);
+  box-shadow:0 14px 40px rgba(0,0,0,.24);scroll-behavior:smooth;
+  animation:msPopIn .26s cubic-bezier(.22,1.1,.46,1)}
+@keyframes msPopIn{from{opacity:0;transform:translateY(14px) scale(.96)}to{opacity:1;transform:none}}
 .ms-pop-h{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;
-  font-size:12px;font-weight:700;color:var(--text);
-  padding-bottom:7px;margin-bottom:8px;border-bottom:1px dashed var(--border)}
+  font-size:12.5px;font-weight:700;color:var(--accent);
+  padding-bottom:8px;margin-bottom:10px;border-bottom:1px solid var(--border)}
 .ms-pop-list{display:flex;gap:6px;flex-wrap:wrap}
 .ms-pop-list .ms-rail-item{margin-top:0}
 
