@@ -8,15 +8,18 @@ WCA_export*
 !etl/sample/
 !etl/sample/*.tsv
 
-# 例外：六维站点分 + 按项目分解表（etl/score/sixdim.js 产出的最终交付表，build.js 直接依赖；
-# 不入库的话 GitHub Actions 每周重建 js/data.js 时会拿不到六维分，全站总分归零；
-# 缺 sixdim_by_event.tsv 时项目筛选无法按六维分重排）
+# 例外：六维站点分（etl/score/sixdim.js 产出的最终交付表，build.js 直接依赖；
+# 不入库的话 GitHub Actions 每周重建 js/data.js 时会拿不到六维分，全站总分归零）
 !etl/score/sixdim_site.tsv
-!etl/score/sixdim_by_event.tsv
 !etl/score/sixdim_site_single.tsv
 !etl/score/sixdim_site_avg.tsv
-!etl/score/sixdim_by_event_single.tsv
-!etl/score/sixdim_by_event_avg.tsv
+
+# 例外：按项目分解表只存 gzip 归档。M5-F3 全量计分后计分人口从 1,257 涨到
+# 298,702，明文表 27–30MB，经 GitHub blob 接口传输会被拒（实测 30MB 即 401）；
+# gzip 后 5–6MB。build.js 两种都能读（有明文优先明文），ci.yml 两种都接受。
+!etl/score/sixdim_by_event.tsv.gz
+!etl/score/sixdim_by_event_single.tsv.gz
+!etl/score/sixdim_by_event_avg.tsv.gz
 
 # 例外：六维模型脚本 / 封存文档 / 站点分表（模型真源，需随仓库版本化；
 # 中间事实表与诊断 TSV 仍然忽略，避免把几十 MB 的中间产物推上去）
@@ -25,12 +28,6 @@ WCA_export*
 # 不入库的话 GitHub Actions 重建 js/data.js 时拿不到，选手页该字段又会全变 0）
 !etl/score/M4_seats.tsv
 !etl/score/*.md
-!etl/score/sixdim_site.tsv
-!etl/score/sixdim_by_event.tsv
-!etl/score/sixdim_site_single.tsv
-!etl/score/sixdim_site_avg.tsv
-!etl/score/sixdim_by_event_single.tsv
-!etl/score/sixdim_by_event_avg.tsv
 
 # Python
 __pycache__/

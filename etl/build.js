@@ -18,6 +18,7 @@
    ============================================================ */
 const fs = require('fs');
 const path = require('path');
+const zlib = require('zlib');
 const { spawn, execFileSync } = require('child_process');
 
 const Calc = require('../js/calc.js');
@@ -48,8 +49,13 @@ const SIX = new Map();
 const SIXEV = new Map();
 (function loadSixEv() {
   const f = path.join(__dirname, 'score', 'sixdim_by_event.tsv');
-  if (!fs.existsSync(f)) { console.warn('⚠ 未找到 ' + f + ' —— 项目筛选将退回全站六维分；请先跑 etl/score/sixdim.js'); return; }
-  const lines = fs.readFileSync(f, 'utf8').trim().split('\n');
+  // 仓库里存的是 gzip 归档（30MB 的明文表经 API 传输会被拒，压缩后约 6MB）；
+  // 本地跑过 sixdim.js 时明文表还在，优先读明文，避免每次都解压。
+  const gz = f + '.gz';
+  let lines = null;
+  if (fs.existsSync(f)) lines = fs.readFileSync(f, 'utf8').trim().split('\n');
+  else if (fs.existsSync(gz)) lines = zlib.gunzipSync(fs.readFileSync(gz)).toString('utf8').trim().split('\n');
+  else { console.warn('⚠ 未找到 ' + f + '(.gz) —— 项目筛选将退回全站六维分；请先跑 etl/score/sixdim.js'); return; }
   for (let i = 1; i < lines.length; i++) {
     const c = lines[i].split('\t');
     const arr = [+c[2], +c[3], +c[4], +c[5], +c[6], +c[7], +c[8]];

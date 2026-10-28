@@ -86,8 +86,11 @@ jobs:
             if(!M.ranked.some(p=>p.yTop10>0)) bad("yTop10 all zero (annual ranking missing)");
             if(!M.ranked.some(p=>p.yTop100>0)) bad("yTop100 all zero (annual ranking missing)");
             /* 六维交付表必须随仓库入库：否则 Actions 每周重建 js/data.js 会丢失六维分 */
-            if(!require("fs").existsSync("etl/score/sixdim_site.tsv")) bad("etl/score/sixdim_site.tsv missing (six-dimension delivery table)");
-            if(!require("fs").existsSync("etl/score/sixdim_by_event.tsv")) bad("etl/score/sixdim_by_event.tsv missing (per-event six-dimension table, needed for event-filtered re-ranking)");
+            const fsx=require("fs");
+            if(!fsx.existsSync("etl/score/sixdim_site.tsv")) bad("etl/score/sixdim_site.tsv missing (six-dimension delivery table)");
+            for(const t of ["","_single","_avg"]) if(!fsx.existsSync("etl/score/sixdim_site"+t+".tsv")) bad("etl/score/sixdim_site"+t+".tsv missing (track-specific six-dimension table)");
+            /* 按项目分解表体积太大，仓库存 gzip 归档（build.js 两种都能读） */
+            for(const t of ["","_single","_avg"]) if(!fsx.existsSync("etl/score/sixdim_by_event"+t+".tsv") && !fsx.existsSync("etl/score/sixdim_by_event"+t+".tsv.gz")) bad("etl/score/sixdim_by_event"+t+".tsv(.gz) missing (per-event six-dimension table, needed for event-filtered re-ranking)");
             console.log("extra assertions OK: iso="+iso+" zh="+M.countriesZh[iso]+" cont="+M.continentOf[iso]+" held="+st.heldLongest+" yTop10max="+Math.max.apply(null,M.ranked.map(p=>p.yTop10)));
           '
       - name: Page render smoke (DOM stubs)
