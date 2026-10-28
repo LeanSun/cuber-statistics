@@ -25,18 +25,38 @@
  *    「当下」的时间表达交给 M1（纪录持有时长）与 M4（统治力），M5 不再重复表达。
  *    （用户 2026-10-28 明确：M5 的名称一律保持「当前排名」，不做改名。）
  *
- * 计分公式（唯一权威，M5-F2）：
- *   M5 = Σ_{e,t} w_e · g(rank_{e,t})
+ * 计分公式（唯一权威，★ M5-F3，2026-10-29 定稿）：
+ *   M5 = Σ_{e,t} w_e · shape(cost_{e,t})
  *
  *   e,t      = 项目 × 轨道（single / average）
  *   w_e      = EV_WEIGHT_V2（三阶 1.0000 全站最高）
- *   g(rank)  = rank^-GAMMA       名次 1 → 1.0；GAMMA=0.5 时第 10 → 0.316、第 100 → 0.1
  *
- *   ★ GAMMA 旋钮（软化名次权重，2026-10-28 晚采纳 α=0.5）：
- *     1.0 = M5-F2 初版（rank^-1，极陡，前 5.4% 人占 50% 分；Feliks 仅 9.7% 榜首）
- *     0.5 = **现行定稿**：rank^-0.5，把「握第一」与「广泛顶尖」的差距从 10× 压到 3×，
- *           长尾整体抬升（中位数 0.022→0.148），Feliks 升至 ≈32% 榜首
- *     0.4 = 更激进（≈2.5× 差距），更接近「进前 100 的项数」，名次信号被稀释
+ *   ★ 放弃名次制，改用**成绩比值**的分段函数
+ *     （用户要求：第 1 名满分 1000、第 1% 名约 700~800，且不要全挤在 1000）：
+ *       cost = 成绩（多盲解码成 cost，统一「越小越强」）
+ *       WR   = 该 (项目,轨) 的世界最佳 cost
+ *       P1   = 该 (项目,轨) 第 1% 分位的 cost
+ *       D0   = 1 − WR/P1                 ← 每个 (项目,轨) **各自标定**
+ *       d    = 1 − WR/cost               ← 相对落后度，0 = 世界纪录
+ *
+ *       d ≤ D0（前 1% 内）: 1000 × (1 − (1−TARGET/1000) · d/D0)   1000 → TARGET，线性有梯度
+ *       d > D0（长尾）    : TARGET × (D0/d)^TAIL_H                断崖衰减
+ *
+ *   旋钮：TARGET=750（第1%名分数）｜TAIL_H=8（长尾陡峭度）｜PCT=0.01（标定分位）
+ *
+ *   ★ 为什么必须按项目标定 D0：各项目第 1% 分位的 d 差异达 9 倍
+ *     （333:0.623 / 444:0.416 / 777:0.307 / 333fm:0.158），若用统一 D0，
+ *     集中型项目（高阶、最少步）会系统性虚高、长尾型项目虚低。
+ *
+ *   ★ 三阶单次实测标定（287,679 人）：
+ *     第1名 2.51s→1000｜王艺衡 2.77s→962｜Feliks 4.12s→843｜第1%名 6.66s→750
+ *     前5% 9.04s→230｜前10% 10.82s→141｜中位数 23.81s→42
+ *
+ *   ── 已废的 M5-F2（名次制，2026-10-28）──
+ *     旧式 g(rank) = rank^-GAMMA（GAMMA=0.5）：1,257 人 / 总量 339.5465，
+ *     Feliks 仅 848.3（站点 s5），因「顶尖但无单榜第一者被严重低估」被推翻。
+ *     名次制对长尾极度压缩（100 名后几乎无差别），且随参与人数膨胀而漂移，
+ *     故 F3 改用基于成绩的比值——不受人数影响，跨项目公平。
  *
  *   ⚠️ 无 gapR / gapP / decay 项：时间不参与计分。
  *     gapR（距该项目末次参赛年数）、gapP（距该轨 PB 达成年数）仍作为**展示列**输出，
@@ -69,8 +89,20 @@ const num = (v) => Number(v).toLocaleString('en-US');
 
 /* ── 口径旋钮 ─────────────────────────────────────────────────────── */
 const CFG = {
-  DEPTH: 100,              // 排名深度：只算世界前 100（超出即 0 分）
-  GAMMA: 0.5,              // 名次权重指数 g(r) = r^-GAMMA（2026-10-28 晚：1.0→0.5，软化名次权重）
+  /* M5-F3：改为**全量计分**。名次制下 100 名外几乎无价值故截断；
+     比值法下长尾仍有分（三阶中位数 42），截断会误杀 29.8 万人，故放开。 */
+  DEPTH: Infinity,         // 排名深度：Infinity = 不设深度限制，所有有成绩者均计分
+  GAMMA: 0.5,              // 名次权重指数 g(r) = r^-GAMMA（M5-F2 口径；F3 起改用成绩比值，本项仅旧对照段保留）
+  /* ── M5-F3（2026-10-29 定稿）：成绩比值 · 按项目标定的分段函数 ──────────
+   *   d = 1 − WR/成绩（相对落后度，0 = 世界纪录）
+   *   D0 = 1 − WR/(第 PCT 分位成绩)   ← 每个 (项目,轨) 各自标定
+   *   d ≤ D0（前 PCT 内）: 1000 × (1 − (1−TARGET/1000)·d/D0)   1000 → TARGET，线性有梯度
+   *   d > D0（长尾）     : TARGET × (D0/d)^TAIL_H               断崖衰减
+   * 基于「成绩比值」而非名次 → 不受参与人数影响，跨项目公平。
+   * 各项目第1%分位的 d 差异达 9 倍（333:0.623 vs 333fm:0.158），故必须按项目标定。 */
+  TARGET: 750,             // 第 1% 分位选手的分数（用户要求 700~800）
+  TAIL_H: 8,               // 长尾衰减指数（越大衰减越快）
+  PCT: 0.01,               // 标定分位（前 1%）
   DECAY_YEARS: 5,          // 衰减：第 5 年触底
   DECAY_FLOOR: 0.2,        // 衰减下限（只衰减不归零）
   DECAY_MODE: 'none',      // 'none' = M5-F2 定稿：不计任何衰减｜'retire' = 只乘 gapR｜'pb' = 只乘 gapP｜'dual' = 两者相乘（M5-F1，已废）
@@ -202,6 +234,43 @@ function pearson(xs, ys) {
   }
   log('[3/7] 排名条目:', num(ranks.length));
 
+  /* ── 3b. 按 (项目,轨) 标定：世界最佳 cost + 第 PCT 分位 cost → D0（M5-F3）──
+   * multi 项目（333mbf/333mbo）的 best 是编码值，须解码成 cost（统一「越小越强」）。
+   * 各项目第 1% 分位的 d 差异达 9 倍（333:0.623 vs 333fm:0.158），必须逐项目标定，
+   * 否则集中型项目（高阶/最少步）会系统性虚高、长尾型项目虚低。 */
+  const costOfEv = (ev, best) => {
+    if (!(best > 0)) return null;
+    if (evFmt.get(ev) === 'multi') { const o = decodeMulti(best); return (o && o.cost > 0) ? o.cost : null; }
+    return best;
+  };
+  const byEt = new Map();   // ev|tr → [cost]
+  for (const x of ranks) {
+    const c = costOfEv(x.ev, x.best);
+    if (c == null) continue;
+    x.cost = c;
+    const k = x.ev + '|' + x.tr;
+    let a = byEt.get(k); if (!a) { a = []; byEt.set(k, a); }
+    a.push(c);
+  }
+  const CAL = new Map();    // ev|tr → {wr, p1, D0, n}
+  for (const [k, a] of byEt) {
+    a.sort((m, n) => m - n);
+    const wr = a[0];
+    const p1 = a[Math.max(0, Math.floor(a.length * CFG.PCT))];
+    CAL.set(k, { wr, p1, D0: p1 > 0 ? 1 - wr / p1 : 0, n: a.length });
+  }
+  /** M5-F3 形状函数：第1名=1000，第 PCT 分位=TARGET，之后 (D0/d)^TAIL_H 断崖衰减 */
+  const shapeScore = (cost, cal) => {
+    if (!cal || !(cost > 0) || !(cal.wr > 0) || !(cal.D0 > 0)) return 0;
+    const d = 1 - cal.wr / cost;
+    if (d <= 0) return 1000;
+    if (d <= cal.D0) return 1000 * (1 - (1 - CFG.TARGET / 1000) * (d / cal.D0));
+    return CFG.TARGET * Math.pow(cal.D0 / d, CFG.TAIL_H);
+  };
+  const calOf = (ev, tr) => CAL.get(ev + '|' + tr);
+  for (const x of ranks) x.sc = shapeScore(x.cost, calOf(x.ev, x.tr));
+  log('      已标定 (项目,轨) 组合:', num(CAL.size));
+
   /* 需要追踪 PB 达成日的键：pid|ev|tr */
   const needPb = new Set();
   for (const x of ranks) {
@@ -323,7 +392,7 @@ function pearson(xs, ys) {
         const lc = lastByEv.get(it.pid + '|' + ev);
         const gap = lc == null ? 99 : (SNAPSHOT_DAY - lc) / 365.25;
         const dec = CFG.WINDOW_DECAY ? decayOf(gap) : 1;
-        const score = w * rankScore(it.wr) * dec * tw;
+        const score = w * it.sc * dec * tw;
         if (score <= 0) continue;
         scoreRows.push({ pid: it.pid, ev, tr, wr: it.wr, w, gap, dec, score, v: it.v });
       }
@@ -339,7 +408,7 @@ function pearson(xs, ys) {
       const gapP = pbGapOf(x.pid, x.ev, x.tr);
       const dec = decCombo(gap, gapP);
       const w = W[x.ev] == null ? FLOOR : W[x.ev];
-      const score = w * rankScore(x.wr) * dec * tw;
+      const score = w * x.sc * dec * tw;
       if (score <= 0) continue;
       scoreRows.push({ pid: x.pid, ev: x.ev, tr: x.tr, wr: x.wr, w, gap, gapP, dec, score, v: x.best });
     }
@@ -390,7 +459,7 @@ function pearson(xs, ys) {
       const dR = decayOf(gR), dP = decayOf(gP);
       const d = mode === 'none' ? 1 : mode === 'pb' ? dP : mode === 'dual' ? dR * dP : dR;
       const w = W[x.ev] == null ? FLOOR : W[x.ev];
-      const s = w * rankScore(x.wr) * d * tw;
+      const s = w * x.sc * d * tw;
       if (s <= 0) continue;
       sc.set(x.pid, (sc.get(x.pid) || 0) + s);
     }
@@ -703,7 +772,7 @@ function pearson(xs, ys) {
       const gap = lc == null ? 99 : (SNAPSHOT_DAY - lc) / 365.25;
       const gapP = pbGapOf(x.pid, x.ev, x.tr);
       const w = W[x.ev] == null ? FLOOR : W[x.ev];
-      const v = w * rankScore(x.wr) * decCombo(gap, gapP) * tw;
+      const v = w * x.sc * decCombo(gap, gapP) * tw;
       sc.set(x.pid, (sc.get(x.pid) || 0) + v);
     }
     const arr = [...sc.entries()].map(([pid, s]) => ({ pid, s, name: pName.get(pid) || pid })).sort((a, b) => b.s - a.s);
@@ -763,7 +832,7 @@ function pearson(xs, ys) {
         const gap = lc == null ? 99 : (SNAPSHOT_DAY - lc) / 365.25;
         const gapP = pbGapOf(x.pid, x.ev, x.tr);
         const w = W[x.ev] == null ? FLOOR : W[x.ev];
-        const v = w * rankScore(x.wr) * decCombo(gap, gapP) * tw;
+        const v = w * x.sc * decCombo(gap, gapP) * tw;
         sc.set(x.pid, (sc.get(x.pid) || 0) + v);
       }
       return [...sc.entries()].map(([pid, s]) => ({ pid, s, name: pName.get(pid) || pid })).sort((a, b) => b.s - a.s);
@@ -801,7 +870,7 @@ function pearson(xs, ys) {
         const gap = lc == null ? 99 : (SNAPSHOT_DAY - lc) / 365.25;
         const gapP = pbGapOf(x.pid, x.ev, x.tr);
         const w = W[x.ev] == null ? FLOOR : W[x.ev];
-        const v = w * rankScore(x.wr) * decCombo(gap, gapP) * tw[x.tr];
+        const v = w * x.sc * decCombo(gap, gapP) * tw[x.tr];
         sc.set(x.pid, (sc.get(x.pid) || 0) + v);
       }
       const arr = [...sc.entries()].map(([pid, s]) => ({ pid, s, name: pName.get(pid) || pid })).sort((a, b) => b.s - a.s);
@@ -833,7 +902,7 @@ function pearson(xs, ys) {
         const gap = lc == null ? 99 : (SNAPSHOT_DAY - lc) / 365.25;
         const gapP = pbGapOf(x.pid, x.ev, x.tr);
         const w = W[x.ev] == null ? FLOOR : W[x.ev];
-        const v = w * rankScore(x.wr) * decCombo(gap, gapP) * tw;
+        const v = w * x.sc * decCombo(gap, gapP) * tw;
         sc.set(x.pid, (sc.get(x.pid) || 0) + v);
       }
       return [...sc.entries()].map(([pid, s]) => ({ pid, s, name: pName.get(pid) || pid })).sort((a, b) => b.s - a.s);
@@ -929,7 +998,7 @@ function pearson(xs, ys) {
           const lim = Math.min(CFG.DEPTH, list.length);
           for (let i = 0; i < lim; i++) {
             const rank = i + 1;
-            let s = w * rankScore(rank) * tw;
+            let s = w * shapeScore(list[i].v, calOf(ev, tr)) * tw;
             if (withDecay) {
               const lc = lastByEv.get(list[i].pid + '|' + ev);
               const gap = lc == null ? 99 : (SNAPSHOT_DAY - lc) / 365.25;
@@ -1021,7 +1090,7 @@ function pearson(xs, ys) {
         const gR = lc == null ? 99 : yrs(lc);
         const gP = pbGapOf(x.pid, x.ev, x.tr);
         const w = W[x.ev] == null ? FLOOR : W[x.ev];
-        const base = w * rankScore(x.wr);
+        const base = w * x.sc;
         const dR = decayOf(gR), dP = decayOf(gP);
         const rec = { name: pName.get(x.pid) || x.pid, ev: x.ev, tr: x.tr, wr: x.wr, gR, gP,
           v0: base * dR, f2: base * dP, f3: base * dR * dP };
@@ -1082,7 +1151,7 @@ function pearson(xs, ys) {
           const lc = lastByEv.get(x.pid + '|' + ev);
           const gR = lc == null ? 99 : yrs(lc);
           const gP = pbGapOf(x.pid, ev, tr);
-          return { pid: x.pid, wr: x.wr, s: w * rankScore(x.wr) * decayOf(gR) * decayOf(gP), gP, gR };
+          return { pid: x.pid, wr: x.wr, s: w * x.sc * decayOf(gR) * decayOf(gP), gP, gR };
         }).sort((a, b) => b.s - a.s);
         /* 官方 #1 若并列，取其中 PB 最老的一位（最不利情形） */
         const worst = ones.map((x) => sc.find((z) => z.pid === x.pid)).sort((a, b) => b.gP - a.gP)[0];
@@ -1125,7 +1194,7 @@ function pearson(xs, ys) {
           const gR = lc == null ? 99 : yrs(lc);
           const gP = pbGapOf(x.pid, x.ev, x.tr);
           const w = W[x.ev] == null ? FLOOR : W[x.ev];
-          const s = w * rankScore(x.wr) * dec(gR) * dec(gP) * tw;
+          const s = w * x.sc * dec(gR) * dec(gP) * tw;
           if (s <= 0) continue;
           sc.set(x.pid, (sc.get(x.pid) || 0) + s);
         }
@@ -1286,7 +1355,7 @@ function pearson(xs, ys) {
       const lc = lastByEv.get(x.pid + '|' + x.ev);
       const gap = lc == null ? 99 : (SNAPSHOT_DAY - lc) / 365.25;
       const w = W[x.ev] == null ? FLOOR : W[x.ev];
-      const s = w * rankScore(x.wr) * decayOf(gap) * tw;
+      const s = w * x.sc * decayOf(gap) * tw;
       if (s > 0) offSc.set(x.pid, (offSc.get(x.pid) || 0) + s);
     }
     const offRank = new Map();

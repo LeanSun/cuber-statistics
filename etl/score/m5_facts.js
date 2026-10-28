@@ -9,11 +9,18 @@
  *   对每个年末 Y、每个 (ev, track)：
  *     rank = 按「截至 Y 的历史最好成绩」升序名次（并列按达成日先者居前）
  *
- *   ★ M5-F2（2026-10-28 晚）：**去掉一切时间衰减 + 软化名次权重**，与 m5_current_rank.js 同参同式：
- *       M5_row = w_e × rank^-GAMMA   （GAMMA=0.5：第1名=1.0，第10名=0.316，第100名=0.1）
- *     旧式带 dR/dP 双衰减的版本保留为 `CFG_DECAY_MODE = 'dual'` 对照档（已废）。
- *     无衰减后，年末快照的语义反而更干净：**「Y 年末谁持有哪些名次」**。
- *   · 深度 = 前 100；停办项目（EV_RETIRED_DAY ≤ 年末）不计分；双轨各 1.0
+ *   ★ M5-F3（2026-10-29 定稿）：**放弃名次制，改用成绩比值的分段函数**，
+ *     与 m5_current_rank.js 同参同式（用户要求：第 1 名 = 1000、第 1% 名 ≈ 750）：
+ *       cost = 成绩（多盲解码为 cost，统一「越小越强」）
+ *       WR   = 该年末世界最佳；P1 = 该年末第 1% 分位；D0 = 1 − WR/P1 ← 逐项目、逐年标定
+ *       d    = 1 − WR/cost
+ *       d ≤ D0 : 1000 × (1 − (1−TARGET/1000)·d/D0)
+ *       d > D0 : TARGET × (D0/d)^TAIL_H                （断崖衰减）
+ *     旋钮：TARGET=750 / TAIL_H=8 / PCT=0.01。
+ *   · 旧 M5-F2（w_e × rank^-GAMMA，GAMMA=0.5）已废，常量保留仅供对照。
+ *   · 深度：**最新年份全量**（站点取用的快照）；历史年份限前 100
+ *     ——45 年 × 全量会膨胀到 ≈1GB，而 sixdim.js 是整表载入，会 OOM。
+ *   · 停办项目（EV_RETIRED_DAY ≤ 年末）不计分；双轨各 1.0
  *
  *   ★ 查询语义（与累计维不同）：M5 是「此刻位置」，as-of=Y 取**最近快照**
  *     （year ≤ asOf 的最大 year），不是跨年求和。
@@ -150,19 +157,24 @@ async function main() {
       const w = W[ev] == null ? (RN.WEIGHT_V2_CFG ? RN.WEIGHT_V2_CFG.floor : 1) : W[ev];
       const arr = [...m.entries()];
       arr.sort((a, b) => (a[1].b - b[1].b) || (a[1].bd - b[1].bd));
-      const take = Math.min(deep, arr.length);
+      /* M5-F3 标定：该年末的世界最佳 cost + 第 PCT 分位 cost → D0（逐项目、逐年标定）
+         各项目第1%分位的 d 差异达 9 倍，必须逐个标定，否则集中型项目会系统性虚高 */
+      const wr = arr.length ? arr[0][1].b : 0;
+      const p1 = arr.length ? arr[Math.max(0, Math.floor(arr.length * CFG_PCT))][1].b : 0;
+      const D0 = (wr > 0 && p1 > 0) ? 1 - wr / p1 : 0;
+      /* 深度：仅最新年份全量（站点实际取用的快照）；历史年份限深以控体积
+         ——45 年 × 全量会膨胀到 ≈1GB，sixdim.js 整表载入会 OOM */
+      const take = (y === LAST_YEAR) ? arr.length : Math.min(deep, arr.length);
       for (let rk = 1; rk <= take; rk++) {
         const [pi, s] = arr[rk - 1];
-        /* M5-F2（2026-10-28 晚）：默认**不计任何衰减**，score = w_e · rank^-GAMMA
-           GAMMA=0.5 软化名次权重（与主脚本 m5_current_rank.js 的 CFG.GAMMA 同参同式）；
-           旧档位（retire / pb / dual）保留，仅供对照 */
+        /* 衰减档保留仅供对照（定稿 'none' → dec = 1） */
         let dec = 1;
         if (CFG_DECAY_MODE !== 'none') {
           const gapR = (yEnd - s.ld) / 365, gapP = (yEnd - s.bd) / 365;
           const dR = Math.max(0.2, 1 - gapR / 5 * 0.8), dP = Math.max(0.2, 1 - gapP / 5 * 0.8);
           dec = CFG_DECAY_MODE === 'dual' ? dR * dP : CFG_DECAY_MODE === 'pb' ? dP : dR;
         }
-        const score = w * Math.pow(rk, -CFG_GAMMA) * dec;
+        const score = w * shapeScore(s.b, wr, D0) * dec;
         if (score <= 0) continue;
         facts.push(`${y}\t${pidArr[pi]}\t${ev}\t${kind === 0 ? 'single' : 'avg'}\t${rk}\t${score.toFixed(6)}`);
       }
@@ -173,9 +185,24 @@ async function main() {
     'year\tpid\tev\tkind\trank\tscore\n' + facts.join('\n') + '\n', 'utf8');
   console.log(`已写 M5_facts.tsv（${num(facts.length)} 行）耗时 ${((Date.now() - t0) / 1000).toFixed(0)}s`);
 }
-const CFG_DEPTH = 100;
+const CFG_DEPTH = 100;           // 仅**历史年份**的深度上限（最新年份全量，见 LAST_YEAR）
 const CFG_DECAY_MODE = 'none';   // M5-F2 定稿：'none'｜旧对照档 'retire' / 'pb' / 'dual'
-const CFG_GAMMA = 0.5;           // 名次权重指数（与 m5_current_rank.js 的 CFG.GAMMA 同步；2026-10-28 晚 1.0→0.5）
+const CFG_GAMMA = 0.5;           // 【已废】M5-F2 名次权重指数；F3 起改用成绩比值，保留仅供对照
+/* ── M5-F3（2026-10-29）：成绩比值 · 按项目标定的分段函数（与 m5_current_rank.js 同参同式）─
+ *   D0 = 1 − WR/P1（WR = 该年末世界最佳，P1 = 该年末第 1% 分位）  ← 逐项目、逐年标定
+ *   d  = 1 − WR/cost
+ *   d ≤ D0 : 1000 × (1 − (1−TARGET/1000)·d/D0)   ；  d > D0 : TARGET × (D0/d)^TAIL_H */
+const CFG_TARGET = 750;          // 第 1% 分位选手的分数（用户要求 700~800）
+const CFG_TAIL_H = 8;            // 长尾衰减指数
+const CFG_PCT = 0.01;            // 标定分位（前 1%）
+const LAST_YEAR = 2026;          // 最新年份**全量**输出（站点实际取用的快照）
+function shapeScore(cost, wr, D0) {
+  if (!(cost > 0) || !(wr > 0) || !(D0 > 0)) return 0;
+  const d = 1 - wr / cost;
+  if (d <= 0) return 1000;
+  if (d <= D0) return 1000 * (1 - (1 - CFG_TARGET / 1000) * (d / D0));
+  return CFG_TARGET * Math.pow(D0 / d, CFG_TAIL_H);
+}
 function log(...a) { console.log(...a); }
 
 main().catch((e) => { console.error(e); process.exit(1); });
