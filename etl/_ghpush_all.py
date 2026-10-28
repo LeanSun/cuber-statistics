@@ -2,9 +2,12 @@
 # -*- coding: utf-8 -*-
 """通过 GitHub API 推送本地最新提交的全部变更（git https 走代理 502 时的备用通道）。
 
-用法：python etl/_ghpush_all.py [父提交] —— 默认取 HEAD 的父提交做 diff。
+用法：python etl/_ghpush_all.py [父提交] [目标提交=HEAD] —— 默认取 HEAD 的父提交做 diff。
 对新增/修改文件逐个创建 blob，删除文件用 sha=null 的 tree 条目，
 最后一次性建 tree → commit → 更新 ref。
+
+显式给目标提交可以逐批推送一串本地提交（体积大的产物分批传，
+避开 GitHub blob 接口对大文件的拒绝），此时不需要反复 checkout。
 """
 import base64, json, os, subprocess, sys, time, urllib.request
 
@@ -48,8 +51,9 @@ def api(method, path, body=None, timeout=600):
 EXCLUDE = {'js/data.js', 'js/roster.js'}
 
 parent = sys.argv[1] if len(sys.argv) > 1 else sh(['git', 'rev-parse', 'HEAD^']).strip()
-message = sh(['git', 'log', '-1', '--pretty=%B', 'HEAD']).strip() or 'chore: sync'
-status = sh(['git', '-c', 'core.quotePath=false', 'diff', '--name-status', '--find-renames=0', parent, 'HEAD']).strip().split('\n')
+target = sys.argv[2] if len(sys.argv) > 2 else 'HEAD'
+message = sh(['git', 'log', '-1', '--pretty=%B', target]).strip() or 'chore: sync'
+status = sh(['git', '-c', 'core.quotePath=false', 'diff', '--name-status', '--find-renames=0', parent, target]).strip().split('\n')
 
 adds, dels = [], []
 for line in status:
