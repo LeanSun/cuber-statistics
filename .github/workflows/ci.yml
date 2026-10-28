@@ -38,9 +38,9 @@ jobs:
             if(mbo!=="6/6 47:58"){ console.error("mbo (old multi-blind) decode wrong: "+mbo); process.exit(1); }
             if(!M.eventBoards||!M.eventBoards["333"]||!M.eventBoards["333"].length) { console.error("event boards missing"); process.exit(1); }
             const b333=M.eventBoards["333"][0];
-            if(!b333||b333.id!=="2013PARK01"||b333.r!==1||b333.s!=="3.60"){ console.error("333 board top wrong (应取 ranks_single 单次名次1/3.60): "+JSON.stringify(b333)); process.exit(1); }
+            if(!b333||b333.id!=="2012PARK03"||b333.r!==1||b333.s!=="3.60"){ console.error("333 board top wrong (应取 ranks_single 单次名次1/3.60): "+JSON.stringify(b333)); process.exit(1); }
             const b333b=M.eventBoards["333"][1];
-            if(!b333b||b333b.id!=="2008FELI01"||b333b.r!==2||b333b.af!=="4.00"){ console.error("333 board #2 wrong: "+JSON.stringify(b333b)); process.exit(1); }
+            if(!b333b||b333b.id!=="2009ZEMD01"||b333b.r!==2||b333b.af!=="4.00"){ console.error("333 board #2 wrong: "+JSON.stringify(b333b)); process.exit(1); }
             const mboB=(M.eventBoards["333mbo"]||[])[0];
             if(!mboB||mboB.s!=="6/6 47:58"){ console.error("mbo board top wrong: "+JSON.stringify(mboB)); process.exit(1); }
             console.log("ETL smoke OK:",M.ranked.length,"players, mbf:",mbf,", mbo:",mbo,", boards:",Object.keys(M.eventBoards).length);
