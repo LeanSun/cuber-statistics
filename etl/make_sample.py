@@ -47,10 +47,14 @@ write('events', 'id\tname\trank\tformat',
        ['333mbo', '3x3x3 Multi-Blind Old Style', 7, 'multi']])
 
 # ---- persons ----
+# ★ 前四位刻意用真实 WCA ID（Feliks / Max Park / 王艺衡 / Mats Valk）：
+#   build.js 靠 pid 去 sixdim_site.tsv + sixdim_by_event.tsv 取六维分与按项目分解分，
+#   用假 ID 只能取到空值，「项目筛选」相关的冒烟断言（单项目快照有数据、切换项目
+#   后排序依据随之改变）会恒为空而假失败。成绩与赛事本身仍是合成 fixture。
 write('persons', 'wca_id\tsub_id\tname\tcountry_id\tgender',
-      [['2008FELI01', 1, 'Felix Zemdegs', 'AUS', 'm'],
-       ['2013PARK01', 1, 'Max Park', 'USA', 'm'],
-       ['2020WANG01', 1, 'Yiheng Wang', 'CHN', 'm'],
+      [['2009ZEMD01', 1, 'Felix Zemdegs', 'AUS', 'm'],
+       ['2012PARK03', 1, 'Max Park', 'USA', 'm'],
+       ['2019WANY36', 1, 'Yiheng Wang', 'CHN', 'm'],
        ['2008DENI01', 1, 'Mats Valk', 'NLD', 'm'],
        ['2018ZHAN01', 1, 'Anne Zhang', 'CHN', 'f'],
        ['2007HABA01', 1, 'Tim Habermaas', 'DEU', 'm']])
@@ -70,41 +74,42 @@ write('championships', 'competition_id\tchampionship_type',
 
 # ---- ranks_single ----
 write('ranks_single', 'person_id\tevent_id\tbest\tworld_rank\tcontinent_rank\tcountry_rank',
-      [['2013PARK01', '333', 360, 1, 1, 1],
-       ['2008FELI01', '333', 350, 2, 1, 1],
-       ['2020WANG01', '333', 370, 3, 1, 1],
+      [['2012PARK03', '333', 360, 1, 1, 1],
+       ['2009ZEMD01', '333', 350, 2, 1, 1],
+       ['2019WANY36', '333', 370, 3, 1, 1],
        ['2008DENI01', '333', 380, 4, 1, 1],
        ['2018ZHAN01', '333', 390, 5, 2, 2],
-       ['2013PARK01', '222', 120, 1, 1, 1],
-       ['2008FELI01', '222', 130, 2, 1, 1],
-       ['2020WANG01', '222', 140, 3, 1, 1],
-       ['2008FELI01', '333fm', 22, 1, 1, 1],
-       ['2020WANG01', '333fm', 23, 2, 1, 1],
-       ['2013PARK01', '333mbf', 590351300, 1, 1, 1],
-       ['2008FELI01', '333mbf', 330331203, 2, 1, 1],
+       ['2012PARK03', '222', 120, 1, 1, 1],
+       ['2009ZEMD01', '222', 130, 2, 1, 1],
+       ['2008DENI01', '222', 150, 4, 1, 1],
+       ['2009ZEMD01', '333fm', 22, 1, 1, 1],
+       ['2019WANY36', '333fm', 23, 2, 1, 1],
+       ['2012PARK03', '333mbf', 590351300, 1, 1, 1],
+       ['2009ZEMD01', '333mbf', 330331203, 2, 1, 1],
        ['2008DENI01', '333mbf', 370359804, 3, 1, 1],
-       ['2020WANG01', '333bf', 1400, 1, 1, 1],
+       ['2019WANY36', '333bf', 1400, 1, 1, 1],
        ['2018ZHAN01', '333bf', 1600, 2, 2, 2],
-       ['2013PARK01', '333oh', 900, 1, 1, 1],
-       ['2008FELI01', '333oh', 950, 2, 1, 1],
+       ['2012PARK03', '333oh', 900, 1, 1, 1],
+       ['2009ZEMD01', '333oh', 950, 2, 1, 1],
        # 旧多盲（旧编码 1SSAATTTTT：1 + (99-解出) + 尝试 + 用时秒数）
        ['2007HABA01', '333mbo', 1930602878, 1, 1, 1],
-       ['2013PARK01', '333mbo', 1940503265, 2, 2, 1],
+       ['2012PARK03', '333mbo', 1940503265, 2, 2, 1],
        ['2008DENI01', '333mbo', 1940803789, 3, 1, 2]])
 
 # ---- ranks_average ----
 write('ranks_average', 'person_id\tevent_id\tbest\tworld_rank\tcontinent_rank\tcountry_rank',
-      [['2008FELI01', '333', 400, 1, 1, 1],
-       ['2013PARK01', '333', 410, 2, 1, 1],
-       ['2020WANG01', '333', 420, 3, 1, 1],
+      [['2009ZEMD01', '333', 400, 1, 1, 1],
+       ['2012PARK03', '333', 410, 2, 1, 1],
+       ['2019WANY36', '333', 420, 3, 1, 1],
        ['2008DENI01', '333', 430, 4, 1, 1],
        ['2018ZHAN01', '333', 440, 5, 2, 2],
-       ['2013PARK01', '222', 150, 1, 1, 1],
-       ['2008FELI01', '222', 160, 2, 1, 1],
-       ['2013PARK01', '333oh', 950, 1, 1, 1],
-       ['2008FELI01', '333oh', 1000, 2, 1, 1],
-       ['2008FELI01', '333fm', 2350, 1, 1, 1],
-       ['2020WANG01', '333fm', 2450, 2, 1, 1]])
+       ['2012PARK03', '222', 150, 1, 1, 1],
+       ['2009ZEMD01', '222', 160, 2, 1, 1],
+       ['2008DENI01', '222', 180, 3, 1, 1],
+       ['2012PARK03', '333oh', 950, 1, 1, 1],
+       ['2009ZEMD01', '333oh', 1000, 2, 1, 1],
+       ['2009ZEMD01', '333fm', 2350, 1, 1, 1],
+       ['2019WANY36', '333fm', 2450, 2, 1, 1]])
 
 # ---- results ----
 # columns: competition_id event_id person_id round_type_id pos best average
@@ -124,50 +129,52 @@ def res(c, e, p, rt, pos, best, avg, rsr, rar, vals=''):
     R.append([_rid, c, e, p, rt, pos, best, avg, rsr, rar] + v)
 
 # WC2023 (world champ) — finals (round_type_id 'f')
-res('WC2023', '333', '2008FELI01', 'f', 1, 350, 400, 'WR', 'WR', '350,400,420,-1,380')
-res('WC2023', '333', '2013PARK01', 'f', 2, 360, 410, 'CR', 'CR')
+res('WC2023', '333', '2009ZEMD01', 'f', 1, 350, 400, 'WR', 'WR', '350,400,420,-1,380')
+res('WC2023', '333', '2012PARK03', 'f', 2, 360, 410, 'CR', 'CR')
 res('WC2023', '333', '2008DENI01', 'f', 3, 380, 430, 'NR', 'NR')
-res('WC2023', '222', '2013PARK01', 'f', 1, 120, 150, 'WR', 'WR')
-res('WC2023', '222', '2008FELI01', 'f', 2, 130, 160, 'CR', 'CR')
-res('WC2023', '333fm', '2008FELI01', 'f', 1, 22, 2350, 'WR', 'WR')
-res('WC2023', '333fm', '2020WANG01', 'f', 2, 23, 2450, 'NR', 'NR')
-res('WC2023', '333mbf', '2013PARK01', 'f', 1, 590351300, 0, 'WR', '')
-res('WC2023', '333mbf', '2008FELI01', 'f', 2, 330331203, 0, 'CR', '')
-res('WC2023', '333bf', '2020WANG01', 'f', 1, 1400, 0, 'WR', '')
+res('WC2023', '222', '2012PARK03', 'f', 1, 120, 150, 'WR', 'WR')
+res('WC2023', '222', '2009ZEMD01', 'f', 2, 130, 160, 'CR', 'CR')
+res('WC2023', '222', '2008DENI01', 'f', 3, 150, 180, 'NR', 'NR')
+res('WC2023', '333fm', '2009ZEMD01', 'f', 1, 22, 2350, 'WR', 'WR')
+res('WC2023', '333fm', '2019WANY36', 'f', 2, 23, 2450, 'NR', 'NR')
+res('WC2023', '333mbf', '2012PARK03', 'f', 1, 590351300, 0, 'WR', '')
+res('WC2023', '333mbf', '2009ZEMD01', 'f', 2, 330331203, 0, 'CR', '')
+res('WC2023', '333bf', '2019WANY36', 'f', 1, 1400, 0, 'WR', '')
 res('WC2023', '333bf', '2018ZHAN01', 'f', 2, 1600, 0, 'NR', '')
 
 # CC2022 (Asian champ, championship_type Asia -> CC)
-res('CC2022', '333', '2020WANG01', 'f', 1, 370, 420, 'CR', 'CR')
+res('CC2022', '333', '2019WANY36', 'f', 1, 370, 420, 'CR', 'CR')
 res('CC2022', '333', '2018ZHAN01', 'f', 2, 390, 440, 'NR', 'NR')
-res('CC2022', '333', '2013PARK01', 'f', 3, 365, 415, '', '')
-res('CC2022', '222', '2020WANG01', 'f', 1, 140, 150, 'CR', 'CR')
+res('CC2022', '333', '2012PARK03', 'f', 3, 365, 415, '', '')
+# 222 只留给 Max / Felix / Mats（都在六维分人群内）：这样「333」与「222」两份
+# 单项目快照的名单和排序会真实分叉，而不是同一批人换了个分数。
 res('CC2022', '222', '2018ZHAN01', 'f', 2, 150, 160, 'NR', 'NR')
 
 # NAC2021 (US Nationals, not a championship)
-res('NAC2021', '333', '2013PARK01', 'f', 1, 355, 405, 'NR', 'NR')  # Max US -> NC
-res('NAC2021', '333', '2008FELI01', 'f', 2, 345, 395, 'WR', 'WR')  # Felix AUS -> OP
-res('NAC2021', '333oh', '2013PARK01', 'f', 1, 900, 950, 'WR', 'WR')  # NC
+res('NAC2021', '333', '2012PARK03', 'f', 1, 355, 405, 'NR', 'NR')  # Max US -> NC
+res('NAC2021', '333', '2009ZEMD01', 'f', 2, 345, 395, 'WR', 'WR')  # Felix AUS -> OP
+res('NAC2021', '333oh', '2012PARK03', 'f', 1, 900, 950, 'WR', 'WR')  # NC
 
 # v2 导出口径：洲际纪录用洲代码（ER / NAR / OcR…），验证 CR 能正确统计
 res('OP2020', '333', '2008DENI01', 'f', 1, 379, 429, 'ER', 'ER')      # Mats Valk(NLD) -> 欧洲纪录
-res('NAC2021', '333', '2013PARK01', 'c', 2, 356, 406, 'NAR', 'NAR')   # Max Park(USA) -> 北美纪录
+res('NAC2021', '333', '2012PARK03', 'c', 2, 356, 406, 'NAR', 'NAR')   # Max Park(USA) -> 北美纪录
 res('GO2008', '333', '2007HABA01', 'f', 1, 900, 990, 'ER', '')        # Tim Habermaas(DEU) -> 欧洲纪录
-res('NAC2021', '333oh', '2008FELI01', 'f', 2, 950, 1000, 'CR', 'CR')  # OP
+res('NAC2021', '333oh', '2009ZEMD01', 'f', 2, 950, 1000, 'CR', 'CR')  # OP
 
 # OP2020 (Open Holland, not a championship)
 res('OP2020', '333', '2008DENI01', 'f', 1, 375, 425, 'NR', 'NR')  # Mats NLD -> NC
 res('OP2020', '333', '2018ZHAN01', 'f', 2, 380, 450, '', '')  # Anne CHN -> OP
-res('OP2020', '333', '2008FELI01', 'f', 3, 360, 410, 'WR', 'WR')  # OP
+res('OP2020', '333', '2009ZEMD01', 'f', 3, 360, 410, 'WR', 'WR')  # OP
 res('OP2020', '333mbf', '2008DENI01', 'f', 1, 370359804, 0, 'WR', '')
 
 # GO2008 (German Open, not a championship) — 旧多盲 333mbo（已停办项目）
 # 旧编码：1 + (99-解出) + 尝试 + 用时秒数
 res('GO2008', '333mbo', '2007HABA01', 'f', 1, 1930602878, 0, 'WR', '')   # 6/6 47:58
-res('GO2008', '333mbo', '2013PARK01', 'f', 2, 1940503265, 0, 'CR', '')   # 5/5 54:25
+res('GO2008', '333mbo', '2012PARK03', 'f', 2, 1940503265, 0, 'CR', '')   # 5/5 54:25
 res('GO2008', '333mbo', '2008DENI01', 'f', 3, 1940803789, 0, 'NR', '')   # 5/8 1:03:09
 
 # a non-final round row (should be excluded from podiums)
-res('WC2023', '333', '2008FELI01', 's', 1, 360, 0, '', '')
+res('WC2023', '333', '2009ZEMD01', 's', 1, 360, 0, '', '')
 
 write('results', 'id\tcompetition_id\tevent_id\tperson_id\tround_type_id\tpos\tbest\taverage\tregional_single_record\tregional_average_record\tvalue1\tvalue2\tvalue3\tvalue4\tvalue5', R)
 
