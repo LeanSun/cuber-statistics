@@ -1,33 +1,46 @@
 /**
- * M5 · 当前排名（Current World Rank）
+ * M5 · 当前排名（Current World Rank）· M5-F2
  * ═══════════════════════════════════════════════════════════════════════
- * M5 问的是「**现在**」，与 M1–M4 的「**已经做过多少**」严格区分：
+ * M5 问的是「**此刻你持有**着什么位置」，与 M1–M4 的「**已经做过多少**」严格区分：
  *   M1 纪录持有  M2 领奖台总量  M3 锦标赛破纪录  M4 历史占席时长
- *   M5 = 此刻你在世界各项目榜单上处于什么位置
+ *   M5 = 此刻你**持有**世界各项目榜单的第几名（纯名次，无时间项）
  *
  * ⚠️ 关键事实：WCA 的 `ranks_single.tsv` / `ranks_average.tsv` **不是「当前排名」**，
  *    而是「按 PB 排序的**终身榜**」—— 退役 10 年的人只要 PB 没被超越，
- *    仍显示第 5 名。这正是 M5 必须做「退役衰减」的根本原因。
+ *    仍显示第 5 名。
  *
- * ⚠️ 第二层修正（M5-F1 定稿）：**退役衰减只惩罚「完全不参赛的人」**，
- *    完全不惩罚「还在参赛、但名次是几年前刷出来的僵尸名次」。
- *    实测深度≤100 的 3,346 条目里有 617 条属于此类，占 M5 贡献的 15.92%。
- *    → 定稿口径在「参赛新鲜度」之外**再乘一个「PB 新鲜度」衰减**。
+ * ★★ **M5-F2（2026-10-28，用户拍板）：口径改为纯名次，去掉一切时间衰减。**
+ *    M5-F1 曾用「参赛新鲜度 × PB 新鲜度」两层衰减去压制终身榜带来的僵尸名次。
+ *    实测（`M5_去衰减对照探针.md`）发现这套装置**贵而钝**：
+ *      · 头部几乎无感 —— 去掉衰减后 Top5 只有 Max Park 与王艺衡互换一个身位，
+ *        与 §4.6「16 档衰减参数 Top5 全一致」同源 ⇒ 在头部它是一台空转的机器；
+ *      · 长尾剧变 —— Maciej Czapiewski #1161→#299；Stanley Chapel #14→#6
+ *        （靠 6.83 年前的 PB 回血 +0.6513）；林恺俊的 `333mbf` PB 已 10.55 年；
+ *        Feliks Zemdegs #86→#59；
+ *      · P1 病灶（活跃但 PB≥2 年）贡献由 9.56% 回到 16.01%。
+ *    为「5 年 / 下限 0.2」这两个魔法参数付掉可解释性，却不治头部的病 → 砍。
  *
- * 计分公式（唯一权威）：
- *   M5 = Σ_{e,t} w_e · g(rank_{e,t}) · decay(gapR_{e,t}) · decay(gapP_{e,t})
+ * ★ M5-F2 定性：**名字仍叫「当前排名」，但不再用时间衰减去「制造」当前**。
+ *    它如实读作一张终身 PB 榜上的名次，不再假装自己知道「你现在状态好不好」。
+ *    「当下」的时间表达交给 M1（纪录持有时长）与 M4（统治力），M5 不再重复表达。
+ *    （用户 2026-10-28 明确：M5 的名称一律保持「当前排名」，不做改名。）
+ *
+ * 计分公式（唯一权威，M5-F2）：
+ *   M5 = Σ_{e,t} w_e · g(rank_{e,t})
  *
  *   e,t      = 项目 × 轨道（single / average）
  *   w_e      = EV_WEIGHT_V2（三阶 1.0000 全站最高）
  *   g(rank)  = rank^-1.0          名次 1 → 1.0，第 10 → 0.1
- *   gapR     = 距「在该项目内」最后一次参赛的年数（退役新鲜度）
- *   gapP     = 距「在该项目该轨道内 PB 达成」的年数（名次新鲜度）
- *   decay    = max(FLOOR, 1 - gap/5 × (1-FLOOR))   线性衰减，第 5 年触底
  *
- *   ★ DECAY_MODE 旋钮（实证见报告 §6.7）：
- *     'retire' = V0 现状（只乘 decay(gapR)）—— 1,257 人 / 93.0158
- *     'pb'     = F2 只乘 decay(gapP) —— 1,257 人 / 78.6009
- *     'dual'   = F3 两项相乘（**定稿采用**）—— 1,257 人 / 76.8139
+ *   ⚠️ 无 gapR / gapP / decay 项：时间不参与计分。
+ *     gapR（距该项目末次参赛年数）、gapP（距该轨 PB 达成年数）仍作为**展示列**输出，
+ *     便于人工识别僵尸条目，但不进公式。
+ *
+ *   ★ DECAY_MODE 旋钮（旧档位保留仅供对照，实证见 `M5_去衰减对照探针.md`）：
+ *     'none'   = M5-F2 定稿：**不计任何衰减** —— 1,257 人 / 95.8849
+ *     'retire' = M5-v1 只乘 decay(gapR) —— 1,257 人 / 93.0156
+ *     'pb'     = M5-v4 只乘 decay(gapP) —— 1,257 人 / 78.6007
+ *     'dual'   = M5-F1 两项相乘（旧定稿，已废） —— 1,257 人 / 76.8137
  *
  * 用法：node --max-old-space-size=8192 etl/score/m5_current_rank.js
  */
@@ -54,7 +67,7 @@ const CFG = {
   GAMMA: 1.0,              // 名次权重指数 g(r) = r^-GAMMA
   DECAY_YEARS: 5,          // 衰减：第 5 年触底
   DECAY_FLOOR: 0.2,        // 衰减下限（只衰减不归零）
-  DECAY_MODE: 'dual',      // 'retire' = 只看参赛新鲜度(V0)｜'pb' = 只看 PB 新鲜度(F2)｜'dual' = 两者相乘(F3，定稿)
+  DECAY_MODE: 'none',      // 'none' = M5-F2 定稿：不计任何衰减｜'retire' = 只乘 gapR｜'pb' = 只乘 gapP｜'dual' = 两者相乘（M5-F1，已废）
   SKIP_RETIRED: true,      // 停办项目（magic/mmagic/333mbo/333ft）不计入
   TRACK_WEIGHT: { single: 1, average: 1 },   // 单次/平均双轨各计一次
   RANK_MODE: 'official',   // 'official' = 用 WCA 官方终身榜；'window' = 近 N 天窗口重排名
@@ -252,6 +265,7 @@ function pearson(xs, ys) {
    *  'dual'   = F3（定稿）：两者相乘
    */
   const decCombo = (gR, gP) => {
+    if (CFG.DECAY_MODE === 'none') return 1;        // M5-F2 定稿：无时间项
     const dR = decayOf(gR);
     if (CFG.DECAY_MODE === 'pb') return decayOf(gP);
     if (CFG.DECAY_MODE === 'dual') return dR * decayOf(gP);
@@ -368,7 +382,7 @@ function pearson(xs, ys) {
       const gR = lc == null ? 99 : yrs(lc);
       const gP = pbGapOf(x.pid, x.ev, x.tr);
       const dR = decayOf(gR), dP = decayOf(gP);
-      const d = mode === 'pb' ? dP : mode === 'dual' ? dR * dP : dR;
+      const d = mode === 'none' ? 1 : mode === 'pb' ? dP : mode === 'dual' ? dR * dP : dR;
       const w = W[x.ev] == null ? FLOOR : W[x.ev];
       const s = w * rankScore(x.wr) * d * tw;
       if (s <= 0) continue;
@@ -428,20 +442,30 @@ function pearson(xs, ys) {
   L.push('# M5 当前排名（Current World Rank）');
   L.push('');
   L.push('> 生成脚本 `etl/score/m5_current_rank.js`｜数据快照 **' + SNAPSHOT + '**｜WCA 导出 **v2.0.2 / v288**');
-  L.push('> 口径状态：**✅ 已定稿并封存（M5-F1，2026-10-25）**｜封存文件 `M5_封存_2026-10-25.md`');
+  L.push('> 口径状态：**✅ 已定稿并封存（M5-F2，2026-10-28）**｜封存文件 `M5_封存_M5-F2_2026-10-28.md`');
+  L.push('> M5-F1 的双衰减口径已于同日下线，历史记录见 `M5_封存_2026-10-25.md`（不再作为回归基准）');
   L.push('');
   L.push('## 0 一句话');
   L.push('');
   L.push('**M5 = 你现在站在世界各项目榜单的什么位置上。**');
   L.push('');
-  L.push('M1–M4 全在回答「**过去做了多少**」；M5 回答「**现在如何**」。');
-  L.push('一个人可以历史上拿过很多冠军（M2）但今天已退出竞技；');
-  L.push('M5 只看此刻的名次，**历史不被抹掉（M1–M4 独立保留），当下也不被历史绑架**。');
+  L.push('M1–M4 全在回答「**过去做了多少**」；M5-F2 回答「**此刻你持有第几名**」。');
+  L.push('★ M5-F2（2026-10-28）砍掉全部时间衰减：**名称不变（仍叫「当前排名」），去掉时间旋钮**。');
+  L.push('  读数就是名次本身，不再自行引入「5 年 / 下限 0.2」这类魔法参数。');
+  L.push('  一个 2010 年退役的人若 PB 未被超越，他**确实仍持有**那个名次 —— M5 如实承认；');
+  L.push('  「守了多久」由 M1 表达，「压了对手多久」由 M4 表达，M5 不再重复表达时间。');
   L.push('');
 
   L.push('## 1 口径');
   L.push('');
-  L.push('### 1.1 为什么必须做「两层新鲜度衰减」');
+  L.push('### 1.1 为什么不引入时间衰减（M5-F2 口径说明）');
+  L.push('');
+  L.push('> **旧口径 M5-F1 曾做两层新鲜度衰减**：decay(gapR) × decay(gapP)。');
+  L.push('> 2026-10-28 实测（`M5_去衰减对照探针.md`）后整体砍掉，理由两条：');
+  L.push('> ① **头部无感** —— 去掉后 Top5 只有 Max Park 与王艺衡互换一个身位，');
+  L.push('>    且与 §6.7「16 档衰减参数 Top5 全一致」同源，说明它在头部空转；');
+  L.push('> ② 为两个魔法参数（5 年 / 0.2）付掉了可解释性，却在长尾之外几乎不改变结论。');
+  L.push('> 下面的观测事实仍然成立（终身榜里确实躺着陈旧名次），但它是**定性说明，不进公式**。');
   L.push('');
   L.push('**WCA 的 `ranks_*.tsv` 不是「当前排名」，而是「按 PB 排序的终身榜」。**');
   L.push('一个 2010 年就退役的人，只要他的 PB 没被超越，2026 年仍然显示第 5 名。');
@@ -471,7 +495,11 @@ function pearson(xs, ys) {
   L.push('### 1.2 公式');
   L.push('');
   L.push('```');
-  L.push('M5 = Σ_{e,t} w_e · g(rank_{e,t}) · decay(gapR_{e,t}) · decay(gapP_{e,t})');
+  L.push((CFG.DECAY_MODE === 'none'
+    ? 'M5 = Σ_{e,t} w_e · g(rank_{e,t})   ← 纯名次，无时间项（M5-F2）'
+    : 'M5 = Σ_{e,t} w_e · g(rank_{e,t}) · ' + (CFG.DECAY_MODE === 'dual'
+      ? 'decay(gapR_{e,t}) · decay(gapP_{e,t})'
+      : CFG.DECAY_MODE === 'pb' ? 'decay(gapP_{e,t})' : 'decay(gapR_{e,t})')));
   L.push('');
   L.push('  e,t      = 项目 × 轨道（single / average），共 ' + perEvent.size + ' 个有数据的组合');
   L.push('  w_e      = EV_WEIGHT_V2（三阶 1.0000 全站最高）');
@@ -479,18 +507,22 @@ function pearson(xs, ys) {
   L.push('  rank     = ' + (CFG.RANK_MODE === 'window'
     ? '**近 ' + CFG.WINDOW_DAYS + ' 天窗口内实际最好成绩的重排名**（序号口径）'
     : '官方 `world_rank`（终身 PB 榜）'));
-  L.push('  gapR     = 距「在该项目内」最后一次参赛的年数');
-  L.push('  gapP     = 距「在该项目该轨道内 PB 达成」的年数（PB 首次写下的那天）');
-  L.push('  decay    = max(' + CFG.DECAY_FLOOR.toFixed(1) + ', 1 - gap/' + CFG.DECAY_YEARS + ' × ' + (1 - CFG.DECAY_FLOOR).toFixed(1) + ')');
-  L.push('             线性衰减，第 ' + CFG.DECAY_YEARS + ' 年触底为 ' + CFG.DECAY_FLOOR.toFixed(1) + '（只衰减不归零）');
+  L.push('  gapR     = 距「在该项目内」最后一次参赛的年数'
+    + (CFG.DECAY_MODE === 'none' ? '（**仅展示列，不进公式**）' : ''));
+  L.push('  gapP     = 距「在该项目该轨道内 PB 达成」的年数（PB 首次写下的那天）'
+    + (CFG.DECAY_MODE === 'none' ? '（**仅展示列，不进公式**）' : ''));
+  if (CFG.DECAY_MODE !== 'none') {
+    L.push('  decay    = max(' + CFG.DECAY_FLOOR.toFixed(1) + ', 1 - gap/' + CFG.DECAY_YEARS + ' × ' + (1 - CFG.DECAY_FLOOR).toFixed(1) + ')');
+    L.push('             线性衰减，第 ' + CFG.DECAY_YEARS + ' 年触底为 ' + CFG.DECAY_FLOOR.toFixed(1) + '（只衰减不归零）');
+  }
   L.push('');
   L.push('  轨道权重 = single ' + CFG.TRACK_WEIGHT.single + ' / average ' + CFG.TRACK_WEIGHT.average + '（双轨各计一次）');
   L.push('  排名深度 = 只算世界前 ' + CFG.DEPTH + '（超出为 0 分）');
   L.push('```');
   L.push('');
   L.push('> **当前运行口径：`RANK_MODE = ' + CFG.RANK_MODE + '`，`DECAY_MODE = ' + CFG.DECAY_MODE + '`**');
-  L.push('> （`DECAY_MODE`：`retire` = 只乘 decay(gapR)｜`pb` = 只乘 decay(gapP)｜`dual` = 两者相乘 = **定稿**）');
-  L.push('> 三口径的完整实测对照见本报告 §6.7 与独立文档 `M5_口径审阅报告.md`。');
+  L.push('> （`DECAY_MODE`：`none` = **不计衰减（M5-F2 定稿）**｜`retire` = 只乘 decay(gapR)｜`pb` = 只乘 decay(gapP)｜`dual` = 两者相乘（M5-F1，已废））');
+  L.push('> 四口径的完整实测对照见独立文档 `M5_去衰减对照探针.md`。');
   L.push('');
   L.push('### 1.3 边界处理');
   L.push('');
@@ -1141,11 +1173,11 @@ function pearson(xs, ys) {
   L.push('## 8 已知边界');
   L.push('');
   if (CFG.RANK_MODE === 'official') {
-    L.push('1. **官方 ranks 是终身榜不是当前榜** —— M5 用「两层新鲜度衰减」近似修正：');
-    L.push('   ① 参赛新鲜度（gapR）罚「不参赛」；');
-    L.push('   ② 名次新鲜度（gapP）罚「名次陈旧」—— **P1 病灶已被双衰减修正**（§6.7.2：贡献降约 50%）；');
-    L.push('   但**两者都是衰减而非重排**，所以官方 #1 仍是官方 #1（除 §6.7.3 的少数组合）。');
-    L.push('   → 若要彻底改成「近 N 天窗口重排名」，代码已支持（`RANK_MODE = "window"`），');
+    L.push('1. **官方 ranks 是终身榜不是当前榜** —— M5-F2 **接受这个事实**：它就等于这张终身榜本身。');
+    L.push('   gapR（未参赛年数）/ gapP（PB 陈旧年数）仍随明细输出，**但只作展示，不进公式**。');
+    L.push('   代价：退役 10 年而 PB 未被超越的人，会保有其名次的全额权重');
+    L.push('   （实测 Feliks #59、Stanley Chapel #6、林恺俊靠 10.55 年前的 `333mbf` 计分）。');
+    L.push('   → 若要改成「近期实际表现」，代码已支持（`RANK_MODE = "window"`），');
     L.push('   但该口径存在**语义脱钩**（与官方榜平均 ρ 仅 0.8222，`222|single` 低至 0.2456）');
     L.push('   与**深度截断失效**（`555bf|average` 窗口仅 68 人）两大问题，**故不作为主口径**。');
   } else {
@@ -1162,13 +1194,13 @@ function pearson(xs, ys) {
     L.push('5. **窗口口径用序号排名，同值按「达成日 → 姓名」定序** —— 不用官方同名次，');
     L.push('   否则并列会把深度截断冲破（实测 12,227 条 > 3,300 上限）。');
   }
-  L.push('6. **衰减下限 ' + CFG.DECAY_FLOOR.toFixed(1) + ' 是硬底线** —— 长期不参赛者在该组合仍保留 20% 权重，');
-  L.push('   这是「只衰减不归零」的设计（与 M1–M4 的历史保留原则一致）。');
+  L.push('6. **（M5-F2 起失效）** 旧口径的「衰减下限 0.2」已随双衰减一起下线；');
+  L.push('   M5-F2 里不存在任何时间折扣，长期不参赛者在该组合保留 **100%** 名次权重。');
   L.push('7. **官方 ranks 只提供现势快照** —— M4 必须重建历史 PB（官方没有历史序列）；');
   L.push('   M5 在 `official` 口径下直接采信官方榜，在 `window` 口径下从 `results.tsv` 自行重排名。');
-  L.push('8. **双衰减是乘法，会让「既久未参赛 + 名次陈旧」的人被双重打折** —— 这是有意的：');
-  L.push('   两个条件都成立时，「现在还排第几」这件事的真实性更低。');
-  L.push('   但极端情况下权重会低到接近 0（gapR=5y 且 gapP=5y → 0.2×0.2=0.04），');
+  L.push('8. **（M5-F2 起失效）** 旧口径「既久未参赛 + 名次陈旧 → 双重打折」已下线；');
+  L.push('   M5-F2 一律按名次全额计分，无论这个名次是昨天还是十年前刷出来的。');
+  L.push('   （旧口径极端情况下权重曾低到 0.04（gapR=5y 且 gapP=5y → 0.2×0.2），');
   L.push('   实测 Top25 无人因此掉出前 25，量级可控。');
   L.push('9. **M5 未接入 build.js** —— 站点现行总分仍是 esum（旧的单一口径）。');
   L.push('   接入方案与六维归一化待模型全部完善后统一处理（见 §7）。');
