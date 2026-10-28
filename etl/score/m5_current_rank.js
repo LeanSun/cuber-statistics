@@ -30,7 +30,13 @@
  *
  *   e,t      = 项目 × 轨道（single / average）
  *   w_e      = EV_WEIGHT_V2（三阶 1.0000 全站最高）
- *   g(rank)  = rank^-1.0          名次 1 → 1.0，第 10 → 0.1
+ *   g(rank)  = rank^-GAMMA       名次 1 → 1.0；GAMMA=0.5 时第 10 → 0.316、第 100 → 0.1
+ *
+ *   ★ GAMMA 旋钮（软化名次权重，2026-10-28 晚采纳 α=0.5）：
+ *     1.0 = M5-F2 初版（rank^-1，极陡，前 5.4% 人占 50% 分；Feliks 仅 9.7% 榜首）
+ *     0.5 = **现行定稿**：rank^-0.5，把「握第一」与「广泛顶尖」的差距从 10× 压到 3×，
+ *           长尾整体抬升（中位数 0.022→0.148），Feliks 升至 ≈32% 榜首
+ *     0.4 = 更激进（≈2.5× 差距），更接近「进前 100 的项数」，名次信号被稀释
  *
  *   ⚠️ 无 gapR / gapP / decay 项：时间不参与计分。
  *     gapR（距该项目末次参赛年数）、gapP（距该轨 PB 达成年数）仍作为**展示列**输出，
@@ -64,7 +70,7 @@ const num = (v) => Number(v).toLocaleString('en-US');
 /* ── 口径旋钮 ─────────────────────────────────────────────────────── */
 const CFG = {
   DEPTH: 100,              // 排名深度：只算世界前 100（超出即 0 分）
-  GAMMA: 1.0,              // 名次权重指数 g(r) = r^-GAMMA
+  GAMMA: 0.5,              // 名次权重指数 g(r) = r^-GAMMA（2026-10-28 晚：1.0→0.5，软化名次权重）
   DECAY_YEARS: 5,          // 衰减：第 5 年触底
   DECAY_FLOOR: 0.2,        // 衰减下限（只衰减不归零）
   DECAY_MODE: 'none',      // 'none' = M5-F2 定稿：不计任何衰减｜'retire' = 只乘 gapR｜'pb' = 只乘 gapP｜'dual' = 两者相乘（M5-F1，已废）
@@ -503,7 +509,7 @@ function pearson(xs, ys) {
   L.push('');
   L.push('  e,t      = 项目 × 轨道（single / average），共 ' + perEvent.size + ' 个有数据的组合');
   L.push('  w_e      = EV_WEIGHT_V2（三阶 1.0000 全站最高）');
-  L.push('  g(rank)  = rank^-' + CFG.GAMMA.toFixed(1) + '          （第 1 名 = 1.0，第 10 名 = 0.1）');
+  L.push('  g(rank)  = rank^-' + CFG.GAMMA + '          （第 1 名 = 1.0，第 10 名 = ' + Math.pow(10, -CFG.GAMMA).toFixed(3) + '，第 100 名 = ' + Math.pow(100, -CFG.GAMMA).toFixed(3) + '）');
   L.push('  rank     = ' + (CFG.RANK_MODE === 'window'
     ? '**近 ' + CFG.WINDOW_DAYS + ' 天窗口内实际最好成绩的重排名**（序号口径）'
     : '官方 `world_rank`（终身 PB 榜）'));
@@ -963,9 +969,9 @@ function pearson(xs, ys) {
   L.push('');
   L.push('**这是 M5-F1 的核心决策实验。** 三个口径用**同一份数据**、**同一段代码**重算：');
   L.push('');
-  L.push('- **V0（retire）**：`w · rank^-1 · decay(gapR)` —— 旧口径，只罚「不参赛」；');
-  L.push('- **F2（pb）**：`w · rank^-1 · decay(gapP)` —— 只罚「名次陈旧」；');
-  L.push('- **F3（dual）**：`w · rank^-1 · decay(gapR) · decay(gapP)` —— 两项相乘（**定稿采用**）。');
+  L.push('- **V0（retire）**：`w · rank^-GAMMA · decay(gapR)` —— 旧口径，只罚「不参赛」；');
+  L.push('- **F2（pb）**：`w · rank^-GAMMA · decay(gapP)` —— 只罚「名次陈旧」；');
+  L.push('- **F3（dual）**：`w · rank^-GAMMA · decay(gapR) · decay(gapP)` —— 两项相乘（**定稿采用**）。');
   L.push('');
   {
     /* 站点现行 esum 用 siteEsum（已在前面忠实复刻，见 computeMode 之后的定义）。 */

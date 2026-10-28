@@ -9,8 +9,8 @@
  *   对每个年末 Y、每个 (ev, track)：
  *     rank = 按「截至 Y 的历史最好成绩」升序名次（并列按达成日先者居前）
  *
- *   ★ M5-F2（2026-10-28）：**去掉一切时间衰减**，与 m5_current_rank.js 的 none 口径同参同式：
- *       M5_row = w_e × rank^-1
+ *   ★ M5-F2（2026-10-28 晚）：**去掉一切时间衰减 + 软化名次权重**，与 m5_current_rank.js 同参同式：
+ *       M5_row = w_e × rank^-GAMMA   （GAMMA=0.5：第1名=1.0，第10名=0.316，第100名=0.1）
  *     旧式带 dR/dP 双衰减的版本保留为 `CFG_DECAY_MODE = 'dual'` 对照档（已废）。
  *     无衰减后，年末快照的语义反而更干净：**「Y 年末谁持有哪些名次」**。
  *   · 深度 = 前 100；停办项目（EV_RETIRED_DAY ≤ 年末）不计分；双轨各 1.0
@@ -153,15 +153,16 @@ async function main() {
       const take = Math.min(deep, arr.length);
       for (let rk = 1; rk <= take; rk++) {
         const [pi, s] = arr[rk - 1];
-        /* M5-F2（2026-10-28）：默认**不计任何衰减**，score = w_e · rank^-1
-           旧档位（retire / pb / dual）保留，仅供对照 —— 与主脚本 m5_current_rank.js 同参同式 */
+        /* M5-F2（2026-10-28 晚）：默认**不计任何衰减**，score = w_e · rank^-GAMMA
+           GAMMA=0.5 软化名次权重（与主脚本 m5_current_rank.js 的 CFG.GAMMA 同参同式）；
+           旧档位（retire / pb / dual）保留，仅供对照 */
         let dec = 1;
         if (CFG_DECAY_MODE !== 'none') {
           const gapR = (yEnd - s.ld) / 365, gapP = (yEnd - s.bd) / 365;
           const dR = Math.max(0.2, 1 - gapR / 5 * 0.8), dP = Math.max(0.2, 1 - gapP / 5 * 0.8);
           dec = CFG_DECAY_MODE === 'dual' ? dR * dP : CFG_DECAY_MODE === 'pb' ? dP : dR;
         }
-        const score = w * (1 / rk) * dec;
+        const score = w * Math.pow(rk, -CFG_GAMMA) * dec;
         if (score <= 0) continue;
         facts.push(`${y}\t${pidArr[pi]}\t${ev}\t${kind === 0 ? 'single' : 'avg'}\t${rk}\t${score.toFixed(6)}`);
       }
@@ -174,6 +175,7 @@ async function main() {
 }
 const CFG_DEPTH = 100;
 const CFG_DECAY_MODE = 'none';   // M5-F2 定稿：'none'｜旧对照档 'retire' / 'pb' / 'dual'
+const CFG_GAMMA = 0.5;           // 名次权重指数（与 m5_current_rank.js 的 CFG.GAMMA 同步；2026-10-28 晚 1.0→0.5）
 function log(...a) { console.log(...a); }
 
 main().catch((e) => { console.error(e); process.exit(1); });

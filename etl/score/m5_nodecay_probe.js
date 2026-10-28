@@ -4,7 +4,8 @@
  * 动因：用户主张「时间衰减毫无意义」，要求去掉 M5 里的全部 decay。
  * 本脚本**完全不碰主脚本**，只用冻结产物 `M5_by_event.tsv` 反算：
  *
- *   none 口径分数 = Σ (score / decay) ≡ Σ w_e · rank^-1.0 · track_weight
+ *   none 口径分数 = Σ (score / decay) ≡ Σ w_e · rank^-GAMMA · track_weight
+ *   （GAMMA 取自主脚本 CFG.GAMMA；本探针只反算，不动口径）
  *
  * （`M5_by_event.tsv` 的 score 列是 dual 口径乘积，decay = dR×dP，除法即可还原裸分）
  *
@@ -86,7 +87,7 @@ const L = [];
 L.push('# M5「去衰减」对照探针');
 L.push('');
 L.push('> 数据：`M5_by_event.tsv`（M5-F1 冻结产物，' + rows.length + ' 条）');
-L.push('> `none` 口径 = Σ w_e · rank^-1.0（无任何时间项）；其余三档为对照');
+L.push('> `none` 口径 = Σ w_e · rank^-GAMMA（无任何时间项，GAMMA 取自主脚本）；其余三档为衰减对照');
 L.push('> 自洽校验：重算的 `w·wr^-1.0·decay` 与 TSV 记录的 `score` 最大偏差 = **'
   + maxDelta.toExponential(2) + '**' + (maxDelta < 5e-4 ? ' ✓（TSV 保留 4 位小数的舍入噪声）' : ' ⚠'));
 L.push('');
