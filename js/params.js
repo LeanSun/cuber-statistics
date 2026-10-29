@@ -83,7 +83,7 @@
   const LABEL = {
     b1: ['M1 纪录持有 权重 w₁', 'M1 record ownership weight'], b2: ['M2 领奖台 权重 w₂', 'M2 podium weight'],
     b3: ['M3 大赛表现 权重 w₃', 'M3 championship performance weight'], b4: ['M4 统治力 权重 w₄', 'M4 dominance weight'],
-    b5: ['M5 当前排名 权重 w₅', 'M5 current ranking weight'], b6: ['M6 当前水平 权重 w₆', 'M6 current level weight'],
+    b5: ['M5 当前排名 权重 w₅', 'M5 current ranking weight'], b6: ['M6 突破幅度 权重 w₆', 'M6 breakthrough margin weight'],
     b7: ['（已停用）旧 M7 对战强度', '(retired) old M7 head-to-head'],
     lambda: ['名次价值指数 λ', 'Place-value exponent λ'], lambdaD: ['统治力积分指数 λ_D', 'Dominance exponent λ_D'],
     eta: ['深度因子强度 η', 'Depth factor η'], xiCurrent: ['现行项目状态系数', 'Current-event status'],

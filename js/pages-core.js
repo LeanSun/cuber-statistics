@@ -4,7 +4,7 @@
 (function () {
   const t = window.I18N, U = window.U, M = window.MOCK, Ic = window.Icons, Pm = window.Params;
   /* 当前模型 = 六维：M1 纪录持有 / M3 大赛表现 / M2 领奖台 / M4 统治力 /
-     M6 当前水平 / M5 当前排名。旧七模块（含 M7）仅作描述性统计保留，不参与总分。 */
+     M6 突破幅度 / M5 当前排名。旧七模块（含 M7）仅作描述性统计保留，不参与总分。 */
   const MOD = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'];
   const MODC = { m1: 'var(--m1)', m2: 'var(--m2)', m3: 'var(--m3)', m4: 'var(--m4)', m5: 'var(--m5)', m6: 'var(--m6)' };
   const SIXW = { m1: 0.42, m2: 0.14, m3: 0.22, m4: 0.10, m5: 0.04, m6: 0.08 };

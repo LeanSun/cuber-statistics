@@ -1033,8 +1033,8 @@
       f: ['$$t=\\sum_{d}w_{d}\\,s_{d},\\qquad s_{d}=1000\\cdot\\frac{x_{d}}{\\max_{p}x_{d}},\\qquad \\sum_{d}w_{d}=1$$',
         '$$w=(\\underbrace{0.42}_{M1},\\underbrace{0.22}_{M3},\\underbrace{0.14}_{M2},\\underbrace{0.10}_{M4},\\underbrace{0.08}_{M6},\\underbrace{0.04}_{M5})$$'],
       detail: [
-        ['六个维度回答六个不同的问题：M1 纪录持有（破的纪录守了多久）、M3 大赛表现（锦标赛上突破的加成）、M2 领奖台（拿过多少冠亚季军）、M4 统治力（保持在世界前十有多久）、M6 当前水平（破纪录瞬间把人类前沿推远多少）、M5 当前排名（此刻站在世界各榜什么位置）。',
-          'The six dimensions answer six different questions: M1 record ownership (how long a broken record was held), M3 championship performance, M2 podiums, M4 dominance (time spent inside the world top ten), M6 current level (how far a record pushed the human frontier), M5 current ranking.'],
+        ['六个维度回答六个不同的问题：M1 纪录持有（破的纪录守了多久）、M3 大赛表现（锦标赛上突破的加成）、M2 领奖台（拿过多少冠亚季军）、M4 统治力（保持在世界前十有多久）、M6 突破幅度（破纪录瞬间把人类前沿推远多少）、M5 当前排名（此刻站在世界各榜什么位置）。',
+          'The six dimensions answer six different questions: M1 record ownership (how long a broken record was held), M3 championship performance, M2 podiums, M4 dominance (time spent inside the world top ten), M6 breakthrough margin (how far a record pushed the human frontier), M5 current ranking.'],
         ['维度分先按「榜首 = 1000」归一再加权，是为了让六个量纲完全不同的维度（M2 原始量级上万、M6 只有几十）能放在同一把尺子上相加；归一后每个维度都是 0–1000 的同刻度分数，权重才具有可读的含义。',
           'Normalising each dimension to leader = 1000 lets dimensions with wildly different scales (M2 in the tens of thousands, M6 in the tens) be summed on one ruler; only then do the weights mean what they say.'],
         ['跨维相关性已逐对审查：15 对组合中唯一超过 0.7 的只有 M1 × M4 = 0.714，且属于语义近邻（守得住纪录 ⇔ 长期在世界前十），分年代桶内相关系数不下降，判定为真实机制而非时代混杂，处置方式是标注并在权重上压制。',
@@ -1102,7 +1102,7 @@
       ]
     },
     {
-      id: 'm6', h: ['M6 · 当前水平（权重 8%）', 'M6 · Current level (8%)'], g: 'm6',
+      id: 'm6', h: ['M6 · 突破幅度（权重 8%）', 'M6 · Breakthrough margin (8%)'], g: 'm6',
       simple: ['每次刷新世界纪录，你究竟把人类前沿往前推了多远。只看相对幅度：从 5.00 打到 4.00 是把极限推远 22%，从 4.00 打到 3.90 只有 2.5%，两者不该同分。',
         'How far each world record actually pushed the frontier. Only the relative margin counts: 5.00 to 4.00 is 22%, 4.00 to 3.90 is 2.5% - they should not score alike.'],
       f: ['$$M_{6}=\\sum_{\\text{WR 事件}}\\min\\!\\left(\\ln\\frac{\\text{前值}}{\\text{新值}},\\;0.5\\right)$$'],
@@ -1156,7 +1156,7 @@
     /* 六维权重 / 六维名称：被下方的「六维占比自定义」与「预设」复用，必须在使用前定义。
        注意：原先附带的「总分口径（现行）」卡片已按需求删除，这里只保留两个常量声明。 */
     const SW = (P.util.sixW && P.util.sixW()) || (M.meta && M.meta.sixWeights) || { m1: 0.42, m2: 0.14, m3: 0.22, m4: 0.10, m5: 0.04, m6: 0.08 };
-    const SN = (M.meta && M.meta.sixNames) || { m1: '纪录持有', m2: '领奖台', m3: '大赛表现', m4: '统治力', m5: '当前排名', m6: '当前水平' };
+    const SN = (M.meta && M.meta.sixNames) || { m1: '纪录持有', m2: '领奖台', m3: '大赛表现', m4: '统治力', m5: '当前排名', m6: '突破幅度' };
 
     /* ---- 六维占比自定义：每行「滑杆 + 数字框」，全站榜单立即重排 ----
        旧版是六根竖柱 + 上下拖动柱顶调高度：柱子只有 40 来像素高，

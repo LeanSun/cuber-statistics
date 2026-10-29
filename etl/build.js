@@ -1295,7 +1295,7 @@ function buildEventMilestones() {
     esumMax: ESUM_MAX,
     /* 六维（当前模型）：权重与维度中文名，供前端贡献表 / 图例使用 */
     sixWeights: SIX_W,
-    sixNames: { m1: '纪录持有', m2: '领奖台', m3: '大赛表现', m4: '统治力', m5: '当前排名', m6: '当前水平' },
+    sixNames: { m1: '纪录持有', m2: '领奖台', m3: '大赛表现', m4: '统治力', m5: '当前排名', m6: '突破幅度' },
     sixCovered: SIX.size,
     evGamma: EV_GAMMA,
     emitted: emit.length, detailMax: DETAIL_MAX, slimMax: SLIM_MAX,
