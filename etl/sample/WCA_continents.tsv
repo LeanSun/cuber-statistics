@@ -1,5 +1,8 @@
-id	name	record_name	latitude	longitude	zoom
-North America	North America	North America Record	40	-100	3
-Asia	Asia	Asian Record	30	100	3
-Europe	Europe	European Record	50	10	3
-Oceania	Oceania	Oceanian Record	-25	135	4
+id	name	record_name
+_Africa	Africa	AfR
+_Asia	Asia	AsR
+_Europe	Europe	ER
+_Multiple Continents	Multiple Continents	
+_North America	North America	NAR
+_Oceania	Oceania	OcR
+_South America	South America	SAR

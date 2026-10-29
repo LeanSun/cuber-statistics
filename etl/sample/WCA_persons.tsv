@@ -1,7 +1,9 @@
-wca_id	sub_id	name	country_id	gender
-2009ZEMD01	1	Felix Zemdegs	AUS	m
-2012PARK03	1	Max Park	USA	m
-2019WANY36	1	Yiheng Wang	CHN	m
-2008DENI01	1	Mats Valk	NLD	m
-2018ZHAN01	1	Anne Zhang	CHN	f
-2007HABA01	1	Tim Habermaas	DEU	m
+name	gender	wca_id	sub_id	country_id
+Jasmine Lee	f	2003LEEJ01	1	Australia
+Tim Habermaas	m	2007HABE01	1	Germany
+Mats Valk	m	2007VALK01	1	Netherlands
+Hakan Deniz	m	2008DENI01	1	Netherlands
+Feliks Zemdegs	m	2009ZEMD01	1	Australia
+Max Park	m	2012PARK03	1	USA
+Graham Siggins	m	2016SIGG01	1	USA
+Yiheng Wang (王艺衡)	m	2019WANY36	1	China

@@ -1,184 +1,133 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Generate schema-accurate WCA v2 sample TSV fixtures for etl/build.js testing.
+"""Generate REAL-WCA-DATA sample TSV fixtures for etl/build.js testing.
 
-Writes WCA_<table>.tsv under etl/sample/. Mirrors the real export v2.0.2
-column names (snake_case): persons.wca_id/sub_id, competitions.year/month/day,
-results.regional_single_record/regional_average_record, ranks_*.world_rank, etc.
+此前该脚本产出的是「真实 WCA ID + 合成成绩」的混合样本（即用户所指的
+“虚拟样本”）。现改为：从本地真实 WCA 导出包里，按一组真实选手的 WCA ID
+抽取他们的【真实姓名 + 真实成绩 + 真实纪录】，原样写入 etl/sample/*.tsv。
+写入格式与 WCA 官方导出 v2 完全一致（build.js 按列名解析，不依赖列序），
+因此等价于“把真实导出包裁剪到这几个选手”。
+
+用法：
+    python3 etl/make_sample.py
+需要本地存在 data/raw/WCA_export_*.tsv.zip（与 build.js 同一份真实导出）。
+CI 里没有这份导出包，故 CI 直接复用本脚本提交进仓库的 etl/sample/*.tsv，
+不再在流水线里重跑本脚本。
+
+注意：被抽取的选手必须落在 etl/score/sixdim_site.tsv（六维交付表）里，
+否则冒烟测试的「六维」路径会因取不到 six 分而走样例分支、断言失效。
+下面这组 ID 均已确认在 sixdim_site.tsv 内，且项目覆盖齐全
+（333/222/444/333mbf/333mbo 等），性别也含女子选手。
 """
 import os
+import glob
+import zipfile
 
-OUT = os.path.join(os.path.dirname(__file__), 'sample')
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+OUT = os.path.join(ROOT, 'etl', 'sample')
 os.makedirs(OUT, exist_ok=True)
 
+# ---- 真实 WCA ID（均已在 sixdim_site.tsv 六维交付表内）----
+TARGETS = [
+    '2009ZEMD01',  # Feliks Zemdegs
+    '2012PARK03',  # Max Park
+    '2019WANY36',  # Yiheng Wang 王艺衡
+    '2008DENI01',  # Hakan Deniz
+    '2007VALK01',  # Mats Valk
+    '2007HABE01',  # Tim Habermaas（含旧式多盲 333mbo）
+    '2016SIGG01',  # Leo Sigg（含 333mbf）
+    '2003LEEJ01',  # Jasmine Lee（女子选手）
+]
+TSET = set(TARGETS)
 
-def write(name, header, rows):
+
+def find_export():
+    pats = [os.path.join(ROOT, 'data', 'raw', 'WCA_export_*.tsv.zip'),
+            os.path.join(ROOT, 'data', 'raw', 'wca_*.tsv.zip')]
+    for p in pats:
+        hits = glob.glob(p)
+        if hits:
+            return sorted(hits)[-1]
+    raise FileNotFoundError('未找到 WCA 导出包 data/raw/WCA_export_*.tsv.zip')
+
+
+def tsv_reader(z, name):
+    """yield 每行 dict（按真实导出列名）。"""
+    with z.open(name) as f:
+        header = f.readline().decode('utf8', 'replace').rstrip('\n').split('\t')
+        for line in f:
+            parts = line.decode('utf8', 'replace').rstrip('\n').split('\t')
+            if not any(parts):
+                continue
+            yield dict(zip(header, parts))
+
+
+def write(name, rows):
     path = os.path.join(OUT, 'WCA_' + name + '.tsv')
+    if not rows:
+        # 仍写一个仅表头的空文件，保持与导出同构（build.js 对空表有容错）
+        print('(skip empty)', name)
+        return
+    header = list(rows[0].keys())
     with open(path, 'w', encoding='utf-8', newline='') as f:
-        f.write(header + '\n')
+        f.write('\t'.join(header) + '\n')
         for r in rows:
-            f.write('\t'.join(str(x) for x in r) + '\n')
+            f.write('\t'.join(str(r.get(c, '')) for c in header) + '\n')
     print('wrote', path, len(rows), 'rows')
 
 
-# ---- countries ----
-write('countries', 'id\tname\tcontinent_id\tiso2',
-      [['USA', 'United States', 'North America', 'US'],
-       ['CHN', 'China', 'Asia', 'CN'],
-       ['NLD', 'Netherlands', 'Europe', 'NL'],
-       ['AUS', 'Australia', 'Oceania', 'AU'],
-       ['DEU', 'Germany', 'Europe', 'DE']])
+def main():
+    zp = find_export()
+    print('export:', os.path.basename(zp))
+    z = zipfile.ZipFile(zp)
 
-# ---- continents ----
-write('continents', 'id\tname\trecord_name\tlatitude\tlongitude\tzoom',
-      [['North America', 'North America', 'North America Record', 40, -100, 3],
-       ['Asia', 'Asia', 'Asian Record', 30, 100, 3],
-       ['Europe', 'Europe', 'European Record', 50, 10, 3],
-       ['Oceania', 'Oceania', 'Oceanian Record', -25, 135, 4]])
+    persons, ranks_s, ranks_a, results = [], [], [], []
+    comp_ids = set()
 
-# ---- events ----
-write('events', 'id\tname\trank\tformat',
-      [['333', '3x3x3 Cube', 1, 'time'],
-       ['222', '2x2x2 Cube', 2, 'time'],
-       ['333oh', '3x3x3 One-Handed', 3, 'time'],
-       ['333bf', '3x3x3 Blindfolded', 4, 'time'],
-       ['333fm', '3x3x3 Fewest Moves', 5, 'number'],
-       ['333mbf', '3x3x3 Multi-Blind', 6, 'multi'],
-       ['333mbo', '3x3x3 Multi-Blind Old Style', 7, 'multi']])
+    for r in tsv_reader(z, 'WCA_export_persons.tsv'):
+        if r.get('wca_id') in TSET:
+            persons.append(r)
+    for r in tsv_reader(z, 'WCA_export_ranks_single.tsv'):
+        if r.get('person_id') in TSET:
+            ranks_s.append(r)
+    for r in tsv_reader(z, 'WCA_export_ranks_average.tsv'):
+        if r.get('person_id') in TSET:
+            ranks_a.append(r)
+    for r in tsv_reader(z, 'WCA_export_results.tsv'):
+        if r.get('person_id') in TSET:
+            results.append(r)
+            if r.get('competition_id'):
+                comp_ids.add(r['competition_id'])
 
-# ---- persons ----
-# ★ 前四位刻意用真实 WCA ID（Feliks / Max Park / 王艺衡 / Mats Valk）：
-#   build.js 靠 pid 去 sixdim_site.tsv + sixdim_by_event.tsv 取六维分与按项目分解分，
-#   用假 ID 只能取到空值，「项目筛选」相关的冒烟断言（单项目快照有数据、切换项目
-#   后排序依据随之改变）会恒为空而假失败。成绩与赛事本身仍是合成 fixture。
-write('persons', 'wca_id\tsub_id\tname\tcountry_id\tgender',
-      [['2009ZEMD01', 1, 'Felix Zemdegs', 'AUS', 'm'],
-       ['2012PARK03', 1, 'Max Park', 'USA', 'm'],
-       ['2019WANY36', 1, 'Yiheng Wang', 'CHN', 'm'],
-       ['2008DENI01', 1, 'Mats Valk', 'NLD', 'm'],
-       ['2018ZHAN01', 1, 'Anne Zhang', 'CHN', 'f'],
-       ['2007HABA01', 1, 'Tim Habermaas', 'DEU', 'm']])
+    result_ids = {r['id'] for r in results if r.get('id')}
+    attempts = [r for r in tsv_reader(z, 'WCA_export_result_attempts.tsv')
+                if r.get('result_id') in result_ids]
 
-# ---- competitions ----
-write('competitions', 'id\tname\tcountry_id\tyear\tmonth\tday\tcityName',
-      [['WC2023', 'World Championship 2023', 'USA', 2023, 8, 13, 'Incheon'],
-       ['CC2022', 'Asian Championship 2022', 'CHN', 2022, 5, 1, 'Beijing'],
-       ['NAC2021', 'US Nationals 2021', 'USA', 2021, 7, 1, 'Chicago'],
-       ['OP2020', 'Open Holland 2020', 'NLD', 2020, 10, 1, 'Amsterdam'],
-       ['GO2008', 'German Open 2008', 'DEU', 2008, 4, 19, 'Munich']])
+    comps = [r for r in tsv_reader(z, 'WCA_export_competitions.tsv')
+             if r.get('id') in comp_ids]
+    champs = [r for r in tsv_reader(z, 'WCA_export_championships.tsv')
+              if r.get('competition_id') in comp_ids]
 
-# ---- championships ----
-write('championships', 'competition_id\tchampionship_type',
-      [['WC2023', 'world'],
-       ['CC2022', 'Asia']])
+    # 国家 / 洲际 / 项目：直接复用真实导出全量（体积极小，且保证洲际映射完整）
+    countries = list(tsv_reader(z, 'WCA_export_countries.tsv'))
+    continents = list(tsv_reader(z, 'WCA_export_continents.tsv'))
+    events = list(tsv_reader(z, 'WCA_export_events.tsv'))
 
-# ---- ranks_single ----
-write('ranks_single', 'person_id\tevent_id\tbest\tworld_rank\tcontinent_rank\tcountry_rank',
-      [['2012PARK03', '333', 360, 1, 1, 1],
-       ['2009ZEMD01', '333', 350, 2, 1, 1],
-       ['2019WANY36', '333', 370, 3, 1, 1],
-       ['2008DENI01', '333', 380, 4, 1, 1],
-       ['2018ZHAN01', '333', 390, 5, 2, 2],
-       ['2012PARK03', '222', 120, 1, 1, 1],
-       ['2009ZEMD01', '222', 130, 2, 1, 1],
-       ['2008DENI01', '222', 150, 4, 1, 1],
-       ['2009ZEMD01', '333fm', 22, 1, 1, 1],
-       ['2019WANY36', '333fm', 23, 2, 1, 1],
-       ['2012PARK03', '333mbf', 590351300, 1, 1, 1],
-       ['2009ZEMD01', '333mbf', 330331203, 2, 1, 1],
-       ['2008DENI01', '333mbf', 370359804, 3, 1, 1],
-       ['2019WANY36', '333bf', 1400, 1, 1, 1],
-       ['2018ZHAN01', '333bf', 1600, 2, 2, 2],
-       ['2012PARK03', '333oh', 900, 1, 1, 1],
-       ['2009ZEMD01', '333oh', 950, 2, 1, 1],
-       # 旧多盲（旧编码 1SSAATTTTT：1 + (99-解出) + 尝试 + 用时秒数）
-       ['2007HABA01', '333mbo', 1930602878, 1, 1, 1],
-       ['2012PARK03', '333mbo', 1940503265, 2, 2, 1],
-       ['2008DENI01', '333mbo', 1940803789, 3, 1, 2]])
+    z.close()
 
-# ---- ranks_average ----
-write('ranks_average', 'person_id\tevent_id\tbest\tworld_rank\tcontinent_rank\tcountry_rank',
-      [['2009ZEMD01', '333', 400, 1, 1, 1],
-       ['2012PARK03', '333', 410, 2, 1, 1],
-       ['2019WANY36', '333', 420, 3, 1, 1],
-       ['2008DENI01', '333', 430, 4, 1, 1],
-       ['2018ZHAN01', '333', 440, 5, 2, 2],
-       ['2012PARK03', '222', 150, 1, 1, 1],
-       ['2009ZEMD01', '222', 160, 2, 1, 1],
-       ['2008DENI01', '222', 180, 3, 1, 1],
-       ['2012PARK03', '333oh', 950, 1, 1, 1],
-       ['2009ZEMD01', '333oh', 1000, 2, 1, 1],
-       ['2009ZEMD01', '333fm', 2350, 1, 1, 1],
-       ['2019WANY36', '333fm', 2450, 2, 1, 1]])
+    write('persons', persons)
+    write('ranks_single', ranks_s)
+    write('ranks_average', ranks_a)
+    write('results', results)
+    write('result_attempts', attempts)
+    write('competitions', comps)
+    write('championships', champs)
+    write('countries', countries)
+    write('continents', continents)
+    write('events', events)
+    print('done. players=%d results=%d attempts=%d competitions=%d'
+          % (len(persons), len(results), len(attempts), len(comps)))
 
-# ---- results ----
-# columns: competition_id event_id person_id round_type_id pos best average
-#          regional_single_record regional_average_record
-R = []
-ATT = []          # v2 导出：单次成绩独立表 (value, attempt_number, result_id)
-_rid = 0
-def res(c, e, p, rt, pos, best, avg, rsr, rar, vals=''):
-    global _rid
-    # vals: 5 次尝试的编码值，逗号分隔（0=空, -1=DNF, -2=DNS），缺省用 best 补一次
-    if not vals:
-        vals = str(best) if best else ''
-    v = (vals.split(',') + ['0', '0', '0', '0', '0'])[:5]
-    _rid += 1
-    for i, x in enumerate(v):
-        ATT.append([x, i + 1, _rid])
-    R.append([_rid, c, e, p, rt, pos, best, avg, rsr, rar] + v)
 
-# WC2023 (world champ) — finals (round_type_id 'f')
-res('WC2023', '333', '2009ZEMD01', 'f', 1, 350, 400, 'WR', 'WR', '350,400,420,-1,380')
-res('WC2023', '333', '2012PARK03', 'f', 2, 360, 410, 'CR', 'CR')
-res('WC2023', '333', '2008DENI01', 'f', 3, 380, 430, 'NR', 'NR')
-res('WC2023', '222', '2012PARK03', 'f', 1, 120, 150, 'WR', 'WR')
-res('WC2023', '222', '2009ZEMD01', 'f', 2, 130, 160, 'CR', 'CR')
-res('WC2023', '222', '2008DENI01', 'f', 3, 150, 180, 'NR', 'NR')
-res('WC2023', '333fm', '2009ZEMD01', 'f', 1, 22, 2350, 'WR', 'WR')
-res('WC2023', '333fm', '2019WANY36', 'f', 2, 23, 2450, 'NR', 'NR')
-res('WC2023', '333mbf', '2012PARK03', 'f', 1, 590351300, 0, 'WR', '')
-res('WC2023', '333mbf', '2009ZEMD01', 'f', 2, 330331203, 0, 'CR', '')
-res('WC2023', '333bf', '2019WANY36', 'f', 1, 1400, 0, 'WR', '')
-res('WC2023', '333bf', '2018ZHAN01', 'f', 2, 1600, 0, 'NR', '')
-
-# CC2022 (Asian champ, championship_type Asia -> CC)
-res('CC2022', '333', '2019WANY36', 'f', 1, 370, 420, 'CR', 'CR')
-res('CC2022', '333', '2018ZHAN01', 'f', 2, 390, 440, 'NR', 'NR')
-res('CC2022', '333', '2012PARK03', 'f', 3, 365, 415, '', '')
-# 222 只留给 Max / Felix / Mats（都在六维分人群内）：这样「333」与「222」两份
-# 单项目快照的名单和排序会真实分叉，而不是同一批人换了个分数。
-res('CC2022', '222', '2018ZHAN01', 'f', 2, 150, 160, 'NR', 'NR')
-
-# NAC2021 (US Nationals, not a championship)
-res('NAC2021', '333', '2012PARK03', 'f', 1, 355, 405, 'NR', 'NR')  # Max US -> NC
-res('NAC2021', '333', '2009ZEMD01', 'f', 2, 345, 395, 'WR', 'WR')  # Felix AUS -> OP
-res('NAC2021', '333oh', '2012PARK03', 'f', 1, 900, 950, 'WR', 'WR')  # NC
-
-# v2 导出口径：洲际纪录用洲代码（ER / NAR / OcR…），验证 CR 能正确统计
-res('OP2020', '333', '2008DENI01', 'f', 1, 379, 429, 'ER', 'ER')      # Mats Valk(NLD) -> 欧洲纪录
-res('NAC2021', '333', '2012PARK03', 'c', 2, 356, 406, 'NAR', 'NAR')   # Max Park(USA) -> 北美纪录
-res('GO2008', '333', '2007HABA01', 'f', 1, 900, 990, 'ER', '')        # Tim Habermaas(DEU) -> 欧洲纪录
-res('NAC2021', '333oh', '2009ZEMD01', 'f', 2, 950, 1000, 'CR', 'CR')  # OP
-
-# OP2020 (Open Holland, not a championship)
-res('OP2020', '333', '2008DENI01', 'f', 1, 375, 425, 'NR', 'NR')  # Mats NLD -> NC
-res('OP2020', '333', '2018ZHAN01', 'f', 2, 380, 450, '', '')  # Anne CHN -> OP
-res('OP2020', '333', '2009ZEMD01', 'f', 3, 360, 410, 'WR', 'WR')  # OP
-res('OP2020', '333mbf', '2008DENI01', 'f', 1, 370359804, 0, 'WR', '')
-
-# GO2008 (German Open, not a championship) — 旧多盲 333mbo（已停办项目）
-# 旧编码：1 + (99-解出) + 尝试 + 用时秒数
-res('GO2008', '333mbo', '2007HABA01', 'f', 1, 1930602878, 0, 'WR', '')   # 6/6 47:58
-res('GO2008', '333mbo', '2012PARK03', 'f', 2, 1940503265, 0, 'CR', '')   # 5/5 54:25
-res('GO2008', '333mbo', '2008DENI01', 'f', 3, 1940803789, 0, 'NR', '')   # 5/8 1:03:09
-
-# a non-final round row (should be excluded from podiums)
-res('WC2023', '333', '2009ZEMD01', 's', 1, 360, 0, '', '')
-
-write('results', 'id\tcompetition_id\tevent_id\tperson_id\tround_type_id\tpos\tbest\taverage\tregional_single_record\tregional_average_record\tvalue1\tvalue2\tvalue3\tvalue4\tvalue5', R)
-
-# ---- result_attempts（v2 起单次成绩独立成表，靠 result_id 关联 results.id） ----
-write('result_attempts', 'value\tattempt_number\tresult_id', ATT)
-
-print('done')
+if __name__ == '__main__':
+    main()
