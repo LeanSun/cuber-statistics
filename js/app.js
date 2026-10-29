@@ -445,17 +445,19 @@
   function updateSummary(route) {
     const el = document.getElementById('fgSummary');
     if (!el) return;
-    /* 透明化计数：把「WCA 全量注册人数」与「评分体系实际收录并参与排名的人数」两个口径都摆出来，
-       避免用户误以为我们只统计了其中一部分。排名榜单始终只覆盖「评分体系收录」的选手，
-       因为只有这部分选手拥有可计算 GOAT 分的完整成绩；WCA 全量 30 万+ 人里绝大多数只有零星参赛记录。 */
+    /* 透明化计数：WCA 注册人数 / 六维评分覆盖人数 / 本页可翻页人数，三个口径分开摆。
+       注意 rated 与 listed 不是一回事：六维引擎对全量选手都算过分（约 29.9 万），
+       但 data.js 只为体积下发前 6 万名（--slim-max），榜单只能翻这部分。
+       以前两者混用，页面写「评分体系收录 6 万」，看起来像另外 24 万人压根没被统计。 */
     const total = (M.meta && M.meta.players) || M.ranked.length;   // WCA 全量注册
-    const rated = M.ranked.length;                                  // 评分体系收录并参与排名
+    const rated = (M.meta && M.meta.sixAll) || M.ranked.length;    // 六维引擎实际算过分（全量）
+    const listed = M.ranked.length;                                // data.js 下发、榜单可翻页
     const allEvents = Object.keys(M.EV || {});
     const evAll = (state.evSel && state.evSel.length) ? state.evSel.length >= allEvents.length : true;
     const noFilt = !state.geo && (!state.gender || state.gender === 'all') && !state.y0 && !state.y1
       && evAll && (!state.group || state.group === 'all') && !state.retired;
-    let matched = rated;
-    if (route === 'rank' || route === 'timeline') matched = noFilt ? rated : P.filtered(state).length;
+    let matched = listed;
+    if (route === 'rank' || route === 'timeline') matched = noFilt ? listed : P.filtered(state).length;
     else if (route === 'topics') matched = P.util.topicPool(state).length;
     let geoLabel = '';
     if (state.region) geoLabel = P.util.regionName(state.region);
@@ -465,7 +467,7 @@
     }
     let main, note;
     if (noFilt && (route === 'rank' || route === 'timeline')) {
-      main = t('f.summaryAll', { n: U.num(total), rated: U.num(rated) });
+      main = t('f.summaryAll', { n: U.num(total), rated: U.num(rated), shown: U.num(listed) });
     } else {
       main = t('f.summary', { n: U.num(matched) });
       note = t('f.summaryNote', { rated: U.num(rated), total: U.num(total) });
@@ -1581,8 +1583,15 @@
       }
       const wc = document.getElementById('wcaCredit');
       if (wc) wc.textContent = 'This information is based on competition results owned and maintained by the World Cube Association, published at https://worldcubeassociation.org/results as of ' + (M.meta.updated || '') + '.';
-    } else {
+    } else if (window.__DEMO) {
+      // 用户显式要求的演示模式：保留「演示数据」横幅
       if (banner) banner.style.display = '';
+    } else {
+      // 真实数据加载失败：明确报错，绝不静默显示虚构样本
+      if (banner) {
+        banner.style.display = '';
+        banner.textContent = '⚠ 真实 WCA 数据加载失败，请刷新页面或检查网络。本站不使用虚构样本。';
+      }
     }
   }
 
@@ -1597,5 +1606,16 @@
   if (!location.hash) location.hash = '#/home';
   const gh = document.getElementById('ghLink');
   if (gh) { gh.href = 'https://github.com/LeanSun/cuber-statistics'; }
+  // 真实数据未能加载且非演示模式：显示明确错误页，避免白屏 / 避免误显示虚构数据
+  if (!window.__REAL_OK && !window.__DEMO) {
+    const appEl = document.getElementById('app');
+    if (appEl) appEl.innerHTML = '<div style="max-width:680px;margin:72px auto;padding:24px;'
+      + 'font:15px/1.7 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#c0392b">'
+      + '<h2>⚠ 真实 WCA 数据加载失败</h2>'
+      + '<p>本站的真实成绩数据文件 <code>js/data.js</code>（约数十 MB）未能加载完成，通常是网络不稳定或连接过慢导致。</p>'
+      + '<p style="color:#555">请检查网络后<strong>刷新页面</strong>重试。本站坚持使用真实 WCA 数据、不使用虚构样本；'
+      + '如需预览演示版，可在网址后加 <code>?demo=1</code>。</p></div>';
+    return;
+  }
   render();
 })();

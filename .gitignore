@@ -14,6 +14,10 @@ WCA_export*
 !etl/score/sixdim_site_single.tsv
 !etl/score/sixdim_site_avg.tsv
 
+# 例外：全量总分轻表（pid + 总分，约 6.5MB）。主表只有前 62,000 名，
+# build.js 靠这张表给长尾名册的 23 万人补真实总分，否则搜索到的人一律显示 0 分。
+!etl/score/sixdim_tail.tsv
+
 # 例外：按项目分解表只存 gzip 归档。M5-F3 全量计分后计分人口从 1,257 涨到
 # 298,702，明文表 27–30MB，经 GitHub blob 接口传输会被拒（实测 30MB 即 401）；
 # gzip 后 5–6MB。build.js 两种都能读（有明文优先明文），ci.yml 两种都接受。

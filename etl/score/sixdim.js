@@ -82,6 +82,11 @@ const BETA = 0.2241;                    // M2 普通赛折算（M2-F1 冻结常�
 /* 刻度：单项目「六维全满」= FULL 分（原 100，2026-10-26 用户要求 ×10 → 1000）。
    只影响显示量级，不影响排序与结构（纯线性换算）。 */
 const FULL = 1000;
+/* 站点三张交付表（sixdim_site / sixdim_by_event / js/sixdim_data.js）只保留总分前 N 名。
+   这个上限对齐 js/data.js 的承载能力（--slim-max 60000 + 明细层回填），
+   属于体积约束、不是评分口径的截断：全量 298,719 人的总分另见 sixdim_tail.tsv。
+   2026-10-29 前这一步靠跑完手工截断，重建时会悄悄退回全量（19MB / 90MB），故收进代码。 */
+const SITE_MAX = 62000;
 const TRACK_OF = { single: 'single', avg: 'avg' };
 
 /* ── 姓名 + 性别：data.js 全量玩家为主源，roster 长尾名册兜底 ── */
@@ -284,7 +289,8 @@ const trk = (OPT.track === 'both' || !OPT.track) ? '' : '_' + OPT.track;   // ''
 if (OPT.csv && noFilter) {
   /* 站点接入用：s_d = Σ_ev (v/mx) × evW × FULL / wSum，满足 总分 = Σ_d w_d × s_d */
   const site = ['pid\ts1\ts2\ts3\ts4\ts5\ts6\tt'];
-  for (const x of rowsOut) {
+  const siteRows = rowsOut.slice(0, SITE_MAX);
+  for (const x of siteRows) {
     const s = selDims.map((dim) => {
       let acc = 0;
       for (const [ev, dmap] of x.perEv) {
@@ -296,12 +302,25 @@ if (OPT.csv && noFilter) {
     site.push([x.pid, ...s, x.total.toFixed(4)].join('\t'));
   }
   fs.writeFileSync(path.join(D, 'sixdim_site' + trk + '.tsv'), site.join('\n') + '\n', 'utf8');
+  console.log(`→ 已写 etl/score/sixdim_site${trk}.tsv（前 ${siteRows.length} / 全量 ${rowsOut.length} 人，SITE_MAX=${SITE_MAX}）`);
+  /* ── 全量总分轻表（sixdim_tail.tsv）──
+     站点主表 sixdim_site.tsv 为控制仓库体积只保留前 62,000 名，剩下 23 万人
+     在长尾名册里查不到分，页面就会显示「总分 0」，看起来像没被统计。
+     这里额外落一张只含 pid + 总分的轻表（全量，约 6.5MB），
+     build.js 读它给长尾名册补真实总分；主表仍保持 62,000 行不变。
+     只写 both 口径（trk === ''）：名册展示的就是综合总分，单/双轨拆分用不上。 */
+  if (!trk) {
+    const tailT = ['pid\tt'];
+    for (const x of rowsOut) tailT.push(x.pid + '\t' + x.total.toFixed(4));
+    fs.writeFileSync(path.join(D, 'sixdim_tail.tsv'), tailT.join('\n') + '\n', 'utf8');
+    console.log(`→ 已写 etl/score/sixdim_tail.tsv（全量 ${rowsOut.length} 行，供长尾名册补总分）`);
+  }
   /* ── 按项目分解的六维分（站点「项目筛选后按六维总分排序」用）──
      s_d[ev] = (v_d,ev / max_d,ev) × evW(ev) × FULL / wSum，与 sixdim_site.tsv 同一归一分母，
      因此 Σ_ev s_d[ev] ≡ s_d、Σ_d w_d·s_d[ev] ≡ t_ev，全项目求和可精确复原全站分。 */
   const byEv = ['pid\tev\ts1\ts2\ts3\ts4\ts5\ts6\tt'];
   let beLines = 0;
-  for (const x of rowsOut) {
+  for (const x of siteRows) {
     for (const [ev, dmap] of x.perEv) {
       const s = DIM_KEYS.map((dim) => {
         const v = dmap[dim] || 0, mx = maxOf[dim].get(ev) || 0;
@@ -315,7 +334,7 @@ if (OPT.csv && noFilter) {
   }
   fs.writeFileSync(path.join(D, 'sixdim_by_event' + trk + '.tsv'), byEv.join('\n') + '\n', 'utf8');
   console.log(`→ 已写 etl/score/sixdim_by_event${trk}.tsv（${beLines} 条 选手×项目 记录）`);
-  const compact = rowsOut.map((x, i) => {
+  const compact = siteRows.map((x, i) => {
     const d = {};
     for (const dim of DIM_KEYS) {
       let s = 0;
@@ -331,6 +350,10 @@ if (OPT.csv && noFilter) {
         count: compact.length,
         weights: Object.fromEntries(DIM_KEYS.map((k) => [k, DIMS[k].w])),
         labels: Object.fromEntries(DIM_KEYS.map((k) => [k, DIMS[k].cn])),
+        /* truncated = 全量人数（本页只放前 SITE_MAX 名）。缺这两个字段时，
+           页面看不出「62,000 是截断后的展示量，不是评分总量」。 */
+        truncated: rowsOut.length,
+        note: `仅展示前 ${SITE_MAX} 人（与 js/data.js 的 --slim-max 60000 承载范围一致）；全量 ${rowsOut.length} 人的总分见 sixdim_tail.tsv`,
       },
       rows: compact,
     };

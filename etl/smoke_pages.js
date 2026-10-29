@@ -326,11 +326,22 @@ console.log('== 图表可视化：项目筛选与竞速图联动 ==');
     /* 口径变更：全项目分支仍用「历史地位分（按年纪录/金牌）」，筛选分支改按「所选项目六维分」
        （p.sixEv 求和），两套人群口径不同，不能再直接比较 all.length。
        改为校验：筛选池落在全站六维人群内，且所选项越多池不减。 */
-    const sixPool = M.ranked.filter(function (p) { return p.six && p.six.t > 0; }).length;
+    /* 上界要与筛选分支同口径：p.six.t 是两位小数舍入值，总分 <0.005 的极弱选手会被
+       舍成 0，但 p.sixEv 里仍留正分、仍会被项目筛选选中 —— 用 t>0 当上界会卡掉边界那几个人。 */
+    const sixPool = M.ranked.filter(function (p) {
+      if (!p.sixEv) return false;
+      for (const k in p.sixEv) { if (p.sixEv[k][6] > 0) return true; }
+      return false;
+    }).length;
     ok(one.length > 0 && one.length <= sixPool,
       '单项目筛选后选手池落在六维人群内: ' + one.length + ' ≤ ' + sixPool);
-    ok(one.length <= few.length && few.length <= four.length,
-      '所选项越多，入选选手池不减: ' + one.length + ' ≤ ' + few.length + ' ≤ ' + four.length);
+    /* 时间轴快照会按「截至 fy 的年度荣誉进度」缩放：fy=2025 时，若某人新加选的项目
+       荣誉全在 2026 之后，ratio 会被算成 0 而剔除 —— 所以 fy=2025 下「选项越多池不减」
+       本来就不成立（这是正确的时间轴语义，不是漏人）。单调性改在终帧校验。 */
+    const oneE = P.tlSnapshot(['333'], 2026, 'all', 'all', '');
+    const fourE = P.tlSnapshot(['333', '222', '333oh'], 2026, 'all', 'all', '');
+    ok(oneE.length <= fourE.length,
+      '终帧上所选项目越多，选手池不减: ' + oneE.length + ' ≤ ' + fourE.length);
     /* 多项目必须真正重新计分（广度折减），而不是只裁剪选手池。
        扫描任意一名选手：其在「333+222」与「333+222+444+555」下的口径应不同。 */
     const valOf = (r, n) => { const x = r.filter(v => v.name === n)[0]; return x ? x.value : null; };
@@ -620,6 +631,11 @@ ok(hC.indexOf('exp-v3-mod') >= 0 || hC.indexOf('breakdown-table') >= 0, '有六�
 ok(hC.indexOf('六维') >= 0 || (M.meta && M.meta.sixNames), '页面/数据带六维名称');
 ok(M.meta && M.meta.sixWeights && M.meta.sixWeights.m1 > 0, 'meta 下发六维权重 sixWeights');
 ok(M.meta && M.meta.sixNames && Object.keys(M.meta.sixNames).length === 6, 'meta 下发六维名称 sixNames');
+/* 两个人数必须分开：sixAll = 六维引擎算过分的全量人数（sixdim_tail.tsv），
+   ranked = data.js 实际下发、榜单可翻页的人数。合成一个数会让人误以为另外 24 万人没被评分。 */
+ok(M.meta && M.meta.sixAll > 0, 'meta 下发六维全量评分人数 sixAll: ' + (M.meta && M.meta.sixAll));
+ok(M.meta && M.meta.sixAll >= M.ranked.length,
+  'sixAll（全量评分）不小于 ranked（本页承载）: ' + (M.meta && M.meta.sixAll) + ' ≥ ' + M.ranked.length);
 {
   const pl = M.ranked[0];
   if (!pl.six) {

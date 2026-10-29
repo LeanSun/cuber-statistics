@@ -42,6 +42,26 @@ const SIX = new Map();
   console.log('六维分数载入:', SIX.size, '人');
 })();
 
+/* ---------- 全量总分轻表（sixdim_tail.tsv）----------
+   站点主表 sixdim_site.tsv 为控制仓库体积只保留前 62,000 名，剩下 23 万人在
+   主表里查不到分，overall 会被记成 0 —— 搜索结果看起来像「根本没被统计」。
+   这张轻表只存 pid + 总分（全量 298,719 人，约 6.5MB），专门给长尾名册补分。
+   缺失时只告警：长尾退回 0（与改造前行为一致），不影响主流程与排名。 */
+const TAILT = new Map();
+(function loadTailT() {
+  const f = path.join(__dirname, 'score', 'sixdim_tail.tsv');
+  const gz = f + '.gz';
+  let lines = null;
+  if (fs.existsSync(f)) lines = fs.readFileSync(f, 'utf8').trim().split('\n');
+  else if (fs.existsSync(gz)) lines = zlib.gunzipSync(fs.readFileSync(gz)).toString('utf8').trim().split('\n');
+  else { console.warn('⚠ 未找到 ' + f + '(.gz) —— 长尾名册总分将保持 0；请先跑 etl/score/sixdim.js'); return; }
+  for (let i = 1; i < lines.length; i++) {
+    const c = lines[i].split('\t');
+    TAILT.set(c[0], +c[1]);
+  }
+  console.log('全量总分轻表载入:', TAILT.size, '人');
+})();
+
 /* ---------- 按项目分解的六维分（项目筛选后重排用）----------
    同一归一分母，满足 Σ_ev s_d[ev] ≡ s_d、Σ_ev t_ev ≡ t：
    全项目求和可精确复原全站分，单项目/多项目筛选则直接对所选项目求和。
@@ -114,7 +134,7 @@ const ZIP = arg('--zip', null);
 const DIR = arg('--dir', null);
 const OUT = arg('--out', path.join(ROOT, 'js', 'data.js'));
 const EMIT_MAX = parseInt(arg('--emit-max', '0'), 10) || 0;
-const SLIM_MAX = parseInt(arg('--slim-max', '305000'), 10) || 0;
+const SLIM_MAX = parseInt(arg('--slim-max', '20000'), 10) || 0;
 const DETAIL_MAX = parseInt(arg('--detail-max', '2500'), 10) || 0;
 /* ---------- 单项累加评分（新总分口径） ----------
    总分 = Σ ( 单项分_e × 项目权重_e )
@@ -944,7 +964,13 @@ function computeModules() {
     p.sixEv = SIXEV.get(p.wcaId) || null;
     p.sixS = SIX_S.get(p.wcaId) || null;
     p.sixA = SIX_A.get(p.wcaId) || null;
-    p.overall = sd ? Math.round(sd.t * 100) / 100 : 0;
+    /* 主表只保留前 62,000 名，长尾选手在这里查不到 sd；
+       从全量轻表补真实总分，否则 23 万人在搜索/名册里一律显示「总分 0」。 */
+    if (sd) p.overall = Math.round(sd.t * 100) / 100;
+    else {
+      const tailT = TAILT.get(p.wcaId);
+      p.overall = tailT != null ? Math.round(tailT * 100) / 100 : 0;
+    }
 
     // 领奖台补 field / factors / R
     p.podiums.forEach((pod) => {
@@ -1260,6 +1286,10 @@ function buildEventMilestones() {
     updated: (arg('--date', '') || new Date().toISOString().slice(0, 10)),
     exportVersion: arg('--ver', 'v2.0.2'),
     players: list.length, events: events.size, comps: comps.size,
+    /* sixAll = 六维引擎实际算过分的人数（全量 298,715），sixCovered = 主表里带六个维度分的人数
+       （SITE_MAX 截断后的 62,000）。前端文案用 sixAll 说明「全站都评过分」，
+       否则「评分体系收录 60,579 位」会让用户误以为另外 24 万人没被统计。 */
+    sixAll: TAILT.size,
     wr: totWR, records: totRec, podiums: totPod, nations: Object.keys(NATIONS_RAW).length,
     modMax: MOD_MAX,
     esumMax: ESUM_MAX,
