@@ -122,24 +122,68 @@
     return HAS_SIXEV;
   }
   /* 选手在项目集合 ids 内的六维分：返回 { s:[6], t, hit, parts:[{ev,t}] }；
-     无 sixEv 或 ids 为空时返回 null（调用方据此退回全站分）。 */
-  function sixIn(p, ids) {
-    const se = p && p.sixEv;
-    if (!se || !ids || !ids.length) return null;
+     无 sixEv 或 ids 为空时返回 null（调用方据此退回全站分）。
+     rt = 成绩口径：'single' / 'avg' 时会换成单次 / 平均档的逐项目分。
+     ETL 已按 track 生成 sixdim_by_event_single|avg.tsv，但 build.js 只下发合并档
+     （三份逐项目明细会让 84MB 的 data.js 再涨 20MB+）。因此：
+       · 若前端拿到 sixEvS / sixEvA（未来 ETL 补下发）→ 直接用它，完全精确；
+       · 否则按「各维度的全局单次(平均)分 ÷ 全局合并分」把合并档逐维缩放——
+         Σ 缩放后 ≡ 该档全局维度分，**总量精确**，只有项目之间的份额是比例分摊。
+     这样「总计 / 单次 / 平均」在项目筛选下不再是死开关（此前 sixIn 完全忽略 rt）。 */
+  function sixIn(p, ids, rt) {
+    if (!p || !ids || !ids.length) return null;
+    const exact = (rt === 'single' ? p.sixEvS : rt === 'avg' ? p.sixEvA : null);
+    const se = exact || p.sixEv;
+    if (!se) return null;
+    const ratio = (!exact && (rt === 'single' || rt === 'avg')) ? trackRatio(p, rt) : null;
+    const w = sixW();
     const s = [0, 0, 0, 0, 0, 0], parts = [];
     let hit = 0;
     for (let i = 0; i < ids.length; i++) {
       const a = se[ids[i]];
       if (!a) continue;
-      for (let d = 0; d < 6; d++) s[d] += (a[d] || 0);
-      parts.push({ ev: ids[i], t: a[6] || 0 });
+      let tev = 0;
+      for (let d = 0; d < 6; d++) {
+        const val = (a[d] || 0) * (ratio ? ratio[d] : 1);
+        s[d] += val;
+        tev += w[SIXD[d]] * val;
+      }
+      parts.push({ ev: ids[i], t: tev });
       hit++;
     }
-    const w = sixW();
     let t = 0;
     for (let d = 0; d < 6; d++) t += w[SIXD[d]] * s[d];
     return { s: s, t: t, hit: hit, parts: parts };
   }
+  /* 各维度「单次(平均)档 ÷ 合并档」的比例，用于把逐项目分数按维度整体缩放。
+     缓存按 (选手, 口径)，全站 6 万人也就几十万个小数组，内存可忽略。 */
+  const TRACK_R = {};
+  function trackRatio(p, rt) {
+    const key = p.id + '|' + rt;
+    if (TRACK_R[key]) return TRACK_R[key];
+    const g = sixVec(p, rt), b = sixVec(p, 'all');
+    const r = [1, 1, 1, 1, 1, 1];
+    for (let d = 0; d < 6; d++) {
+      const bv = b ? (b[SIXD[d]] || 0) : 0;
+      r[d] = bv > 0 ? ((g ? (g[SIXD[d]] || 0) : 0) / bv) : 1;
+    }
+    TRACK_R[key] = r;
+    return r;
+  }
+  /* 某选手在指定口径下的六维原始分数组（[m1..m6]）。
+     有 sixS / sixA 时用精确档；只有合并档时按 trackRatio 缩放。 */
+  function dimVec(p, rt) {
+    const v = sixVec(p, rt);
+    if (!v) return null;
+    const out = SIXD.map(function (k) { return v[k] || 0; });
+    const precise = (rt === 'single' ? p.sixS : rt === 'avg' ? p.sixA : null);
+    if ((rt === 'single' || rt === 'avg') && !precise && p.six) {
+      const r = trackRatio(p, rt);
+      for (let d = 0; d < 6; d++) out[d] *= r[d];
+    }
+    return out;
+  }
+
   /* 六维贡献明细：raw=维度分、w=权重、v=加权贡献。
      vec 传入时用它覆盖维度分（项目筛选后只统计所选项目的那部分），
      使展开行里的「六维贡献」与榜单上的排序数字始终是同一把尺子。 */
@@ -171,6 +215,41 @@
   const WCA_ORDER = ['333', '222', '444', '555', '666', '777', '333oh', '333bf', '444bf', '555bf', '333mbf', '333fm', 'clock', 'minx', 'pyram', 'skewb', 'sq1', '333ft', 'magic', 'mmagic', '333mbo'];
   const WCA_IX = {}; WCA_ORDER.forEach(function (id, i) { WCA_IX[id] = i; });
   function evOrderOf(id) { return (WCA_IX[id] != null) ? WCA_IX[id] : 999; }
+  /* ── 展开行「原始分」口径的满格分母 ────────────────────────────────
+     用户要求：下拉明细里的六维贡献 / 项目贡献不再显示「维度分 × 权重」，
+     而是显示**原始分**，且每一维 / 每个项目的满格＝该维 / 该项目历史最高分选手的分数。
+     两个分母都是「原始量」，与当前权重无关，所以可以安全缓存（改权重不需要失效）。 */
+  const MAXC = {};
+  function dimMax() {
+    if (MAXC.dim) return MAXC.dim;
+    const out = {};
+    SIXD.forEach(function (k) { out[k] = 1; });
+    for (let i = 0; i < M.ranked.length; i++) {
+      const v = M.ranked[i].six;
+      if (!v) continue;
+      for (let d = 0; d < 6; d++) {
+        const x = v[SIXD[d]] || 0;
+        if (x > out[SIXD[d]]) out[SIXD[d]] = x;
+      }
+    }
+    MAXC.dim = out;
+    return out;
+  }
+  function evMax() {
+    if (MAXC.ev) return MAXC.ev;
+    const out = {};
+    for (let i = 0; i < M.ranked.length; i++) {
+      const se = M.ranked[i].sixEv;
+      if (!se) continue;
+      for (const id in se) {
+        const t = (se[id] && se[id][6]) || 0;
+        if (t > (out[id] || 0)) out[id] = t;
+      }
+    }
+    MAXC.ev = out;
+    return out;
+  }
+
   /* ── 柱状图内部堆叠条：两种口径，由工具栏「堆叠方式」开关自由切换 ──────
      · ev  —— 按项目：色块＝各项目的六维小计 t_ev ÷ 合计（Σ 各段 = 榜上总分）
      · dim —— 按维度：色块＝各维度的加权贡献 w_d·s_d ÷ 合计（Σ 各段 = 榜上总分）
@@ -189,8 +268,8 @@
     const w = sixW();
     const p = row.p;
     /* row.six 是「所选项目范围内」的逐维求和（项目筛选生效时），否则按成绩口径取对应档的六维向量；
-       rt 为 single/avg 时用 p.sixS/p.sixA，保证堆叠条与排序同一把尺子。 */
-    const vec = row.six || (sixVec(p, rt) ? SIXD.map(function (k) { return sixVec(p, rt)[k] || 0; }) : null);
+       rt 为 single/avg 时用 p.sixS/p.sixA（缺该档时按全局比例缩放），保证堆叠条与排序同一把尺子。 */
+    const vec = row.six || dimVec(p, rt);
     if (!vec) return '';
     const items = SIXD.map(function (k, i) {
       return { k: k, raw: vec[i] || 0, v: (w[k] || 0) * (vec[i] || 0), color: MODC[k] };
@@ -208,9 +287,19 @@
         })) + '"></span>';
       }).join('') + '</div>';
   }
+  /* 单维堆叠：工具栏「六维筛选」选中某一维后，柱状图不再画六段，
+     而是整条一个颜色（＝该维度的分数），否则视觉上仍是「六维堆叠」。 */
+  function singleDimHtml(row, dim) {
+    const v = row.score || 0;
+    if (!(v > 0)) return '';
+    const nm = (M.meta && M.meta.sixNames && M.meta.sixNames[dim]) || modName(dim);
+    return '<div class="ministack dimstack single" role="img" aria-label="' + esc(nm) + '">' +
+      '<span style="width:100%;background:' + MODC[dim] + '" title="' + esc(nm + ' · ' + U.fmt(v, 2)) + '"></span></div>';
+  }
+
   /* 按项目堆叠：色块＝各项目六维小计 t_ev 的占比；
      ids 为空表示不收窄（该选手全部有分的项目）。 */
-  function evStackHtml(row, ids) {
+  function evStackHtml(row, ids, rt) {
     const p = row.p, se = p.sixEv;
     if (!se) {
       /* 老 data.js 没有按项目分解的六维分：退回旧的逐项目名次（esum 口径），
@@ -237,41 +326,38 @@
             '" title="' + esc(evName(ev)) + ' No.' + x.rk + ' · ' + U.fmt(x.v, 2) + '"></span>';
         }).join('') + '</div>';
     }
-    const keys = (ids && ids.length) ? ids : Object.keys(se);
-    const all = keys.map(function (id) { return { ev: id, t: (se[id] && se[id][6]) || 0 }; })
-      .filter(function (x) { return x.t > 0; })
+    /* 逐项目六维小计：row.evParts 已按当前口径（含单次/平均缩放）算好；
+       没有项目筛选时用 sixIn 对全部有分项目现算一次，保证与总分同尺。 */
+    let all;
+    if (row.evParts) all = row.evParts.slice();
+    else {
+      const keys = Object.keys(se);
+      const r = sixIn(p, keys, rt);
+      all = r ? r.parts.slice() : [];
+    }
+    if (ids && ids.length) all = all.filter(function (x) { return ids.indexOf(x.ev) >= 0; });
+    all = all.filter(function (x) { return x.t > 0; })
       .sort(function (a, b) { return evOrderOf(a.ev) - evOrderOf(b.ev); });
     const tot = all.reduce(function (a, x) { return a + x.t; }, 0);
     if (!(tot > 0)) return '';
-    /* 项目太多时（未筛选的全项目可达 18 段）只保留头部，其余并成灰色「其他」，
-       否则一堆不足 1% 的碎块挤在一起，既看不出结构也点不到 tooltip。 */
-    let parts = all, other = null;
-    if (all.length > 10) {
-      parts = all.slice(0, 9);
-      let ot = 0;
-      for (let i = 9; i < all.length; i++) ot += all[i].t;
-      other = { t: ot, n: all.length - 9 };
-    }
+    /* 2026-10-29：不再把第 11 个项目之后并成灰色「其他」。
+       用户反馈「按项目堆叠时最多只显示 10 个项目，后面的项目根本不出现」——
+       现在每个有分的项目都单独成段（宽度给 0.4% 下限，保证点得到 tooltip）。 */
     const seg = function (w, bg, ttl) {
-      return '<span style="width:' + Math.max(0.5, w).toFixed(1) + '%;background:' + bg + '" title="' + esc(ttl) + '"></span>';
+      return '<span style="width:' + Math.max(0.4, w).toFixed(1) + '%;background:' + bg + '" title="' + esc(ttl) + '"></span>';
     };
     let out = '<div class="ministack evstack" role="img" aria-label="' + esc(t('rank.contribution')) + '">';
-    parts.forEach(function (x) {
+    all.forEach(function (x) {
       out += seg(x.t / tot * 100, evColorOf(x.ev),
         evName(M.EV[x.ev] || { zh: x.ev, en: x.ev }) + ' · ' + t('rank.stackEvTip', {
           v: U.fmt(x.t, 2), p: U.fmt(x.t / tot * 100, 1)
         }));
     });
-    if (other) {
-      out += seg(other.t / tot * 100, '#9aa2b1',
-        t('rank.stackOther', { n: other.n }) + ' · ' + t('rank.stackEvTip', {
-          v: U.fmt(other.t, 2), p: U.fmt(other.t / tot * 100, 1)
-        }));
-    }
     return out + '</div>';
   }
-  function stackHtml(row, mode, ids, rt) {
-    return mode === 'dim' ? dimStackHtml(row, rt) : evStackHtml(row, ids);
+  function stackHtml(row, mode, ids, rt, dimSel) {
+    if (dimSel) return singleDimHtml(row, dimSel);
+    return mode === 'dim' ? dimStackHtml(row, rt) : evStackHtml(row, ids, rt);
   }
   function ecBox(type, data, opts, h) {
     const payload = { type: type, data: data, opts: opts || {} };
@@ -527,7 +613,8 @@
       const sc = scoreOf(p, rt);
       let score = sc.overall, vec = null, inEv = null;
       if (useEv) {
-        inEv = sixIn(p, scope);
+        /* rt 一并传入：单次 / 平均档在项目筛选下也必须生效 */
+        inEv = sixIn(p, scope, rt);
         score = inEv ? inEv.t : 0;
         vec = inEv ? inEv.s : null;
       }
@@ -535,9 +622,12 @@
         /* inEv.s 是数组形式的六维向量，sixVec() 返回的是 {m1..m6} 对象 —— 取值方式不同，必须分开处理。
            （此前误把对象当数组用 dimIx 下标取值，结果恒为 undefined，单维榜整页空掉。） */
         if (inEv) score = (dimIx >= 0 ? (inEv.s[dimIx] || 0) : 0);
-        else { const svv = sixVec(p, rt); score = (svv && svv[dimSel] != null) ? svv[dimSel] : 0; }
+        else {
+          const dv = dimVec(p, rt);
+          score = dv && dimIx >= 0 ? (dv[dimIx] || 0) : 0;
+        }
       }
-      const row = { p: p, score: score, sc: sc, six: vec, ev: sev || '', be: bd ? (bd.idx[p.id] || null) : null, bdLen: bd ? bd.len : 0, evs: null, evHit: inEv ? inEv.hit : 0, evSum: 0, orderVal: score };
+      const row = { p: p, score: score, sc: sc, six: vec, ev: sev || '', be: bd ? (bd.idx[p.id] || null) : null, bdLen: bd ? bd.len : 0, evs: null, evHit: inEv ? inEv.hit : 0, evSum: 0, evParts: inEv ? inEv.parts : null, orderVal: score };
       /* 多项目：额外算出每个所选项目上的世界名次，用于「色块」展示与排序。 */
       if (bdM) {
         let sw = 0, sv = 0, hit = 0;
@@ -637,13 +727,15 @@
     const scopeIds = evScopeIds(state);
     const useEv = !!scopeIds && hasSixEv();
     const stackMode = stackModeOf(state, evMode, multiMode);
+    /* 六维单独筛选：选中某一维后柱状图整条改为该维度单色，此时「筛选方式」这个开关没有意义，
+       置灰（is-off）避免误以为还能切。 */
+    const dimCur = (state.dimSel && MOD.indexOf(state.dimSel) >= 0) ? state.dimSel : '';
     h += '<span class="tiny muted">' + esc(t('rank.stackLabel')) + '</span>';
-    h += '<div class="seg stack-seg" id="stackSeg" title="' + esc(t('rank.stackTip')) + '" role="group" aria-label="' + esc(t('rank.stackLabel')) + '">';
+    h += '<div class="seg stack-seg' + (dimCur ? ' is-off' : '') + '" id="stackSeg" title="' + esc(t('rank.stackTip')) + '" role="group" aria-label="' + esc(t('rank.stackLabel')) + '">';
     h += '<button data-stack="ev" class="' + (stackMode === 'ev' ? 'on' : '') + '" aria-pressed="' + (stackMode === 'ev' ? 'true' : 'false') + '">' + esc(t('rank.stackEv')) + '</button>';
     h += '<button data-stack="dim" class="' + (stackMode === 'dim' ? 'on' : '') + '" aria-pressed="' + (stackMode === 'dim' ? 'true' : 'false') + '">' + esc(t('rank.stackDim')) + '</button>';
     h += '</div>';
     /* 六维单独筛选：全部 / M1…M6 —— 选中某一维后，榜单只按该维度分排序（单维排行榜）。 */
-    const dimCur = (state.dimSel && MOD.indexOf(state.dimSel) >= 0) ? state.dimSel : '';
     h += '<span class="tiny muted">' + esc(t('rank.dimLabel')) + '</span>';
     h += '<div class="seg dim-seg" id="dimSeg" role="group" aria-label="' + esc(t('rank.dimLabel')) + '" title="' + esc(t('rank.dimTip')) + '">';
     h += '<button data-dim="" class="' + (!dimCur ? 'on' : '') + '">' + esc(t('f.all')) + '</button>';
@@ -667,11 +759,12 @@
     if (stackMode === 'dim') {
       /* 维度图例：色块＝六维加权贡献（段宽合计 = 该行总分） */
       h += '<div class="ev-legend reveal">';
-      SIXD.forEach(function (k) {
+      const lgKeys = dimCur ? [dimCur] : SIXD;
+      lgKeys.forEach(function (k) {
         const nm = (M.meta && M.meta.sixNames && M.meta.sixNames[k]) || modName(k);
         h += '<span class="ev-lg"><i style="background:' + MODC[k] + '"></i>' + esc(nm) + '</span>';
       });
-      h += '<span class="tiny muted">' + esc(t('rank.stackDimNote')) + '</span></div>';
+      h += '<span class="tiny muted">' + esc(dimCur ? t('rank.singleDimNote') : t('rank.stackDimNote')) + '</span></div>';
     } else if (multiMode) {
       h += '<div class="ev-legend reveal">';
       evsShown.forEach(function (ev, i) {
@@ -715,7 +808,7 @@
          段宽合计都等于条长所代表的分数，与排序/条尾数字永远同一把尺子。
          单项目模式下「按项目」必然只有一段（整条单色），所以默认走「按维度」，
          这样只看一个项目时也能看清是 M1…M6 哪几维在撑着这个分数。 */
-      const stack = stackHtml(row, stackMode, useEv ? scopeIds : null, rt);
+      const stack = stackHtml(row, stackMode, useEv ? scopeIds : null, rt, dimCur);
       h += '<td class="barcell bars-full"><div class="bar-row' + (evMode || multiMode ? ' evmode' : '') + '"><div class="bar-track">' +
         '<div class="bar-grow" style="width:' + bw.toFixed(1) + '%">' + stack + '</div></div>' +
         '<span class="bar-total">' + U.fmt(score, 2) + '</span>' +
@@ -758,7 +851,7 @@
     /* 项目筛选生效时，展开行也要显示「所选项目范围内」的六维分，
        否则榜上数字与展开明细对不上（旧版这里恒显示全站分）。 */
     const evPool = (state && hasSixEv()) ? evScopeIds(state) : null;
-    const inEv = evPool ? sixIn(p, evPool) : null;
+    const inEv = evPool ? sixIn(p, evPool, rt) : null;
     const sc = scoreOf(p, rt);
     const tab = (state && state.tab === 'peak') ? 'peak' : 'career';
     const cs = contribs(p, tab, rt, inEv ? inEv.s : null);
@@ -798,65 +891,68 @@
       '<span class="v">No.' + worldNo + '</span></div>';
     h += '</div></div>';
 
-    /* ── 中部：贡献明细（横向条）── 工具栏选「按项目」时切到「项目贡献」，否则「六维贡献」 ── */
-    const evModeStack = (state && state.stackMode === 'ev' && p.sixEv);
+    /* ── 中部：贡献明细（横向条）── 工具栏选「按项目」时切到「项目贡献」，否则「六维贡献」 ──
+       口径（2026-10-29 用户要求）：**显示原始分，不乘权重**；
+       条形满格 = 该维度 / 该项目的历史最高分（即该维 / 该项目最高分选手的分数）。 */
+    const evModeStack = !!(p.sixEv && stackModeOf(state || {}, '', !!(evPool && evPool.length >= 2)) === 'ev');
     h += '<div class="exp-v3-mods">';
     if (evModeStack) {
-      const evItems = [];
+      const keys = (evPool && evPool.length) ? evPool : Object.keys(p.sixEv);
+      const inSc = sixIn(p, keys, rt);
+      const evItems = (inSc ? inSc.parts.slice() : [])
+        .filter(function (x) { return x.t > 0; })
+        .sort(function (a, b) { return evOrderOf(a.ev) - evOrderOf(b.ev); });
       let evTot = 0;
-      Object.keys(p.sixEv).forEach(function (id) {
-        const tEv = (p.sixEv[id] && p.sixEv[id][6]) || 0;
-        if (tEv > 0) { evItems.push({ id: id, t: tEv }); evTot += tEv; }
-      });
-      evItems.sort(function (a, b) { return evOrderOf(a.id) - evOrderOf(b.id); });
+      evItems.forEach(function (x) { evTot += x.t; });
+      const MXE = evMax();
       h += '<div class="exp-v3-mods-h"><span>' + esc(t('rank.evContrib')) + (inEv ? ' · ' + esc(t('rank.evScope')) : '') + '</span>' +
-        '<span class="tiny muted">' + esc(t('player.contrib')) + ' · Σ = ' + U.fmt(evTot, 2) + '</span></div>';
+        '<span class="tiny muted">' + esc(t('rank.evSubtotal')) + ' Σ = ' + U.fmt(evTot, 2) + '</span></div>';
       h += '<div class="exp-v3-mod exp-v3-mod-head">' +
         '<span class="nm">' + esc(t('rank.evCol')) + '</span>' +
         '<span class="track-slot" aria-hidden="true"></span>' +
-        '<span class="raw" title="' + esc(t('expCol.rawD')) + '">' + esc(t('rank.evSubtotal')) + '</span>' +
-        '<span class="w" title="' + esc(t('expCol.wD')) + '">—</span>' +
-        '<span class="v" title="' + esc(t('expCol.vD')) + '">' + esc(t('rank.evSubtotal')) + '</span>' +
-        '<span class="pc" title="' + esc(t('expCol.pcD')) + '">' + esc(t('player.pct')) + '</span></div>';
+        '<span class="raw">' + esc(t('rank.evSubtotal')) + '</span>' +
+        '<span class="pc">' + esc(t('player.pct')) + '</span></div>';
       evItems.forEach(function (it) {
-        const nm = evName(M.EV[it.id] || { zh: it.id, en: it.id });
-        const col = evColorOf(it.id);
+        const nm = evName(M.EV[it.ev] || { zh: it.ev, en: it.ev });
+        const col = evColorOf(it.ev);
         const pct = evTot > 0 ? it.t / evTot * 100 : 0;
-        const bw = Math.max(1.5, pct);
+        const full = MXE[it.ev] || it.t || 1;
+        const bw = Math.max(1.2, Math.min(100, it.t / full * 100));
         h += '<div class="exp-v3-mod">' +
           '<span class="nm"><i style="background:' + col + '"></i>' + esc(nm) + '</span>' +
-          '<span class="track" title="' + esc(nm) + ' ' + U.fmt(it.t, 2) + '（' + U.fmt(pct, 1) + '%）"><i style="width:' + bw.toFixed(1) + '%;background:' + col + '"></i></span>' +
+          '<span class="track" title="' + esc(t('rank.expFullEv', { v: U.fmt(full, 2) })) + '"><i style="width:' + bw.toFixed(1) + '%;background:' + col + '"></i></span>' +
           '<span class="raw">' + U.fmt(it.t, 2) + '</span>' +
-          '<span class="w">—</span>' +
-          '<span class="v">' + U.fmt(it.t, 2) + '</span>' +
           '<span class="pc">' + U.fmt(pct, 1) + '%</span></div>';
       });
+      h += '<div class="tiny muted" style="margin-top:4px">' + esc(t('rank.expRawFootEv')) + '</div>';
     } else {
+      const MXD = dimMax();
+      let rawSum = 0;
+      csDesc.forEach(function (c) { rawSum += c.raw; });
+      const rawDen = rawSum || 1;
       h += '<div class="exp-v3-mods-h"><span>' + esc(t('rank.sixContrib')) + (inEv ? ' · ' + esc(t('rank.evScope')) : '') + '</span>' +
-        '<span class="tiny muted">' + esc(t('player.contrib')) + ' · Σ = ' + U.fmt(tot, 2) + '</span></div>';
+        '<span class="tiny muted">' + esc(t('player.raw')) + ' Σ = ' + U.fmt(rawSum, 2) + '</span></div>';
       h += '<div class="exp-v3-mod exp-v3-mod-head">' +
         '<span class="nm">' + esc(t('rank.dimCol')) + '</span>' +
         '<span class="track-slot" aria-hidden="true"></span>' +
         '<span class="raw" title="' + esc(t('expCol.rawD')) + '">' + esc(t('player.raw')) + '</span>' +
-        '<span class="w" title="' + esc(t('expCol.wD')) + '">' + esc(t('player.weight')) + '</span>' +
-        '<span class="v" title="' + esc(t('expCol.vD')) + '">' + esc(t('player.contrib')) + '</span>' +
         '<span class="pc" title="' + esc(t('expCol.pcD')) + '">' + esc(t('player.pct')) + '</span></div>';
-      /* 条长 = 该维加权贡献占**总分**的真实比例（2026-10-27 回滚方案 A）。
-         此前曾改成「相对最大贡献归一」（最大那条撑满轨道），条长不再等于真实占比，
-         读数会失真 —— 现已恢复：条长与右侧「占比」列同一把尺子，六条相加正好铺满整条轨道。 */
+      /* 条长 = 该维原始分 ÷ 该维历史最高分（满格＝世界第一的水平）；
+         旁边「占比」= 该维原始分 ÷ 六维原始分合计，回答的是「这套分数里哪维占大头」。 */
       csDesc.forEach(function (c) {
-        const pct = c.v / tot * 100;
-        const bw = Math.max(1.5, pct);
+        const raw = c.raw || 0;
+        const pct = raw / rawDen * 100;
+        const full = MXD[c.k] || raw || 1;
+        const bw = Math.max(1.2, Math.min(100, raw / full * 100));
         h += '<div class="exp-v3-mod">' +
           '<span class="nm"><i style="background:' + c.color + '"></i>' + esc(c.name) + '</span>' +
-          '<span class="track" title="' + esc(t('player.contrib')) + ' ' + U.fmt(c.v, 2) +
-          '（占总分 ' + U.fmt(pct, 1) + '%）"><i style="width:' +
-          bw.toFixed(1) + '%;background:' + c.color + '"></i></span>' +
-          '<span class="raw" title="' + esc(t('player.raw')) + '">' + U.fmt(c.raw, 2) + '</span>' +
-          '<span class="w" title="' + esc(t('player.weight')) + '">' + U.fmt(c.w * 100, 0) + '%</span>' +
-          '<span class="v">' + U.fmt(c.v, 2) + '</span>' +
+          '<span class="track" title="' + esc(t('rank.expFullDim', { v: U.fmt(full, 2) })) + '"><i style="width:' + bw.toFixed(1) + '%;background:' + c.color + '"></i></span>' +
+          '<span class="raw">' + U.fmt(raw, 2) + '</span>' +
           '<span class="pc">' + U.fmt(pct, 1) + '%</span></div>';
       });
+      h += '<div class="tiny muted" style="margin-top:4px">' + esc(t('rank.expRawFoot', {
+        list: SIXD.map(function (k) { return modName(k) + ' ' + U.fmt(MXD[k], 2); }).join(' / ')
+      })) + '</div>';
     }
     h += '</div>';
 

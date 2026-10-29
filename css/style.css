@@ -130,10 +130,18 @@ code,kbd{font-family:var(--mono);font-size:.92em;background:var(--bg-soft);paddi
 
 /* ============ Filter bar ============ */
 .filterbar{background:var(--bg-elev);border-bottom:1px solid var(--border)}
-.filterbar-inner{max-width:1440px;margin:0 auto;padding:11px 16px;display:flex;flex-wrap:wrap;gap:10px 16px;align-items:flex-end}
+/* 两行式筛选条：第一行项目 / 分组，第二行地区 · 性别 · 口径 · 时间。
+   以前用一个 flex-wrap 容器平铺，项目条会把整行占满，
+   地区 / 性别因此被挤到第二行、且与「成绩口径 / 时间」高度不一致（chip 25px vs select 30px），
+   看起来像没对齐。现在改成「容器分列 + 每行自成一个 flex 行」，
+   并给 .fctl 统一 min-height，使每组的标签基线完全一致。 */
+.filterbar-inner{max-width:1440px;margin:0 auto;padding:11px 16px;display:flex;flex-direction:column;gap:10px}
+.frow{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:flex-end;width:100%}
 .fgroup{display:flex;flex-direction:column;gap:4px;min-width:0}
-.flabel{font-size:11.5px;color:var(--text-3);letter-spacing:.02em}
-.fctl{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.flabel{font-size:11.5px;color:var(--text-3);letter-spacing:.02em;line-height:1.35}
+.fctl{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-height:30px}
+/* 国家/地区下拉限宽：198 个国家里最长的英文名会把整行顶开，导致第二行提前换行 */
+#fgGeo{max-width:190px}
 .chip{
   border:1px solid var(--border-2);background:transparent;color:var(--text-2);
   border-radius:999px;padding:4px 12px;font-size:12.5px;cursor:pointer;white-space:nowrap;
@@ -286,6 +294,8 @@ details.card .card-body{padding-top:12px}
 }
 .seg button:hover{color:var(--accent)}
 .seg button.on{background:var(--bg-elev);color:var(--text);font-weight:600;box-shadow:var(--shadow)}
+/* 失效态：六维筛选选中某一维时「筛选方式」不再起作用，置灰并禁用点击 */
+.seg.is-off{opacity:.45;pointer-events:none}
 .tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin-bottom:14px;overflow-x:auto;scrollbar-width:none}
 .tabs::-webkit-scrollbar{display:none}
 .tabs button{
@@ -421,10 +431,11 @@ tr:hover .pname .linkish,tr:hover .pname .pname-txt{
 .pager button:disabled{opacity:.4;cursor:not-allowed}
 .pager .info{font-size:12.5px;color:var(--text-3)}
 
-/* ============ 事件选择器（两行：现役 / 已停办） ============ */
+/* ============ 事件选择器（单行：现役在前，停办四个排在行尾） ============ */
 .ev-strip{display:flex;flex-direction:column;gap:8px;margin-top:8px}
-.ev-row{display:flex;flex-wrap:wrap;gap:8px}
-.ev-row-retired{margin-top:6px;padding-top:10px;border-top:1px dashed var(--border)}
+.ev-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+/* 停办项目不再另起一行，只用一个左侧竖线做「分隔」提示（见 app.js 里的 .ev-sep） */
+.ev-sep{width:1px;height:26px;background:var(--border-2);margin:0 2px;flex:none}
 .ev-tab{
   display:inline-flex;align-items:center;justify-content:center;width:46px;height:46px;border:1.5px solid var(--border-2);
   background:var(--bg-elev);border-radius:var(--r-md);cursor:pointer;color:var(--text-2);
@@ -1023,7 +1034,9 @@ tr[data-prow]:hover .pname .linkish,.pname:hover .linkish{
 .exp-v3-mods-h{display:flex;justify-content:space-between;align-items:baseline;
   font-size:12px;font-weight:700;color:var(--text-2);
   padding-bottom:7px;margin-bottom:2px;border-bottom:1px dashed var(--border)}
-.exp-v3-mod{display:grid;grid-template-columns:104px minmax(80px,1fr) 46px 38px 54px 48px;
+/* 展开明细四列：维度/项目 · 条形 · 原始分 · 占比
+   （2026-10-29 去掉「权重」「加权贡献」两列：用户要求这一块只显示原始分，不乘权重） */
+.exp-v3-mod{display:grid;grid-template-columns:104px minmax(80px,1fr) 68px 54px;
   gap:9px;align-items:center;font-size:12px}
 .exp-v3-mod .nm{display:flex;align-items:center;gap:6px;min-width:0;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-2)}
@@ -1059,7 +1072,7 @@ tr[data-prow]:hover .pname .linkish,.pname:hover .linkish{
   .exp-v3-top{flex-direction:column;align-items:stretch}
   .exp-v3-scores{justify-content:space-between}
   .exp-v3-score{min-width:0;flex:1}
-  .exp-v3-mod{grid-template-columns:78px minmax(50px,1fr) 40px 34px 46px 42px;gap:6px;font-size:11.5px}
+  .exp-v3-mod{grid-template-columns:78px minmax(50px,1fr) 58px 46px;gap:6px;font-size:11.5px}
   .exp-v3-foot .exp-actions{margin-left:0;width:100%}
 }
 .rec-chip.lv-CR{background:color-mix(in srgb,#38bdf8 18%,transparent);border-color:#38bdf8}

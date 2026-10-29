@@ -9,18 +9,21 @@
   const toastEl = document.getElementById('toast');
   const esc = U.esc;
 
-  /* ---------- 注入展示用项目 FTO（八面体 / Octahedron） ----------
+  /* ---------- 注入展示用项目 FTO ----------
      WCA 官方导出里没有 FTO 数据，故它不计入任何榜单 / 评分；
      这里仅为让「项目领域」「筛选项目」「趣味统计筛选项」与官方项目口径一致地出现 FTO，
-     所有选手在 FTO 上均显示「未参与（—）」。如日后有数据源，只需在 build.js 的 events Map 里补数据即可。 */
+     所有选手在 FTO 上均显示「未参与（—）」。如日后有数据源，只需在 build.js 的 events Map 里补数据即可。
+     2026-10-29：用户要求不再叫「八面体」，一律用官方简称 FTO（图标走 cubing-icon unofficial-fto）。 */
+  const FTO_NAME = { zh: 'FTO', en: 'FTO' };
   (function injectFTO() {
     if (!M || !M.EV) return;
     if (!M.EV.fto) {
-      M.EV.fto = { id: 'fto', zh: '八面体', en: 'Octahedron (FTO)', format: '', w: 0.5, rank: 99, retired: false };
-    }
+      M.EV.fto = { id: 'fto', zh: FTO_NAME.zh, en: FTO_NAME.en, format: '', w: 0.5, rank: 99, retired: false };
+    } else { M.EV.fto.zh = FTO_NAME.zh; M.EV.fto.en = FTO_NAME.en; }
     if (M.events && !M.events.some(function (e) { return e.id === 'fto'; })) {
-      M.events.push({ id: 'fto', zh: '八面体', en: 'Octahedron (FTO)', format: '', w: 0.5, rank: 99, retired: false });
+      M.events.push({ id: 'fto', zh: FTO_NAME.zh, en: FTO_NAME.en, format: '', w: 0.5, rank: 99, retired: false });
     }
+    if (M.events) M.events.forEach(function (e) { if (e.id === 'fto') { e.zh = FTO_NAME.zh; e.en = FTO_NAME.en; } });
   })();
 
   /* ---------- 长尾名册（懒加载） ----------
@@ -331,7 +334,12 @@
       const m = String(u).match(/^(\d{4})/);
       return m ? +m[1] : new Date().getFullYear();
     })();
+    /* 两行布局（2026-10-29 用户要求）：
+       第一行 = 预设分组 + 项目图标（项目多、必须独占一行）；
+       第二行 = 国家/地区 · 性别 · 成绩口径 · 时间 · 停办 · 重置 · 计数，
+       全部塞进同一个 .frow，保证它们从同一基线起排、按同一套行高对齐。 */
     let h = '<div class="filterbar-inner">';
+    if (route !== 'topics') h += '<div class="frow frow-ev">';
 
     /* ---------- 预设分组（快速筛选） + 事件图标多选（仅总榜 / 图表可视化；趣味统计页用页面内筛选） ---------- */
     if (route !== 'topics') {
@@ -351,22 +359,31 @@
       const inSet = function (id) { return evSel.indexOf(id) >= 0 || (gids && gids.indexOf(id) >= 0); };
       const activeEv = M.events.filter(function (e) { return !e.retired; });
       const retiredEv = M.events.filter(function (e) { return e.retired; });
+      /* 停办的四个项目（魔表以外的 Magic / Master Magic / 三阶脚拧 / 三阶多盲旧制）
+         与现行项目放在**同一行**、排在最后（用户要求：不要再单独占一行）。
+         未勾选「含停办项目」时仍可悬停看名字，但点击无效（由 click 处理器拦截）。 */
       h += '<div class="ev-row">';
-      activeEv.forEach(function (e) {
+      const evBtn = function (e) {
         const on = inSet(e.id);
-        h += '<button class="ev-tab' + (on ? ' on' : '') + '" data-evtab="' + e.id + '" title="' + esc(t.isEn() ? e.en : e.zh) + '">' + window.Icons.event(e.id) + '</button>';
-      });
+        const off = e.retired && !state.retired;
+        const nm = t.isEn() ? e.en : e.zh;
+        /* 项目名称浮层：原生 title 有 1 秒延迟且位置由系统决定，
+           这里改用 body 级浮层，并指定出现在**鼠标上方**（data-tip-pos="top"）。 */
+        const tip = off ? (nm + (t.isEn() ? ' · retired (enable “retired events” above)' : ' · 停办（需先开启「含停办项目」）')) : nm;
+        return '<button class="ev-tab' + (on ? ' on' : '') + (off ? ' retired' : '') + '" data-evtab="' + e.id + '"' +
+          ' data-tip="' + esc(tip) + '" data-tip-pos="top" aria-label="' + esc(nm) + '">' + window.Icons.event(e.id) + '</button>';
+      };
+      activeEv.forEach(function (e) { h += evBtn(e); });
+      if (retiredEv.length) {
+        h += '<span class="ev-sep" aria-hidden="true"></span>';
+        retiredEv.forEach(function (e) { h += evBtn(e); });
+      }
       h += '</div>';
-      h += '<div class="ev-row ev-row-retired">';
-      retiredEv.forEach(function (e) {
-        const on = inSet(e.id);
-        const dis = !state.retired;
-        h += '<button class="ev-tab' + (on ? ' on' : '') + (dis ? ' disabled' : '') + '" data-evtab="' + e.id + '" title="' + esc(t.isEn() ? e.en : e.zh) + '">' + window.Icons.event(e.id) + '</button>';
-      });
       h += '</div>';
       h += '</div>';
-      h += '</div>';
+      h += '</div>';   /* /frow-ev */
     }
+    h += '<div class="frow frow-meta">';
 
     /* ---------- 国家 / 大洲 合并为单一下拉（总榜 + 图表可视化 + 另类统计；已移除 WCA 地区分组） ---------- */
     if (route === 'rank' || route === 'timeline' || route === 'topics') {
@@ -437,7 +454,8 @@
 
     h += '<button class="btn" id="fgReset">' + esc(t('f.reset')) + '</button>';
     h += '<span class="filter-summary" id="fgSummary"></span>';
-    h += '</div>';
+    h += '</div>';   /* /frow-meta */
+    h += '</div>';   /* /filterbar-inner */
 
     fbEl.innerHTML = h;
   }
@@ -1499,6 +1517,7 @@
      这里用一个 body 级的单例浮层接管所有 [data-tip]，内容统一走 textContent（天然防注入），
      换行用 white-space:pre-line 呈现。 */
   let TIP_BOX = null;
+  let TIP_ANCHOR = null, TIP_SIZE = { w: 0, h: 0 };
   function tipBox() {
     if (TIP_BOX && TIP_BOX.parentNode) return TIP_BOX;
     TIP_BOX = document.createElement('div');
@@ -1506,18 +1525,28 @@
     document.body.appendChild(TIP_BOX);
     return TIP_BOX;
   }
-  function hideTip() { if (TIP_BOX) TIP_BOX.classList.remove('on'); }
-  function placeTip(anchor) {
+  function hideTip() { TIP_ANCHOR = null; if (TIP_BOX) TIP_BOX.classList.remove('on'); }
+  /* 定位：默认挂在元素正下方；data-tip-pos="top" 时挂在**鼠标上方**，
+     并随 mousemove 跟随（项目图标那一排要的就是「名字浮在指针上面」）。
+     cx 有值时按鼠标横坐标居中，否则按元素中点。 */
+  function placeTip(anchor, cx) {
     const el = tipBox();
     const r = anchor.getBoundingClientRect();
-    /* 先归零再量尺寸，否则会用上一次的内容宽度算位置 */
-    el.style.left = '0px'; el.style.top = '0px';
-    const w = el.offsetWidth, hh = el.offsetHeight;
+    const top = anchor.getAttribute('data-tip-pos') === 'top';
+    /* 尺寸只在内容变化时量一次，避免每次 mousemove 都触发重排 */
+    const w = TIP_SIZE.w, hh = TIP_SIZE.h;
     const vw = window.innerWidth || 1024, vh = window.innerHeight || 768;
-    let x = r.left + r.width / 2 - w / 2;
+    const mid = (cx != null && top) ? cx : (r.left + r.width / 2);
+    let x = mid - w / 2;
     x = Math.max(8, Math.min(x, vw - w - 8));
-    let y = r.bottom + 8;
-    if (y + hh > vh - 8) y = Math.max(8, r.top - hh - 8); /* 下方放不下就翻到上方 */
+    let y;
+    if (top) {
+      y = r.top - hh - 10;
+      if (y < 8) y = r.bottom + 10;          /* 顶到视口上沿才翻到下方 */
+    } else {
+      y = r.bottom + 8;
+      if (y + hh > vh - 8) y = Math.max(8, r.top - hh - 8);
+    }
     el.style.left = x + 'px'; el.style.top = y + 'px';
   }
   if (document.addEventListener) {
@@ -1529,7 +1558,17 @@
       const el = tipBox();
       el.textContent = txt;
       el.classList.add('on');
-      placeTip(a);
+      /* 先归零再量尺寸，否则会用上一次的内容宽度算位置 */
+      el.style.left = '0px'; el.style.top = '0px';
+      TIP_SIZE = { w: el.offsetWidth, h: el.offsetHeight };
+      TIP_ANCHOR = a;
+      placeTip(a, e.clientX);
+    });
+    /* 跟随鼠标：只有声明了 data-tip-pos="top" 的提示才需要水平跟随 */
+    document.addEventListener('mousemove', function (e) {
+      if (!TIP_ANCHOR) return;
+      if (TIP_ANCHOR.getAttribute('data-tip-pos') !== 'top') return;
+      placeTip(TIP_ANCHOR, e.clientX);
     });
     document.addEventListener('mouseout', function (e) {
       const a = e.target.closest ? e.target.closest('[data-tip]') : null;
