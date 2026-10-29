@@ -195,7 +195,7 @@
     scaleC[k] = mc > 0 ? 100 / mc : 1;
     scaleP[k] = mp > 0 ? 100 / mp : 1;
   });
-  var SIXW = { m1: 0.28, m2: 0.24, m3: 0.12, m4: 0.18, m5: 0.08, m6: 0.10 };
+  var SIXW = { m1: 0.42, m2: 0.14, m3: 0.22, m4: 0.10, m5: 0.04, m6: 0.08 };
   PLAYERS.forEach(function (p) {
     p.m = {}; p.pk = {};
     MODKEYS.forEach(function (k) {

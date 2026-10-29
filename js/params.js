@@ -9,8 +9,8 @@
      旧七模块（含 M7 对战强度）的参数全部停用：仅保留键名以免历史读取报错，
      但不再出现在参数面板、也不参与任何计算。 */
   const DEFAULTS = {
-    // 六维权重 w（Σ=1，以 M1 纪录持有 / M2 领奖台 为主）
-    b1: 0.28, b2: 0.24, b3: 0.12, b4: 0.18, b5: 0.08, b6: 0.10, b7: 0,
+    // 六维权重 w（Σ=1，M1 纪录持有为主币，M3 大赛表现次之，M5 最低）
+    b1: 0.42, b2: 0.14, b3: 0.22, b4: 0.10, b5: 0.04, b6: 0.08, b7: 0,
     // 名次价值函数
     lambda: 1.10,          // V(r)=r^-λ
     lambdaD: 0.50,         // 统治力积分指数
@@ -82,8 +82,8 @@
   /* 每个参数的展示说明（zh / en） */
   const LABEL = {
     b1: ['M1 纪录持有 权重 w₁', 'M1 record ownership weight'], b2: ['M2 领奖台 权重 w₂', 'M2 podium weight'],
-    b3: ['M3 大赛破纪录 权重 w₃', 'M3 championship record weight'], b4: ['M4 统治力 权重 w₄', 'M4 dominance weight'],
-    b5: ['M5 当前排名 权重 w₅', 'M5 current ranking weight'], b6: ['M6 突破幅度 权重 w₆', 'M6 breakthrough margin weight'],
+    b3: ['M3 大赛表现 权重 w₃', 'M3 championship performance weight'], b4: ['M4 统治力 权重 w₄', 'M4 dominance weight'],
+    b5: ['M5 当前排名 权重 w₅', 'M5 current ranking weight'], b6: ['M6 当前水平 权重 w₆', 'M6 current level weight'],
     b7: ['（已停用）旧 M7 对战强度', '(retired) old M7 head-to-head'],
     lambda: ['名次价值指数 λ', 'Place-value exponent λ'], lambdaD: ['统治力积分指数 λ_D', 'Dominance exponent λ_D'],
     eta: ['深度因子强度 η', 'Depth factor η'], xiCurrent: ['现行项目状态系数', 'Current-event status'],

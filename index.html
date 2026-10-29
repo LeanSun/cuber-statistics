@@ -3,7 +3,7 @@
 <meta charset="utf-8" data-page-node-id="oOnhdiPPnR6Btnle0LuS5p">
 <meta name="viewport" content="width=device-width, initial-scale=1" data-page-node-id="O2GWtfZ4xUCt8sZRHRfmyP">
 <title data-page-node-id="689WY3NTN8wgLLFa6XaUuB">Cube GOAT · 谁是魔方历史上最伟大的选手？</title>
-<meta name="description" content="基于 WCA 官方成绩数据的魔方历史最伟大选手（GOAT）评分与排名系统：六维加权模型（纪录持有 / 领奖台 / 大赛破纪录 / 统治力 / 当前排名 / 突破幅度）、综合总榜、选手 PK、纪录演变时间轴、另类统计。" data-page-node-id="PCOIOBahvZKisHG8EgkZbz">
+<meta name="description" content="基于 WCA 官方成绩数据的魔方历史最伟大选手（GOAT）评分与排名系统：六维加权模型（纪录持有 / 大赛表现 / 领奖台 / 统治力 / 当前水平 / 当前排名）、综合总榜、选手 PK、纪录演变时间轴、另类统计。" data-page-node-id="PCOIOBahvZKisHG8EgkZbz">
 <meta name="color-scheme" content="light dark" data-page-node-id="1tCM9xduHnQIe03NMtbwZI">
 <link rel="preconnect" href="https://flagcdn.com" data-page-node-id="b8fRUCwS84PuMoDqu0vmde">
 <link rel="stylesheet" href="css/style.css" data-page-node-id="Ku8mCzgQhdpahdBfnXHKS7">
@@ -141,9 +141,23 @@
 <script src="js/groups.js" data-page-node-id="xCQiJnKeVDqrUaQ59vJkWo"></script>
 <script src="js/params.js" data-page-node-id="tZMoqjKVsHtTXpiTV1Sb0g"></script>
 <script src="js/calc.js" data-page-node-id="SgQg1pWUQhr6AGuIOcb6gd"></script>
-<script src="js/mock.js" data-page-node-id="qAY8WiPd05A94qQZEYHFqY"></script>
-<!-- 真实 WCA 数据（由 etl/build.js 生成）。若存在则覆盖 mock；不存在时 404 无害，自动回退演示数据 -->
+<!-- 真实 WCA 数据（由 etl/build.js 每周生成，本站唯一生产数据源）。
+     演示样本（js/mock.js）只在 URL 显式带 ?demo=1 时才加载，
+     避免「真实数据加载失败却静默显示虚构样本」的陷阱。 -->
 <script src="js/data.js" data-page-node-id="NbG8edD7dOVWITuB1LbxBQ"></script>
+<script>
+  /* 真实数据加载完成后 window.MOCK.meta.demo === false。
+     若真实数据缺失/失败且用户未显式要求演示，则保持 window.MOCK 为空，
+     交由 app.js 显示「数据加载失败」而非伪造数据。 */
+  (function () {
+    var M = window.MOCK;
+    window.__REAL_OK = !!(M && M.meta && M.meta.demo === false);
+    window.__DEMO = /[?&]demo=1\b/.test(location.search);
+    if (!window.__REAL_OK && window.__DEMO) {
+      document.write('<script src="js/mock.js"><\/script>');
+    }
+  })();
+</script>
 <script src="js/icons.js" data-page-node-id="ghhnKhhnVBFOXlkX7HmIFf"></script>
 <script src="js/top10years.js"></script>
 <script src="js/charts.js" data-page-node-id="adp77MrIeozuo5SKNDwX7P"></script>

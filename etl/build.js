@@ -28,7 +28,7 @@ const ROOT = path.resolve(__dirname, '..');
    站点总分自此 = 六维总分（Σ 维度权重 × 维度分），取代旧的 Σ(单项分×项目权重)。
    维度分 s_d 满足恒等：Σ_d w_d × s_d = 总分（引擎侧已逐人校验，21,363 人 0 例不符）。
    sixdim_site.tsv 缺失时打印告警并留在旧口径，便于排查而非静默出错。 */
-const SIX_W = { m1: 0.28, m2: 0.24, m3: 0.12, m4: 0.18, m5: 0.08, m6: 0.10 };
+const SIX_W = { m1: 0.42, m2: 0.14, m3: 0.22, m4: 0.10, m5: 0.04, m6: 0.08 };
 const SIXK = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'];
 const SIX = new Map();
 (function loadSix() {
@@ -1295,7 +1295,7 @@ function buildEventMilestones() {
     esumMax: ESUM_MAX,
     /* 六维（当前模型）：权重与维度中文名，供前端贡献表 / 图例使用 */
     sixWeights: SIX_W,
-    sixNames: { m1: '纪录持有', m2: '领奖台', m3: '大赛破纪录', m4: '统治力', m5: '当前排名', m6: '突破幅度' },
+    sixNames: { m1: '纪录持有', m2: '领奖台', m3: '大赛表现', m4: '统治力', m5: '当前排名', m6: '当前水平' },
     sixCovered: SIX.size,
     evGamma: EV_GAMMA,
     emitted: emit.length, detailMax: DETAIL_MAX, slimMax: SLIM_MAX,

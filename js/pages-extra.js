@@ -579,7 +579,7 @@
   function evScopeT(p, evList, rtype) {
     const se = p && p.sixEv;
     if (!se) return 0;
-    const w = (P.util && P.util.sixW) ? P.util.sixW() : { m1: .28, m2: .24, m3: .12, m4: .18, m5: .08, m6: .10 };
+    const w = (P.util && P.util.sixW) ? P.util.sixW() : { m1: .42, m2: .14, m3: .22, m4: .10, m5: .04, m6: .08 };
     const s = [0, 0, 0, 0, 0, 0];
     let hit = 0;
     evList.forEach(function (ev) {
@@ -662,7 +662,7 @@
       }
       const all = cum(p, END_Y);
       /* 六维单独筛选：直接用该维度的维度分作为基准分，再乘同一条年度进度曲线，
-         这样「只看 M3」的竞速图里条形只按大赛破纪录这一维比拼。
+         这样「只看 M3」的竞速图里条形只按大赛表现这一维比拼。
          该维没有年度荣誉累计（all=0，如仅靠当前排名拿分）时，进度曲线取 1
          （显示其当前维度分），而不是把整条丢弃。 */
       const dimMode = (dim && ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'].indexOf(dim) >= 0);
@@ -993,7 +993,7 @@
   function sensitivity(state) {
     let h = '<div class="card reveal"><div class="card-head"><h2>' + esc(t('top.sens')) + '</h2>' + infoTip(t('top.sens.d')) + '</div>';
     /* 用「参数设置」页的当前权重做敏感性扫描（而不是写死的默认值） */
-    const W = (P.util.sixW && P.util.sixW()) || (M.meta && M.meta.sixWeights) || { m1: 0.28, m2: 0.24, m3: 0.12, m4: 0.18, m5: 0.08, m6: 0.10 };
+    const W = (P.util.sixW && P.util.sixW()) || (M.meta && M.meta.sixWeights) || { m1: 0.42, m2: 0.14, m3: 0.22, m4: 0.10, m5: 0.04, m6: 0.08 };
     const wsum = W.m1 + W.m2 + W.m3 + W.m4 + W.m5 + W.m6;
     for (const kk in W) W[kk] = W[kk] / (wsum || 1);
     const rest0 = 1 - W.m1;
@@ -1031,10 +1031,10 @@
       simple: ['选手总分由六个维度加权合成：每个维度先独立算出「维度分」（榜首归一为 1000，其余按相对值线性缩放），再乘以该维度的权重 w<sub>d</sub>，加权求和即为总分。旧版七模块模型（M1–M7，含 Elo 对战）已整体停用，不再参与任何榜单。',
         'A player total is the weighted sum of six dimensions. Each dimension is normalised so the leader scores 1000, then multiplied by its weight w_d. The old seven-module model (M1–M7, including Elo head-to-head) is retired and no longer feeds any ranking.'],
       f: ['$$t=\\sum_{d}w_{d}\\,s_{d},\\qquad s_{d}=1000\\cdot\\frac{x_{d}}{\\max_{p}x_{d}},\\qquad \\sum_{d}w_{d}=1$$',
-        '$$w=(\\underbrace{0.28}_{M1},\\underbrace{0.24}_{M2},\\underbrace{0.18}_{M4},\\underbrace{0.12}_{M3},\\underbrace{0.10}_{M6},\\underbrace{0.08}_{M5})$$'],
+        '$$w=(\\underbrace{0.42}_{M1},\\underbrace{0.22}_{M3},\\underbrace{0.14}_{M2},\\underbrace{0.10}_{M4},\\underbrace{0.08}_{M6},\\underbrace{0.04}_{M5})$$'],
       detail: [
-        ['六个维度回答六个不同的问题：M1 纪录持有（破的纪录守了多久）、M2 领奖台（拿过多少冠亚季军）、M3 大赛破纪录（锦标赛上突破的加成）、M4 统治力（保持在世界前十有多久）、M5 当前排名（此刻站在世界各榜什么位置）、M6 突破幅度（破纪录瞬间把人类前沿推远多少）。',
-          'The six dimensions answer six different questions: M1 record ownership (how long a broken record was held), M2 podiums, M3 record-breaking at championships, M4 dominance (time spent inside the world top ten), M5 current ranking, M6 breakthrough margin.'],
+        ['六个维度回答六个不同的问题：M1 纪录持有（破的纪录守了多久）、M3 大赛表现（锦标赛上突破的加成）、M2 领奖台（拿过多少冠亚季军）、M4 统治力（保持在世界前十有多久）、M6 当前水平（破纪录瞬间把人类前沿推远多少）、M5 当前排名（此刻站在世界各榜什么位置）。',
+          'The six dimensions answer six different questions: M1 record ownership (how long a broken record was held), M3 championship performance, M2 podiums, M4 dominance (time spent inside the world top ten), M6 current level (how far a record pushed the human frontier), M5 current ranking.'],
         ['维度分先按「榜首 = 1000」归一再加权，是为了让六个量纲完全不同的维度（M2 原始量级上万、M6 只有几十）能放在同一把尺子上相加；归一后每个维度都是 0–1000 的同刻度分数，权重才具有可读的含义。',
           'Normalising each dimension to leader = 1000 lets dimensions with wildly different scales (M2 in the tens of thousands, M6 in the tens) be summed on one ruler; only then do the weights mean what they say.'],
         ['跨维相关性已逐对审查：15 对组合中唯一超过 0.7 的只有 M1 × M4 = 0.714，且属于语义近邻（守得住纪录 ⇔ 长期在世界前十），分年代桶内相关系数不下降，判定为真实机制而非时代混杂，处置方式是标注并在权重上压制。',
@@ -1042,7 +1042,7 @@
       ]
     },
     {
-      id: 'm1', h: ['M1 · 纪录持有（权重 28%）', 'M1 · Record ownership (28%)'], g: 'm1',
+      id: 'm1', h: ['M1 · 纪录持有（权重 42%）', 'M1 · Record ownership (42%)'], g: 'm1',
       simple: ['不看「破了多少次纪录」，而看「你破的这条纪录，在你的名下守了多久」。一次刷新只是起点，真正的分值是它作为世界/洲/国家纪录存活的时间。',
         'Not "how many records broken" but "how long the record you set survived under your name". The refresh is the start; the score is the survival time.'],
       f: ['$$M_{1}=\\sum_{\\text{段}}\\frac{\\min(T,30\\,\\text{y})}{365}\\;V_{L}\\;\\rho_{s}\\;f_{L}\\;w_{e}$$',
@@ -1055,7 +1055,7 @@
       ]
     },
     {
-      id: 'm2', h: ['M2 · 领奖台（权重 24%）', 'M2 · Podiums (24%)'], g: 'm2',
+      id: 'm2', h: ['M2 · 领奖台（权重 14%）', 'M2 · Podiums (14%)'], g: 'm2',
       simple: ['冠亚季军按 1 / 0.6 / 0.4 加权，并按赛事级别（世锦 / 洲锦 / 国锦 / 公开赛）与赛场强度折算。核心是「融合」：本人成绩强度与当场比赛的对手强度各占一半（α = 0.5）。',
         'Gold/silver/bronze weigh 1 / 0.6 / 0.4, scaled by championship tier and field strength. The core is a blend: own performance and field strength each contribute half (alpha = 0.5).'],
       f: ['$$M_{2}=\\sum_{i}V(r_{i})\\;K_{c}\\;F^{\\text{CSI}}_{i}\\;\\rho_{s},\\qquad V(1):V(2):V(3)=1:0.6:0.4$$',
@@ -1066,7 +1066,7 @@
       ]
     },
     {
-      id: 'm3', h: ['M3 · 大赛破纪录（权重 12%）', 'M3 · Championship record breaks (12%)'], g: 'm3',
+      id: 'm3', h: ['M3 · 大赛表现（权重 22%）', 'M3 · Championship performance (22%)'], g: 'm3',
       simple: ['记录「在锦标赛现场打破纪录」这一额外含金量：同样的 WR，在世界锦标赛上打出来比在一场周末公开赛上打出来更难。只对锦标赛生效，公开赛不计。',
         'Captures the extra value of breaking a record on a championship floor: the same WR is harder at Worlds than at a weekend open. Championship results only.'],
       f: ['$$M_{3}=\\sum_{k}W_{\\text{REC}}(L_{k})\\times W_{\\text{TIER}}(T_{k})$$',
@@ -1077,7 +1077,7 @@
       ]
     },
     {
-      id: 'm4', h: ['M4 · 统治力（权重 18%）', 'M4 · Dominance (18%)'], g: 'm4',
+      id: 'm4', h: ['M4 · 统治力（权重 10%）', 'M4 · Dominance (10%)'], g: 'm4',
       simple: ['对「停留在世界前十」这件事做时间积分：不是看你某一天排第几，而是看你在前十里待了多少天、以什么名次待着、那个年代有多少人在竞争。',
         'Integrates "staying inside the world top ten" over time: not where you rank on one day, but how many days you stayed there, at what rank, and how many people were competing then.'],
       f: ['$$M_{4}=\\sum_{e,t}w_{e}\\sum_{\\text{段}}\\frac{\\text{段长}}{365}\\,g(r)\\,f(y),\\qquad g(r)=r^{-1.0}$$',
@@ -1090,7 +1090,7 @@
       ]
     },
     {
-      id: 'm5', h: ['M5 · 当前排名（权重 8%）', 'M5 · Current ranking (8%)'], g: 'm5',
+      id: 'm5', h: ['M5 · 当前排名（权重 4%）', 'M5 · Current ranking (4%)'], g: 'm5',
       simple: ['唯一一个「此刻」的维度：你现在站在世界各榜的什么位置。为了保证它真的是「现在」，名次分与新鲜度双衰减同时生效 —— 久未参赛、PB 早已过期都会扣分。',
         'The only "right now" dimension: where you stand on the world boards today. A double freshness decay applies - both inactivity and a stale personal best discount the score.'],
       f: ['$$M_{5}=\\sum_{e}w_{e}\\,r^{-1.0}\\,\\max\\!\\left(0.2,\\,1-\\frac{\\text{gap}_{R}}{5}\\times0.8\\right)\\,\\max\\!\\left(0.2,\\,1-\\frac{\\text{gap}_{P}}{5}\\times0.8\\right)$$'],
@@ -1102,7 +1102,7 @@
       ]
     },
     {
-      id: 'm6', h: ['M6 · 突破幅度（权重 10%）', 'M6 · Breakthrough margin (10%)'], g: 'm6',
+      id: 'm6', h: ['M6 · 当前水平（权重 8%）', 'M6 · Current level (8%)'], g: 'm6',
       simple: ['每次刷新世界纪录，你究竟把人类前沿往前推了多远。只看相对幅度：从 5.00 打到 4.00 是把极限推远 22%，从 4.00 打到 3.90 只有 2.5%，两者不该同分。',
         'How far each world record actually pushed the frontier. Only the relative margin counts: 5.00 to 4.00 is 22%, 4.00 to 3.90 is 2.5% - they should not score alike.'],
       f: ['$$M_{6}=\\sum_{\\text{WR 事件}}\\min\\!\\left(\\ln\\frac{\\text{前值}}{\\text{新值}},\\;0.5\\right)$$'],
@@ -1117,7 +1117,7 @@
       id: 'weights', h: ['维度权重与合成', 'Dimension weights'], g: 'weights',
       simple: ['六维权重由「信息量 + 抗刷分 + 覆盖度」三条原则共同确定，以 M1 / M2 为主（合计 52%），M5 最低（8%，因为它只是一个截面快照）。',
         'Weights follow three principles - information content, farming resistance and coverage. M1 and M2 dominate (52% together); M5 is lowest at 8% because it is a single cross-section.'],
-      f: ['$$t=0.28\\,s_{M1}+0.24\\,s_{M2}+0.18\\,s_{M4}+0.12\\,s_{M3}+0.10\\,s_{M6}+0.08\\,s_{M5}$$'],
+      f: ['$$t=0.42\\,s_{M1}+0.22\\,s_{M3}+0.14\\,s_{M2}+0.10\\,s_{M4}+0.08\\,s_{M6}+0.04\\,s_{M5}$$'],
       detail: [
         ['M1 × M4 = 0.714 是唯一超标的相关对：跳得越远 → 追平越难 → 守得越久，属真实机制。合成时按此折扣理解，不额外合并维度。',
           'M1 x M4 = 0.714 is the only pair above the threshold: a bigger jump is harder to match and therefore held longer. It is a real mechanism, documented rather than merged away.'],
@@ -1155,8 +1155,8 @@
 
     /* 六维权重 / 六维名称：被下方的「六维占比自定义」与「预设」复用，必须在使用前定义。
        注意：原先附带的「总分口径（现行）」卡片已按需求删除，这里只保留两个常量声明。 */
-    const SW = (P.util.sixW && P.util.sixW()) || (M.meta && M.meta.sixWeights) || { m1: 0.28, m2: 0.24, m3: 0.12, m4: 0.18, m5: 0.08, m6: 0.10 };
-    const SN = (M.meta && M.meta.sixNames) || { m1: '纪录持有', m2: '领奖台', m3: '大赛破纪录', m4: '统治力', m5: '当前排名', m6: '突破幅度' };
+    const SW = (P.util.sixW && P.util.sixW()) || (M.meta && M.meta.sixWeights) || { m1: 0.42, m2: 0.14, m3: 0.22, m4: 0.10, m5: 0.04, m6: 0.08 };
+    const SN = (M.meta && M.meta.sixNames) || { m1: '纪录持有', m2: '领奖台', m3: '大赛表现', m4: '统治力', m5: '当前排名', m6: '当前水平' };
 
     /* ---- 六维占比自定义：每行「滑杆 + 数字框」，全站榜单立即重排 ----
        旧版是六根竖柱 + 上下拖动柱顶调高度：柱子只有 40 来像素高，

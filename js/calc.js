@@ -44,7 +44,7 @@
      旧七模块（M1 纪录 / M2 锦标赛 / M3 公开赛 / M4 统治力 / M5 广度 / M6 厚度 / M7 Elo）
      已整体停用：不再参与总分、不再参与排序、不再作为任何页面的评分依据。 */
   var MODKEYS = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'];
-  var WEIGHTS = { m1: 0.28, m2: 0.24, m3: 0.12, m4: 0.18, m5: 0.08, m6: 0.10 };
+  var WEIGHTS = { m1: 0.42, m2: 0.14, m3: 0.22, m4: 0.10, m5: 0.04, m6: 0.08 };
   function sixOf(p) { return (p && p.six) ? p.six : null; }
   function sixTotal(p) { var s = sixOf(p); return s && s.t != null ? s.t : 0; }
   /* 兼容旧签名：weighted(mods) 仍按六维权重求和，供历史调用点使用 */
