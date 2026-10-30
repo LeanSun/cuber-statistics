@@ -355,7 +355,12 @@
              现在序号统一由 Y 轴给出（轴范围 1..n，与名次 1:1），这里只画条形内容。 */
           const uri = d.flag || flagUri(d.iso);
           if (uri) {
-            kids.push({ type: 'image', transition: ['style'], style: { image: uri, x: tx, y: yc - 5, width: 15, height: 11 } });
+            /* 国旗不加白底片：仅给图片加一层轻微阴影（紧贴轮廓的深色描边 + 轻微投影），
+               让国旗在同色色条上也能描出边缘、不被浸没。 */
+            kids.push({ type: 'image', transition: ['style'], style: {
+              image: uri, x: tx, y: yc - 5, width: 15, height: 11,
+              shadowBlur: 1.2, shadowColor: 'rgba(0,0,0,0.7)', shadowOffsetX: 0, shadowOffsetY: 1
+            } });
             tx += 20;
           }
           const room = x0 + w - tx - 6;
