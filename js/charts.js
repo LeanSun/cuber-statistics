@@ -18,19 +18,6 @@
     if (typeof c === 'string' && c.indexOf('var(') === 0) return cssVar(c.slice(4, -1).trim(), '#888');
     return c;
   }
-  /* 条内文字色：按色条相对亮度自动取对比色（亮条近黑、暗条白），保证国旗主色提亮后仍清晰可读 */
-  function barTextColor(hex) {
-    if (typeof hex !== 'string') return '#fff';
-    const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
-    if (!m) return '#fff';
-    const n = parseInt(m[1], 16);
-    const ch = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-    const f = function (c) { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
-    const L = 0.2126 * f(ch[0]) + 0.7152 * f(ch[1]) + 0.0722 * f(ch[2]);
-    const cw = 1.05 / (L + 0.05);          /* 与白色对比度 */
-    const cb = (L + 0.05) / 0.05;          /* 与黑色对比度 */
-    return cw >= cb ? '#fff' : 'rgba(17,20,28,0.92)';
-  }
   function resolveDeep(obj) {
     if (Array.isArray(obj)) { for (let i = 0; i < obj.length; i++) obj[i] = resolveDeep(obj[i]); }
     else if (obj && typeof obj === 'object') {
@@ -384,9 +371,10 @@
           if (txt) {
             kids.push({
               type: 'text', transition: ['style'], style: {
-                text: txt, x: tx, y: yc, fill: barTextColor(d.color),
+                text: txt, x: tx, y: yc, fill: '#fff',
                 font: '600 11.5px "Segoe UI",system-ui,sans-serif',
-                textVerticalAlign: 'middle', textBaseline: 'middle'
+                textVerticalAlign: 'middle', textBaseline: 'middle',
+                shadowBlur: 2, shadowColor: 'rgba(0,0,0,0.55)', shadowOffsetX: 0, shadowOffsetY: 1
               }
             });
           }
@@ -557,9 +545,10 @@
         if (txt) {
           kids.push({
             type: 'text', style: {
-              text: txt, x: x, y: rect.y + h / 2, fill: barTextColor(api.visual('color')),
+              text: txt, x: x, y: rect.y + h / 2, fill: '#fff',
               font: '600 11.5px "Segoe UI",system-ui,sans-serif',
-              textVerticalAlign: 'middle', textBaseline: 'middle'
+              textVerticalAlign: 'middle', textBaseline: 'middle',
+              shadowBlur: 2, shadowColor: 'rgba(0,0,0,0.55)', shadowOffsetX: 0, shadowOffsetY: 1
             }
           });
         }
