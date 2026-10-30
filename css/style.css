@@ -291,7 +291,7 @@ details.card .card-body{padding-top:12px}
   transition:background .22s ease,transform .22s cubic-bezier(.22,.61,.36,1),box-shadow .22s ease;
   cursor:default}
 .stat::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
-  background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 20%,transparent),transparent 62%);
+  background:radial-gradient(120% 130% at 0% 0%,color-mix(in srgb,var(--accent) 30%,transparent),transparent 72%);
   opacity:0;transition:opacity .24s ease}
 .stat:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(16,24,40,.10)}
 .stat:hover::before{opacity:1}
@@ -375,7 +375,7 @@ tr:hover .rank-no{transform:scale(1.08)}
 }
 tr:hover .pname .linkish,tr:hover .pname .pname-txt{
   transform:scale(1.055) translateY(-.4px);
-  letter-spacing:.012em;
+  letter-spacing:.012em;color:var(--accent);
 }
 @media (prefers-reduced-motion:reduce){
   .pname .linkish,.pname .pname-txt{transition:color .2s ease}
@@ -558,7 +558,7 @@ tr:hover .pname .linkish,tr:hover .pname .pname-txt{
 /* 信息栏内的排名胶囊（世界 / 洲 / 地区 / 巅峰高度） */
 .pid-ranks{display:grid;grid-template-columns:repeat(auto-fit,minmax(178px,1fr));margin-bottom:18px;
   gap:9px;margin-top:14px;padding-top:13px;border-top:1px dashed var(--border)}
-.pid-rank{display:flex;align-items:center;gap:9px;padding:8px 12px;
+.pid-rank{display:flex;align-items:center;gap:9px;padding:8px 12px;min-width:0;
   border-radius:12px;background:var(--bg-soft);border:1px solid var(--border);
   transition:transform .18s cubic-bezier(.34,1.4,.64,1),border-color .18s,background .18s}
 .pid-rank:hover{transform:translateY(-2px);border-color:var(--accent);background:var(--bg-soft-2)}
@@ -566,7 +566,8 @@ tr:hover .pname .linkish,tr:hover .pname .pname-txt{
   width:24px;height:24px;border-radius:8px;flex:none;
   background:var(--accent-soft);color:var(--accent)}
 .pid-rank .pr-ic .ic,.pid-rank .pr-ic svg{width:14px;height:14px}
-.pid-rank .pr-label{font-size:12px;color:var(--text-2);white-space:nowrap}
+.pid-rank .pr-label{font-size:12px;color:var(--text-2);white-space:nowrap;min-width:0;
+  overflow:hidden;text-overflow:ellipsis}
 .pid-rank .pr-val{margin-left:auto;display:flex;align-items:baseline;gap:2px;
   font-variant-numeric:tabular-nums;white-space:nowrap}
 /* 排名数字：需求要求「加大 + 彩色动态渐变」。
@@ -585,7 +586,8 @@ tr:hover .pname .linkish,tr:hover .pname .pname-txt{
   100%{background-position:320% 50%}
 }
 .pid-rank .pr-val i{font-style:normal;font-size:12px;color:var(--text-3);font-weight:600}
-.pid-rank .pr-sub{font-size:10.5px;color:var(--text-3);white-space:nowrap}
+.pid-rank .pr-sub{font-size:10.5px;color:var(--text-3);white-space:nowrap;
+  min-width:0;overflow:hidden;text-overflow:ellipsis;flex:0 1 auto}
 @media (prefers-reduced-motion:reduce){
   .pid-rank .pr-val b{animation:none;background-position:35% 50%}
 }
@@ -935,25 +937,10 @@ td.tl:hover .fi{transform:scale(1.22)}
 .fi{transition:transform .18s ease}
 td.tl:hover .fi, .region-cell:hover .fi{transform:scale(1.22)}
 
-/* 选手名：鼠标划过时放大并轻微跳动 */
-.pname .linkish{
-  display:inline-block;transform-origin:left center;
-  transition:transform .22s cubic-bezier(.34,1.56,.5,1),color .2s ease;font-weight:600
-}
-tr[data-prow]:hover .pname .linkish,.pname:hover .linkish{
-  transform:scale(1.14);color:var(--accent);
-  animation:nameJump .5s cubic-bezier(.34,1.56,.5,1)
-}
-@keyframes nameJump{
-  0%{transform:scale(1.14) translateY(0)}
-  35%{transform:scale(1.2) translateY(-2px)}
-  60%{transform:scale(1.13) translateY(0)}
-  80%{transform:scale(1.16) translateY(-1px)}
-  100%{transform:scale(1.14) translateY(0)}
-}
-@media (prefers-reduced-motion:reduce){
-  tr[data-prow]:hover .pname .linkish,.pname:hover .linkish{animation:none}
-}
+/* 选手名：悬停动效统一由上方 .pname .linkish / .pname-txt 那一处定义
+   （260ms 减速曲线、scale 1.055）。这里原来还有一套 scale(1.14) + nameJump 弹簧动画，
+   选择器权重更高会盖住新规则、把「丝滑」又变回「跳一下」，故整块删除，勿再补回。 */
+.pname .linkish{font-weight:600}
 
 /* 多项目模式：项目图例 + 堆叠条 */
 .ev-legend{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 10px}

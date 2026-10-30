@@ -1548,7 +1548,9 @@
       const py = (cy != null ? cy : r.top + r.height / 2);
       x = px - w / 2;
       y = py - hh - 14;
-      if (y < 8) y = py + 18;
+      if (y < 8) y = py + 22;                       /* 上方放不下才翻到光标下方 */
+      /* 翻下去也可能顶到视口底部（项目领域那种 8 行的大浮层），再夹一次，保证整块可见 */
+      if (y + hh > vh - 8) y = Math.max(8, vh - hh - 8);
       x = Math.max(8, Math.min(x, vw - w - 8));
     } else {
       const mid = (cx != null && top) ? cx : (r.left + r.width / 2);
@@ -1557,6 +1559,7 @@
       if (top) {
         y = r.top - hh - 10;
         if (y < 8) y = r.bottom + 10;          /* 顶到视口上沿才翻到下方 */
+        if (y + hh > vh - 8) y = Math.max(8, vh - hh - 8);
       } else {
         y = r.bottom + 8;
         if (y + hh > vh - 8) y = Math.max(8, r.top - hh - 8);
