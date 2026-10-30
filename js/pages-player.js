@@ -9,7 +9,7 @@
   /* sixW / sixK：六维权重与维度分的统一入口。
      sixK 此前在整个代码库里**从未定义**（只有调用），sixW 也没被解构进来，
      于是 PK 页一渲染就抛 ReferenceError —— 这里一并补齐。 */
-  const { avatar, flag, playerLink, modName, contribs, ecBox, scoreOf, infoTip, evName, contName, regionName, countryName, strength, sixW } = P.util;
+  const { avatar, flag, playerLink, modName, contribs, ecBox, scoreOf, infoTip, evName, contName, regionName, countryName, strength, sixW, sixHex } = P.util;
   function tt(zh, en) { return t.isEn() ? en : zh; }
   /* 性别归一化（兼容 'Male'/'Female'/'m'/'f' 等真实导出写法） */
   function genderOf(g) { if (!g) return ''; g = String(g).charAt(0).toUpperCase(); return g === 'F' ? 'F' : 'M'; }
@@ -63,8 +63,8 @@
      口径与总榜一致：s_d[ev] 由 ETL 的 sixdim_by_event.tsv 下发，
      Σ_ev s_d[ev] ≡ 全站维度分，故「各项目六维小计」之和 = 该选手总分。
      旧的 evRows（单项分 = 100 × 世界名次^-γ）属已停用的 esum 口径，已删除。 */
-  const EVCOL = ['#5b8cff', '#ff7a5c', '#3ecf8e', '#c084fc', '#f5c542', '#4dd0e1',
-    '#ff8fb1', '#9ccc65', '#ffb74d', '#7e9cff', '#a3e635', '#f472b6'];
+  /* 项目配色统一走 P.util.evColorOf（与总榜同一套调色板），本文件不再自带一份 ——
+     之前这里另有一套 12 色，同一个项目在选手页和总榜会显示成两种颜色。 */
   function evRows(p) {
     const se = (p && p.sixEv) || null;
     if (!se) return [];
@@ -147,7 +147,9 @@
     h += '<h1 class="pcard-h1"><a class="wca-name" href="https://www.worldcubeassociation.org/persons/' + esc(p.wcaId) + '" target="_blank" rel="noopener" title="' + esc(t('player.wca')) + '">' + esc(p.nameZh || p.name) + ' ' + Ic.glyph('external') + '</a></h1>';
     h += '<div class="pid-box">' +
       '<span class="pid-cell pid-flag">' + flag(p.country, 'f-lg') + '<span class="pid-txt">' + esc(countryName(p.country)) + '</span></span>' +
-      '<span class="pid-cell mono" title="' + esc(t('player.wca')) + '">' + esc(p.wcaId) + '</span>' +
+      /* WCA ID 胶囊：点一下即复制，悬停时底色做渐变填充（见 css .pid-copy） */
+      '<button type="button" class="pid-cell pid-copy mono" data-copy="' + esc(p.wcaId) + '"' +
+      ' data-tip="' + esc(t('player.copyId')) + '" aria-label="' + esc(t('player.copyId')) + '">' + esc(p.wcaId) + '</button>' +
       '<span class="pid-cell">' + (genderOf(p.gender) === 'F' ? t('f.gender.f') : t('f.gender.m')) + '</span>' +
       '</div>';
     h += '</div>';
@@ -200,14 +202,25 @@
     h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('player.coreStats')) + '</h2></div><div class="grid grid-4">';
     /* 洲锦 / 国家赛冠军此前恒为 0：p.ccGold / p.ncGold 是在领奖台明细被截断成前 10 条
        **之后**才统计的，而明细按 R 排序，洲锦 / 国家赛几乎进不了前十。
-       现在改读 ETL 在截断前算好的 podGold（旧数据无该字段时退回逐条统计）。 */
-    [['col.wr', p.wr, ''], ['rec.level.CR', p.cr, t('player.crTip')], ['rec.level.NR', p.nr, ''], ['col.wc', podGoldCount(p, 'WC'), ''],
-    ['pod.level.CC', podGoldCount(p, 'CC'), ''], ['pod.level.NC', podGoldCount(p, 'NC'), ''],
-    /* 世界前十年数：见上。从未进过任何项目前十即为 0 —— 真实值，不是缺失。 */
-    ['col.top10years', t10y, tt('有多少个自然年里，你至少有一个项目待在世界前十（同一年的多个项目只算一次，不跨项目累加）。这是统治力 M4 的直观读法：不是某一天的名次，而是「在前十里待了多久」。',
-      'Number of calendar years in which you held a world top-ten seat in at least one event (multiple events in the same year count once — no cross-event summing). The intuitive reading of dominance (M4).')],
-    ['col.m4', (p.six && p.six.m4) || 0, ''], ['stat.podiumTotal', st.podiumTotal, ''], ['player.comps', p.comps, '']].forEach(function (s) {
-      h += '<div class="stat"><div class="k">' + esc(t(s[0])) + (s[2] ? ' ' + infoTip(s[2]) : '') + '</div><div class="v">' + U.num(s[1]) + '</div></div>';
+       现在改读 ETL 在截断前算好的 podGold（旧数据无该字段时退回逐条统计）。
+       2026-10-30：每张卡片都挂一条「跟随鼠标」的详细说明（data-tip-follow），
+       不再只有右上角 ⓘ 才有内容 —— 鼠标划到卡片任意位置都能看到这个数字怎么读。 */
+    const m4v = (p.six && p.six.m4) || 0;
+    const cardList = [
+      { k: 'col.wr', v: p.wr, tip: t('statTip.wr', { n: U.num(p.wr) }) },
+      { k: 'rec.level.CR', v: p.cr, tip: t('statTip.cr', { n: U.num(p.cr) }) },
+      { k: 'rec.level.NR', v: p.nr, tip: t('statTip.nr', { n: U.num(p.nr) }) },
+      { k: 'col.wc', v: podGoldCount(p, 'WC'), tip: t('statTip.wc', { n: U.num(podGoldCount(p, 'WC')) }) },
+      { k: 'pod.level.CC', v: podGoldCount(p, 'CC'), tip: t('statTip.cc', { n: U.num(podGoldCount(p, 'CC')) }) },
+      { k: 'pod.level.NC', v: podGoldCount(p, 'NC'), tip: t('statTip.nc', { n: U.num(podGoldCount(p, 'NC')) }) },
+      { k: 'col.top10years', v: t10y, tip: t('statTip.top10', { n: U.num(t10y) }) },
+      { k: 'col.m4', v: m4v, tip: t('statTip.m4', { n: U.fmt(m4v, 2) }) },
+      { k: 'stat.podiumTotal', v: st.podiumTotal, tip: t('statTip.podium', { n: U.num(st.podiumTotal) }) },
+      { k: 'player.comps', v: p.comps, tip: t('statTip.comps', { n: U.num(p.comps) }) }
+    ];
+    cardList.forEach(function (c) {
+      h += '<div class="stat" data-tip="' + esc(c.tip) + '" data-tip-follow="1" tabindex="0">' +
+        '<div class="k">' + esc(t(c.k)) + '</div><div class="v">' + U.num(c.v) + '</div></div>';
     });
     h += '</div></div>';
 
@@ -527,7 +540,8 @@
       const has = (p.events || []).indexOf(e.id) >= 0;
       const nm = esc(evName(e));
       if (!has) {
-        h += '<div class="cov-cell empty" title="' + nm + '">' + Ic.event(e.id, 'ev-mini') +
+        h += '<div class="cov-cell empty" data-tip="' + esc(nm + '\n' + t('cov.tip.none')) + '" data-tip-follow="1">' +
+          Ic.event(e.id, 'ev-mini') +
           '<span class="cov-name">' + nm + '</span><span class="cov-rank">—</span></div>';
         return;
       }
@@ -536,13 +550,45 @@
       /* 名次越靠前颜色越实（对数缩放，与色条一致） */
       const q = r > 0 ? Math.max(0.08, Math.min(1, 1 - Math.log(r) / Math.log(EVENT_RANK_MAX + 1))) : 0.08;
       const best = ent ? (ent.s || '') + (ent.af ? ' / ' + ent.af : '') : '';
-      /* 名次格式：按需求由「#56」改为「No.56」 */
-      h += '<div class="cov-cell" style="--a:' + round(q, 2) + '" title="' + nm + (r ? ' · No.' + r + (best ? ' · ' + best : '') : ' · ' + t('player.coverage.noRank')) + '">' +
+      /* 悬浮提示：把这个项目上的全部细节一次给全（当前名次 / 最好成绩 / 参赛 /
+         复盘次数 / 领奖台 / 纪录 / 保持时长 / 活跃年数），而不仅是格子里的一个名次。 */
+      const tip = covTip(p, e, ent, r, best);
+      h += '<div class="cov-cell" style="--a:' + round(q, 2) + '" data-tip="' + esc(tip) + '" data-tip-follow="1">' +
         Ic.event(e.id, 'ev-mini') + '<span class="cov-name">' + nm + '</span>' +
         '<span class="cov-rank">' + (r > 0 ? 'No.' + r : '—') + '</span></div>';
     });
     h += '</div>';
     return h;
+  }
+  /* 单个项目的细节提示文案（多行，.wb-tip 用 pre-line 渲染） */
+  function covTip(p, e, ent, r, best) {
+    const lines = [evName(e) + (t.isEn() ? '' : ' · ' + (e.en || ''))];
+    const b = (M.evStatRaw ? M.evStatRaw(p, e.id) : null) || null;
+    if (r > 0) {
+      lines.push(t('cov.tip.rank', { r: U.num(r) }) + (best ? ' · ' + t('cov.tip.best', { v: best }) : ''));
+    } else {
+      lines.push(t('cov.tip.norank', { n: U.num(EVENT_RANK_MAX) }));
+    }
+    if (b) {
+      if (b.comps || b.rows) {
+        lines.push(t('cov.tip.comp', { c: U.num(b.comps || 0), r: U.num(b.rows || 0), s: U.num(b.sol || 0) }));
+      }
+      if (b.pod) {
+        lines.push(t('cov.tip.pod', { n: U.num(b.pod), g: U.num(b.gold || 0), s: U.num(b.sil || 0), b: U.num(b.bro || 0) }));
+      }
+      const rec = (b.wr || 0) + (b.cr || 0) + (b.nr || 0);
+      if (rec) {
+        lines.push(t('cov.tip.rec', { w: U.num(b.wr || 0), c: U.num(b.cr || 0), n: U.num(b.nr || 0) }));
+        lines.push(t('cov.tip.held', {
+          t: U.fmt((b.held || 0) / 365.25, 1), l: U.fmt((b.heldLong || 0) / 365.25, 1), k: U.num(b.heldNow || 0)
+        }));
+      }
+      const ys = (b.years || []).slice().sort(function (x, y) { return x - y; });
+      if (ys.length) {
+        lines.push(t('cov.tip.year', { n: ys.length, a: ys[0], b: ys[ys.length - 1] }));
+      }
+    }
+    return lines.filter(Boolean).join('\n');
   }
   function round(x, n) { const p = Math.pow(10, n); return Math.round(x * p) / p; }
   function f2(x) { return U.fmt(x, 2); }
@@ -618,7 +664,8 @@
         return { name: p.name, values: cs.map(function (c) { return c.v; }) };
       }), {
         max: Math.round(maxC * 10) / 10, legend: true,
-        series: MOD.map(function (k) { return { name: modName(k), color: MODC[k] }; })
+        /* ECharts 用 canvas 绘制，必须给真实色值（var(--m1) 在 canvas 里无效） */
+        series: MOD.map(function (k) { return { name: modName(k), color: sixHex(k) }; })
       }, Math.max(200, ps.length * 60 + 90));
       h += '</div>';
 

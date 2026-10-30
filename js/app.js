@@ -181,7 +181,8 @@
     const tr = view.querySelector('tr[data-pid="' + id + '"]');
     if (tr) tr.classList.toggle('expanded', !row.hidden);
     const btn = view.querySelector('.expand-btn[data-expand="' + id + '"]');
-    if (btn) btn.textContent = row.hidden ? '›' : '⌄';
+    /* 箭头不再换字符（换字符无法过渡）：保留 › 只旋转 90°，靠 CSS transition 平滑转开 */
+    if (btn) btn.setAttribute('aria-expanded', row.hidden ? 'false' : 'true');
     if (!row.hidden) {
       const slot = row.querySelector('[data-body="' + id + '"]');
       if (slot && !slot.innerHTML) {
@@ -1147,7 +1148,7 @@
   /* ---------- 自定义设置（速率 / 宽度 / 颜色） ---------- */
   const SETTINGS_KEY = 'goat-settings';
   const PALETTES = {
-    vibrant: ['#ff2d8e', '#ff8a1f', '#ffd21f', '#1fd07a', '#13b9f0', '#8b5cf6', '#ef4444'],
+    vibrant: ['#cc195b', '#d3700d', '#82a008', '#049582', '#0f66bd', '#9436d3', '#c2334d'],
     pastel: ['#f472b6', '#fbbf24', '#a3e635', '#34d399', '#38bdf8', '#a78bfa', '#fb7185'],
     ocean: ['#0ea5e9', '#06b6d4', '#14b8a6', '#22c55e', '#3b82f6', '#6366f1', '#0d9488'],
     sunset: ['#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#ec4899', '#d946ef']
@@ -1216,7 +1217,7 @@
   /* ---------- 全局事件委托 ---------- */
   /* ⚠ 这里少一个选择器，对应的按钮就「点了没反应」——2026-10-27 的六维筛选按钮
      正是因为漏了 [data-dim]/[data-tldim]，事件委托根本收不到点击，才表现为「加了按钮但没功能」。 */
-  const DELEGATE = '[data-sort],[data-page],[data-expand],[data-prow],[data-tab],[data-type],[data-stack],[data-dim],[data-tldim],[data-pkadd],[data-pkrm],[data-pktrayrm],[data-pktrayclear],[data-toggle],[data-expandall],[data-goto],[data-group],[data-gender],[data-retired],[data-tlmode],[data-tlview],[data-tlstep],[data-tlmetric],[data-tllane],[data-topic],[data-topicev],[data-topicboard],[data-other],[data-nation],[data-scope],[data-continent],[data-evpick],[data-evtab],[data-evtoggle],[data-evall],[data-evnone],[data-evsave],[data-gload],[data-gdel],[data-reclevel],[data-rectype],[data-podtier],[data-mdanchor],[data-mdsec],[data-msimport],[data-msreset],[data-msdel],[data-msedit],[data-msunhide],[data-msjump]';
+  const DELEGATE = '[data-sort],[data-page],[data-expand],[data-prow],[data-tab],[data-type],[data-stack],[data-dim],[data-tldim],[data-pkadd],[data-pkrm],[data-pktrayrm],[data-pktrayclear],[data-toggle],[data-expandall],[data-goto],[data-group],[data-gender],[data-retired],[data-tlmode],[data-tlview],[data-tlstep],[data-tlmetric],[data-tllane],[data-topic],[data-topicev],[data-topicboard],[data-other],[data-nation],[data-scope],[data-continent],[data-evpick],[data-evtab],[data-evtoggle],[data-evall],[data-evnone],[data-evsave],[data-gload],[data-gdel],[data-reclevel],[data-rectype],[data-podtier],[data-mdanchor],[data-mdsec],[data-msimport],[data-msreset],[data-msdel],[data-msedit],[data-msunhide],[data-msjump],[data-copy]';
 
   document.addEventListener('click', function (e) {
     const el = e.target.closest ? e.target.closest(DELEGATE) : null;
@@ -1233,6 +1234,7 @@
     }
 
     if (!el) return;
+    if (el.hasAttribute('data-copy')) { copyText(el.getAttribute('data-copy')); return; }
     if (el.hasAttribute('data-goto')) { location.hash = el.getAttribute('data-goto'); return; }
 
     if (el.hasAttribute('data-msimport')) { msImport(); return; }
@@ -1526,26 +1528,39 @@
     return TIP_BOX;
   }
   function hideTip() { TIP_ANCHOR = null; if (TIP_BOX) TIP_BOX.classList.remove('on'); }
-  /* 定位：默认挂在元素正下方；data-tip-pos="top" 时挂在**鼠标上方**，
-     并随 mousemove 跟随（项目图标那一排要的就是「名字浮在指针上面」）。
-     cx 有值时按鼠标横坐标居中，否则按元素中点。 */
-  function placeTip(anchor, cx) {
+  /* 定位：三种模式
+     · data-tip-follow —— 跟着鼠标走（光标右下 16/18px，贴边自动翻向），堆叠条 / 卡片用；
+     · data-tip-pos="top" —— 挂在元素上方，横向随鼠标（项目图标那一排用）；
+     · 默认 —— 挂在元素正下方，放不下翻到上方。 */
+  function placeTip(anchor, cx, cy) {
     const el = tipBox();
     const r = anchor.getBoundingClientRect();
+    const follow = anchor.hasAttribute('data-tip-follow');
     const top = anchor.getAttribute('data-tip-pos') === 'top';
     /* 尺寸只在内容变化时量一次，避免每次 mousemove 都触发重排 */
     const w = TIP_SIZE.w, hh = TIP_SIZE.h;
     const vw = window.innerWidth || 1024, vh = window.innerHeight || 768;
-    const mid = (cx != null && top) ? cx : (r.left + r.width / 2);
-    let x = mid - w / 2;
-    x = Math.max(8, Math.min(x, vw - w - 8));
-    let y;
-    if (top) {
-      y = r.top - hh - 10;
-      if (y < 8) y = r.bottom + 10;          /* 顶到视口上沿才翻到下方 */
+    let x, y;
+    if (follow) {
+      /* 跟随模式：浮在鼠标**上方**并水平居中（堆叠条那一段涨高后，正上方是最不挡视线、
+         也最贴近「这一段是什么」的位置），随光标移动；贴顶时翻到下方。 */
+      const px = (cx != null ? cx : r.left + r.width / 2);
+      const py = (cy != null ? cy : r.top + r.height / 2);
+      x = px - w / 2;
+      y = py - hh - 14;
+      if (y < 8) y = py + 18;
+      x = Math.max(8, Math.min(x, vw - w - 8));
     } else {
-      y = r.bottom + 8;
-      if (y + hh > vh - 8) y = Math.max(8, r.top - hh - 8);
+      const mid = (cx != null && top) ? cx : (r.left + r.width / 2);
+      x = mid - w / 2;
+      x = Math.max(8, Math.min(x, vw - w - 8));
+      if (top) {
+        y = r.top - hh - 10;
+        if (y < 8) y = r.bottom + 10;          /* 顶到视口上沿才翻到下方 */
+      } else {
+        y = r.bottom + 8;
+        if (y + hh > vh - 8) y = Math.max(8, r.top - hh - 8);
+      }
     }
     el.style.left = x + 'px'; el.style.top = y + 'px';
   }
@@ -1556,19 +1571,32 @@
       const txt = a.getAttribute('data-tip') || '';
       if (!txt) return;
       const el = tipBox();
-      el.textContent = txt;
+      /* 首行当标题加粗、其余按行铺开（全部用 textContent 写入，天然防注入） */
+      const parts = txt.split('\n');
+      el.textContent = '';
+      if (parts.length > 1) {
+        const b = document.createElement('b');
+        b.className = 'wb-tip-t';
+        b.textContent = parts[0];
+        el.appendChild(b);
+        const rest = document.createElement('span');
+        rest.textContent = parts.slice(1).join('\n');
+        el.appendChild(rest);
+      } else {
+        el.textContent = txt;
+      }
       el.classList.add('on');
       /* 先归零再量尺寸，否则会用上一次的内容宽度算位置 */
       el.style.left = '0px'; el.style.top = '0px';
       TIP_SIZE = { w: el.offsetWidth, h: el.offsetHeight };
       TIP_ANCHOR = a;
-      placeTip(a, e.clientX);
+      placeTip(a, e.clientX, e.clientY);
     });
-    /* 跟随鼠标：只有声明了 data-tip-pos="top" 的提示才需要水平跟随 */
+    /* 跟随鼠标：data-tip-follow（堆叠条 / 卡片）与 data-tip-pos="top"（项目图标）都需要 */
     document.addEventListener('mousemove', function (e) {
       if (!TIP_ANCHOR) return;
-      if (TIP_ANCHOR.getAttribute('data-tip-pos') !== 'top') return;
-      placeTip(TIP_ANCHOR, e.clientX);
+      if (!TIP_ANCHOR.hasAttribute('data-tip-follow') && TIP_ANCHOR.getAttribute('data-tip-pos') !== 'top') return;
+      placeTip(TIP_ANCHOR, e.clientX, e.clientY);
     });
     document.addEventListener('mouseout', function (e) {
       const a = e.target.closest ? e.target.closest('[data-tip]') : null;
@@ -1579,6 +1607,48 @@
     });
     /* 页面滚动 / 重新渲染后，浮层若还停在原位就会「飘」在无关内容上，直接收起 */
     window.addEventListener('scroll', hideTip, true);
+  }
+
+  /* ---------- 轻提示（复制成功等） ---------- */
+  let TOAST_TIMER = 0;
+  function toast(msg) {
+    let el = document.getElementById('wbToast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'wbToast';
+      el.className = 'wb-toast';
+      document.body.appendChild(el);
+    }
+    el.textContent = msg;
+    el.classList.remove('on');
+    /* 强制重排后再加类，保证同一个 toast 连续点击也有入场动画 */
+    void el.offsetWidth;
+    el.classList.add('on');
+    clearTimeout(TOAST_TIMER);
+    TOAST_TIMER = setTimeout(function () { el.classList.remove('on'); }, 1600);
+  }
+  /* 复制文本：优先 Clipboard API（需要 https / localhost），失败时退回 execCommand */
+  function copyText(txt) {
+    const done = function () { toast(t('ui.copied')); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(txt).then(done, function () { legacyCopy(txt) ? done() : toast(t('ui.copyFail')); });
+      return;
+    }
+    legacyCopy(txt) ? done() : toast(t('ui.copyFail'));
+  }
+  function legacyCopy(txt) {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = txt;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand && document.execCommand('copy');
+      document.body.removeChild(ta);
+      return !!ok;
+    } catch (e) { return false; }
   }
 
   document.getElementById('themeBtn').addEventListener('click', toggleTheme);

@@ -179,7 +179,7 @@ if (!HAS_SCORE) {
   let bad = 0, checked = 0, sample = '';
   rowsHtml.forEach(function (r) {
     const bar = (r.match(/<div class="bar-grow"[^>]*>[\s\S]*?<\/div><\/div>/) || [''])[0];
-    const segRe = /<span style="width:[\d.]+%;background:([^"]+)" title="([^"]*?) · /g;
+    const segRe = /<span style="width:[\d.]+%;background:([^"]+)" data-tip="([^"\n]*)\n/g;
     let s2;
     while ((s2 = segRe.exec(bar))) {
       const bg = s2[1], name = s2[2];
@@ -874,6 +874,49 @@ console.log('== 时间轴绘制（桩 echarts，验证 setOption 真的被调用
     ok(deferred, '容器高度为 0 时先不绘制（等尺寸就绪再画）');
   }
   delete win.echarts; delete global.echarts; delete global.state;
+}
+
+/* ================= 2026-10-30 界面体验改造（配色 / 列宽 / 动效 / 浮层 / 复制） ================= */
+{
+  const st0 = { page: 1, sortKey: 'score', sortDir: 'desc', recType: 'all', tab: 'overall' };
+  const hr = P.rank(Object.assign({}, st0));
+  ok(hr.indexOf('<colgroup><col class="cw-rank"><col class="cw-name">') >= 0,
+    '榜单表头带 colgroup：名字列宽度固定，翻页不再忽宽忽窄');
+  ok(hr.indexOf('class="eb-arw"') >= 0 && /aria-expanded="false"/.test(hr),
+    '行尾箭头是独立 span 且带 aria-expanded（可做 90° 旋转过渡）');
+  ok(hr.indexOf('data-tip-follow="1"') >= 0, '堆叠条分段带「跟随鼠标」的 tooltip');
+  ok(/(data-tip="[^"]*\n[^"]*\n[^"]*(占该行总分|of this row total))/.test(hr),
+    '堆叠条 tooltip 含「项目/维度 + 分数 + 占比」三行');
+
+  /* 选手页：核心数据卡片 + 项目领域格子都要有跟随提示，WCA ID 可点击复制 */
+  const pid = M.ranked[0] && M.ranked[0].id;
+  if (pid) {
+    const ph = P.player(pid);
+    ok(/class="stat" data-tip="[^"]+"/.test(ph), '核心数据每张卡片都有 data-tip（不只右上角 ⓘ）');
+    ok(/class="cov-cell[^"]*" data-tip="[^"]+"/.test(ph), '项目领域每个格子都有 data-tip');
+    ok(ph.indexOf('data-copy="' + pid + '"') >= 0, 'WCA ID 胶囊带 data-copy（点击复制）');
+    ok(ph.indexOf('data-tip-follow="1"') >= 0, '选手页提示同样跟随鼠标');
+  } else {
+    console.log('  · 样例数据没有选手，跳过选手页断言');
+  }
+
+  /* 中华台北：显示名与 WCA 官网一致，内部匹配键仍认 "Taiwan" */
+  ok(Calc.countryZh('TW') === '中华台北' && Calc.countryEn('TW') === 'Chinese Taipei',
+    'TW 显示名为「中华台北 / Chinese Taipei」');
+  ok(Calc.isoNorm('Taiwan') === 'TW' && Calc.isoNorm('Chinese Taipei') === 'TW',
+    '中文 / 英文两种写法都能归一到 TW（不破坏既有选手的国家识别）');
+
+  /* 配色表：六维与项目两套调色板都要存在且互不相同 */
+  const css = fs.readFileSync(path.join(ROOT, 'css/style.css'), 'utf8');
+  const mCols = (css.match(/--m[1-6]:#[0-9a-f]{6}/g) || []);
+  ok(mCols.length >= 12, '六维配色在浅/深两个主题都定义了（实得 ' + mCols.length + ' 条）');
+  ok(/-{2}m3:#82a008/.test(css) && /-{2}m3:#c6e44e/.test(css), 'M3 浅色 / 深色分别取黄绿的深与亮两档');
+  ok(css.indexOf('.fi.fi-tw') >= 0, '中华台北旗帜覆盖规则存在（.fi.fi-tw 权重高于自动生成的 fi-tw）');
+  const evPal = P.util.evColor(0) + '|' + P.util.evColor(1) + '|' + P.util.evColor(20);
+  ok(/^#[0-9a-f]{6}\|#[0-9a-f]{6}\|#[0-9a-f]{6}$/.test(evPal), '项目配色取色函数返回十六进制（实得 ' + evPal + '）');
+  ok(P.util.evColor(0) !== P.util.evColor(1), '相邻两个项目不会拿到同一个颜色');
+  const sixHex = P.util.sixHex('m1');
+  ok(/^#[0-9a-f]{6}$/.test(sixHex), '六维色的 canvas 版本是真实色值（实得 ' + sixHex + '）');
 }
 
 console.log(fail ? ('\n❌ 失败 ' + fail + ' 项') : '\n✅ 全部通过');

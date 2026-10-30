@@ -7,6 +7,15 @@
      M6 突破幅度 / M5 当前排名。旧七模块（含 M7）仅作描述性统计保留，不参与总分。 */
   const MOD = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'];
   const MODC = { m1: 'var(--m1)', m2: 'var(--m2)', m3: 'var(--m3)', m4: 'var(--m4)', m5: 'var(--m5)', m6: 'var(--m6)' };
+  /* 六维色的「可计算」十六进制版本。ECharts 是画在 canvas 上的，不认识 CSS 变量
+     （传 'var(--m1)' 进去只会被忽略、退回默认调色板），于是图表和 DOM 就变成两套配色。
+     这里按当前主题给出真实色值，与 css/style.css 的 --m1…--m6 一一对应。 */
+  const SIX_HEX = {
+    light: { m1: '#cc195b', m2: '#d3700d', m3: '#82a008', m4: '#049582', m5: '#0f66bd', m6: '#9436d3' },
+    dark: { m1: '#f66fa1', m2: '#f8a34f', m3: '#c6e44e', m4: '#2adfc7', m5: '#52a3f4', m6: '#c795ef' }
+  };
+  function themeDark() { try { return document.documentElement.getAttribute('data-theme') === 'dark'; } catch (e) { return false; } }
+  function sixHex(k) { return (themeDark() ? SIX_HEX.dark : SIX_HEX.light)[k] || '#8b96a8'; }
   const SIXW = { m1: 0.42, m2: 0.14, m3: 0.22, m4: 0.10, m5: 0.04, m6: 0.08 };
   function sixWeights() { return sixW(); }
   /* 六维权重：优先取「评分原理说明 / 参数设置」页的用户自定义值（已归一化 Σ=1），
@@ -192,7 +201,10 @@
     const src = vec || sixVec(p, rt) || null;
     return MOD.map(function (k, i) {
       const raw = src ? (vec ? (vec[i] || 0) : (src[k] || 0)) : 0;
-      return { k: k, name: (M.meta && M.meta.sixNames && M.meta.sixNames[k]) || modName(k), raw: raw, w: w[k], v: w[k] * raw, color: MODC[k] };
+      /* 这里给的是「真实色值」而不是 var(--mN)：contribs 的颜色会喂给 ECharts
+         （甜甜圈 / 瀑布 / 堆叠图），canvas 不认 CSS 变量，传 var() 进去只会退回默认色，
+         图表就与页面上的图例不同色。 */
+      return { k: k, name: (M.meta && M.meta.sixNames && M.meta.sixNames[k]) || modName(k), raw: raw, w: w[k], v: w[k] * raw, color: sixHex(k) };
     });
   }
   /* 行内迷你堆叠条（六维加权贡献） */
@@ -263,6 +275,10 @@
        这两种情况都默认按维度堆叠。 */
     return (multiMode && !evMode) ? 'ev' : 'dim';
   }
+  /* 堆叠段 / 卡片的悬浮提示属性：跟随鼠标，内容用 \n 分段（.wb-tip 是 pre-line） */
+  function tipAttr(lines) {
+    return ' data-tip="' + esc(lines.join('\n')) + '" data-tip-follow="1"';
+  }
   /* 按维度堆叠：色块＝六个维度的加权贡献占比 */
   function dimStackHtml(row, rt) {
     const w = sixW();
@@ -281,10 +297,12 @@
       items.map(function (x) {
         if (!(x.v > 0)) return '';
         const nm = (M.meta && M.meta.sixNames && M.meta.sixNames[x.k]) || modName(x.k);
-        return '<span style="width:' + (x.v / tot * 100).toFixed(1) + '%;background:' + x.color +
-          '" title="' + esc(nm) + ' · ' + esc(t('rank.stackDimTip', {
-          s: U.fmt(x.raw, 2), w: U.fmt(w[x.k] || 0, 2), v: U.fmt(x.v, 2), p: U.fmt(x.v / tot * 100, 1)
-        })) + '"></span>';
+        return '<span style="width:' + (x.v / tot * 100).toFixed(1) + '%;background:' + x.color + '"' +
+          tipAttr([
+            nm,
+            t('seg.dimLine', { s: U.fmt(x.raw, 2), w: U.fmt((w[x.k] || 0) * 100, 0), v: U.fmt(x.v, 2) }),
+            t('seg.pct', { p: U.fmt(x.v / tot * 100, 1) })
+          ]) + '></span>';
       }).join('') + '</div>';
   }
   /* 单维堆叠：工具栏「六维筛选」选中某一维后，柱状图不再画六段，
@@ -294,7 +312,8 @@
     if (!(v > 0)) return '';
     const nm = (M.meta && M.meta.sixNames && M.meta.sixNames[dim]) || modName(dim);
     return '<div class="ministack dimstack single" role="img" aria-label="' + esc(nm) + '">' +
-      '<span style="width:100%;background:' + MODC[dim] + '" title="' + esc(nm + ' · ' + U.fmt(v, 2)) + '"></span></div>';
+      '<span style="width:100%;background:' + MODC[dim] + '"' +
+      tipAttr([nm, t('seg.singleLine', { v: U.fmt(v, 2) })]) + '></span></div>';
   }
 
   /* 按项目堆叠：色块＝各项目六维小计 t_ev 的占比；
@@ -322,8 +341,8 @@
       return '<div class="ministack evstack" role="img" aria-label="' + esc(t('rank.contribution')) + '">' +
         items.map(function (x) {
           const ev = M.EV[x.eid] || { zh: x.eid, en: x.eid };
-          return '<span style="width:' + (x.v / tot0 * 100).toFixed(1) + '%;background:' + evColorOf(x.eid) +
-            '" title="' + esc(evName(ev)) + ' No.' + x.rk + ' · ' + U.fmt(x.v, 2) + '"></span>';
+          return '<span style="width:' + (x.v / tot0 * 100).toFixed(1) + '%;background:' + evColorOf(x.eid) + '"' +
+            tipAttr([evName(ev), t('seg.evLine', { v: U.fmt(x.v, 2) }), t('seg.pct', { p: U.fmt(x.v / tot0 * 100, 1) })]) + '></span>';
         }).join('') + '</div>';
     }
     /* 逐项目六维小计：row.evParts 已按当前口径（含单次/平均缩放）算好；
@@ -343,15 +362,18 @@
     /* 2026-10-29：不再把第 11 个项目之后并成灰色「其他」。
        用户反馈「按项目堆叠时最多只显示 10 个项目，后面的项目根本不出现」——
        现在每个有分的项目都单独成段（宽度给 0.4% 下限，保证点得到 tooltip）。 */
-    const seg = function (w, bg, ttl) {
-      return '<span style="width:' + Math.max(0.4, w).toFixed(1) + '%;background:' + bg + '" title="' + esc(ttl) + '"></span>';
+    const seg = function (w, bg, lines) {
+      return '<span style="width:' + Math.max(0.4, w).toFixed(1) + '%;background:' + bg + '"' + tipAttr(lines) + '></span>';
     };
     let out = '<div class="ministack evstack" role="img" aria-label="' + esc(t('rank.contribution')) + '">';
     all.forEach(function (x) {
-      out += seg(x.t / tot * 100, evColorOf(x.ev),
-        evName(M.EV[x.ev] || { zh: x.ev, en: x.ev }) + ' · ' + t('rank.stackEvTip', {
-          v: U.fmt(x.t, 2), p: U.fmt(x.t / tot * 100, 1)
-        }));
+      const ev = M.EV[x.ev] || { zh: x.ev, en: x.ev };
+      /* 悬浮提示：项目名 / 项目分 / 占比（跟随鼠标） */
+      out += seg(x.t / tot * 100, evColorOf(x.ev), [
+        evName(ev),
+        t('seg.evLine', { v: U.fmt(x.t, 2) }),
+        t('seg.pct', { p: U.fmt(x.t / tot * 100, 1) })
+      ]);
     });
     return out + '</div>';
   }
@@ -371,7 +393,7 @@
   P.util = {
     MOD: MOD, MODC: MODC, modName: modName, flag: flag, avatar: avatar, playerLink: playerLink,
     evName: evName, contName: contName, regionName: regionName, countryName: countryName,
-    sixW: sixW, evColorOf: evColorOf, evColor: evColor,
+    sixW: sixW, evColorOf: evColorOf, evColor: evColor, sixHex: sixHex, themeDark: themeDark,
     scoreOf: scoreOf, contribs: contribs, ecBox: ecBox, infoTip: infoTip, strength: strength, fmtScore: fmtScore,
     topicPool: topicPool
   };
@@ -539,14 +561,16 @@
     return Math.max(6, Math.min(100, 100 * (1 - Math.log(r) / Math.log((len || 2000) + 1))));
   }
   function evWeight(ev) { return (M.EV[ev] && M.EV[ev].w) || 0.8; }
-  /* 项目配色：调色板必须 ≥ 事件总数（本站 21 个，含停办），否则序号取模会撞色——
-     之前只有 10 色，全项目堆叠时三阶和多盲、二阶和最少步等会画成同一个颜色，
-     看起来就像「堆叠条没渲染出来」。颜色一律由 evColor(EV_IX[ev]) 给出，
-     条形与图例共用同一函数，保证两处颜色始终一致。 */
+  /* 项目配色（2026-10-30 重做）：
+     · 色相按黄金角 137.5° 递增 —— 任意长度前缀都不会出现「两段几乎同色」；
+     · 三档明度轮转（Y≈0.222 / 0.255 / 0.288）—— 同族色再靠明度错开一层，
+       相邻两段的 CIE76 色差 ≥ 80（远大于「可分辨」阈值 ~25），不会看混；
+     · 等亮度设计：对白底对比度 3.1–3.9:1、对深底 4.5–5.6:1 —— 浅色 / 深色主题下
+       都是同一套颜色且都清楚（不再像旧版那样有几档黄色在白底上几乎看不见）。 */
   const EVCOL = [
-    '#5b8cff', '#ff7a5c', '#3ecf8e', '#c084fc', '#f5c542', '#4dd0e1', '#ff8fb1', '#9ccc65',
-    '#ffb74d', '#7e9cff', '#f472b6', '#2dd4bf', '#a78bfa', '#facc15', '#38bdf8', '#fb7185',
-    '#84cc16', '#22d3ee', '#e879f9', '#fbbf24', '#34d399', '#60a5fa', '#f97316', '#818cf8'
+    '#e2503a', '#19a856', '#c160e7', '#858614', '#1f9cd2', '#e65691', '#259616', '#9683ec',
+    '#d0721f', '#169375', '#e656de', '#6b9817', '#4680e3', '#e96a73', '#18a036', '#a560e7',
+    '#ad901a', '#1998a6', '#e23da3', '#46a619', '#7c7feb', '#de5524', '#19a767', '#cf55e6'
   ];
   function evColor(i) { return EVCOL[((i % EVCOL.length) + EVCOL.length) % EVCOL.length]; }
   function evColorOf(eid) { return evColor(EV_IX[eid] != null ? EV_IX[eid] : 0); }
@@ -774,7 +798,11 @@
     }
     if (!evMode && !multiMode && state.tab === 'peak') h += '<div class="warnbox reveal" style="margin-bottom:12px">' + esc(t('rank.peakNote')) + '</div>';
 
-    h += '<div class="table-wrap reveal"><table class="data rank-table"><thead><tr>';
+    h += '<div class="table-wrap reveal"><table class="data rank-table"><colgroup>' +
+      /* 列宽写死在 colgroup 里（配合 table-layout:fixed）：
+         换页后名字长短不同也不会把「排名 / 性别 / 地区」几列挤得忽宽忽窄。 */
+      '<col class="cw-rank"><col class="cw-name"><col class="cw-gender"><col class="cw-country">' +
+      '<col class="cw-bars"><col class="cw-exp"></colgroup><thead><tr>';
     COLS.forEach(function (c) {
       const isSorted = (state.sortKey || 'score') === c.k;
       const arw = isSorted ? (state.sortDir === 'asc' ? '▲' : '▼') : '';
@@ -816,7 +844,7 @@
         (evMode && row.be ? '<span class="ev-rank" title="' + esc(t('rank.evRankTip')) + '">No.' + row.be.r + '</span>' : '') +
         (multiMode ? '<span class="ev-hitnote">' + row.evHit + '/' + evsShown.length + '</span>' : '') +
         '</div></td>';
-      h += '<td class="tl exp-col"><button class="expand-btn" data-expand="' + p.id + '" aria-label="' + esc(t('ui.more')) + '">›</button></td>';
+      h += '<td class="tl exp-col"><button class="expand-btn" data-expand="' + p.id + '" aria-expanded="false" aria-label="' + esc(t('ui.more')) + '"><span class="eb-arw">›</span></button></td>';
       h += '</tr>';
       h += '<tr class="exp-row" data-expfor="' + p.id + '" hidden><td colspan="' + COLS.length + '"><div class="exp-slot" data-body="' + p.id + '"></div></td></tr>';
     });

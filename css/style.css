@@ -20,9 +20,14 @@
   --shadow-lg:0 10px 34px rgba(16,24,40,.12);
   --r-sm:7px; --r-md:11px; --r-lg:15px;
   --topbar-h:58px;
-  --m1:#ff2d8e; --m2:#ff8a1f; --m3:#ffd21f; --m4:#1fd07a;
-  --m5:#13b9f0; --m6:#8b5cf6; --m7:#ff5470;
-  --grad:linear-gradient(100deg,#ff2d8e 0%,#ff8a1f 24%,#ffd21f 44%,#1fd07a 62%,#13b9f0 80%,#8b5cf6 100%);
+  /* 六维配色（浅色主题）：6 个色相环向排布，相邻两维色相差 ≥50° 且相邻明度差 ≥8，
+     任取两段拼在一起都不会被误读成同一维；每个颜色对白底对比度均 ≥3.0:1。
+     m1 玫红 / m2 橙 / m3 黄绿 / m4 青绿 / m5 蓝 / m6 紫 —— 整条读起来是一条从暖到冷的彩虹。 */
+  --m1:#cc195b; --m2:#d3700d; --m3:#82a008; --m4:#049582;
+  --m5:#0f66bd; --m6:#9436d3; --m7:#c2334d;
+  --grad:linear-gradient(100deg,#cc195b 0%,#d3700d 22%,#82a008 42%,#049582 60%,#0f66bd 80%,#9436d3 100%);
+  /* 名次徽章：金 / 银 / 铜（与六维配色解耦，改六维不会把冠军徽章染绿） */
+  --gold:#e0a20b; --silver:#b6bfcc; --bronze:#c07845;
   --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",Roboto,Helvetica,Arial,sans-serif;
   --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
 }
@@ -45,9 +50,12 @@
   --ok-soft:#122a20;
   --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 22px rgba(0,0,0,.28);
   --shadow-lg:0 14px 40px rgba(0,0,0,.42);
-  --m1:#ff5ca2; --m2:#ffa64d; --m3:#ffd95e; --m4:#3be08e;
-  --m5:#45c8ff; --m6:#a98bff; --m7:#ff6f8c;
-  --grad:linear-gradient(100deg,#ff5ca2 0%,#ffa64d 24%,#ffd95e 44%,#3be08e 62%,#45c8ff 80%,#a98bff 100%);
+  /* 六维配色（深色主题）：同一套色相，整体提亮到 L≈70，对 #151b24 对比度 ≥6:1，
+     且在深底上不会糊成一团；色相顺序与浅色主题完全一致，切换主题不会「换一套颜色」。 */
+  --m1:#f66fa1; --m2:#f8a34f; --m3:#c6e44e; --m4:#2adfc7;
+  --m5:#52a3f4; --m6:#c795ef; --m7:#f2708a;
+  --grad:linear-gradient(100deg,#f66fa1 0%,#f8a34f 22%,#c6e44e 42%,#2adfc7 60%,#52a3f4 80%,#c795ef 100%);
+  --gold:#f0c04a; --silver:#c9d2de; --bronze:#d99a6c;
 }
 
 /* ============ Base ============ */
@@ -277,8 +285,17 @@ details.card .card-body{padding-top:12px}
 .feat-go .ic{width:17px;height:17px}
 
 /* ============ Stats ============ */
-.stat{background:var(--bg-soft);border-radius:var(--r-md);padding:12px 14px;transition:background .2s ease}
-.stat:hover{background:var(--bg-soft-2)}
+/* 核心数据卡片：hover 时底色铺一层从左上斜向的柔和渐变（accent 12% → m5 8%），
+   并轻微上浮，读起来是「这张卡被点亮了」；配合 data-tip 的跟随浮层给细节。 */
+.stat{position:relative;background:var(--bg-soft);border-radius:var(--r-md);padding:12px 14px;
+  transition:background .22s ease,transform .22s cubic-bezier(.22,.61,.36,1),box-shadow .22s ease;
+  cursor:default}
+.stat::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 20%,transparent),transparent 62%);
+  opacity:0;transition:opacity .24s ease}
+.stat:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(16,24,40,.10)}
+.stat:hover::before{opacity:1}
+[data-theme="dark"] .stat:hover{box-shadow:0 8px 22px rgba(0,0,0,.36)}
 .stat .k{font-size:11.5px;color:var(--text-3);margin-bottom:2px}
 .stat .v{font-size:30px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.15;
   background:var(--grad-egg,var(--grad));-webkit-background-clip:text;background-clip:text;color:transparent;
@@ -335,26 +352,34 @@ table.data .num{font-variant-numeric:tabular-nums}
   font-variant-numeric:tabular-nums;transition:transform .18s ease;
 }
 tr:hover .rank-no{transform:scale(1.08)}
-.rank-no.top1{background:var(--m3);color:#2a200a}
-.rank-no.top2{background:var(--border-2);color:var(--text)}
-.rank-no.top3{background:var(--m2);color:#3a2007}
-.pname{display:flex;align-items:center;gap:8px;justify-content:flex-start}
-/* 鼠标划过选手列：名字轻微放大并做一次短促的「跳动」，让长榜单里更容易锁定目标 */
+.rank-no.top1{background:var(--gold);color:#2a200a}
+.rank-no.top2{background:var(--silver);color:#2b3441}
+.rank-no.top3{background:var(--bronze);color:#2a1a0e}
+.pname{display:flex;align-items:center;gap:8px;justify-content:flex-start;min-width:0}
+/* 固定名字列宽：列宽由 colgroup 写死（table-layout:fixed），名字过长时省略号截断，
+   不会再把后面的地区 / 柱状图挤得忽宽忽窄。 */
+.rank-table{table-layout:fixed}
+.rank-table .cw-rank{width:62px}
+.rank-table .cw-name{width:208px}
+.rank-table .cw-gender{width:58px}
+.rank-table .cw-country{width:154px}
+.rank-table .cw-bars{width:auto}
+.rank-table .cw-exp{width:46px}
 .pname .linkish,.pname .pname-txt{
-  display:inline-block;transform-origin:left center;
-  transition:transform .18s cubic-bezier(.34,1.56,.64,1),color .18s;
+  display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  transform-origin:left center;
+  /* 悬停放大：用一条柔和的减速曲线（不是弹簧回弹），位移只有 0.4px、
+     缩放 1.055，快进慢出，看起来是「轻轻托起」而不是突然跳一下。 */
+  transition:transform .26s cubic-bezier(.22,.61,.36,1),color .2s ease,letter-spacing .26s ease;
+  will-change:transform;
 }
 tr:hover .pname .linkish,tr:hover .pname .pname-txt{
-  animation:nameHop .42s cubic-bezier(.34,1.56,.64,1) 1;
-}
-@keyframes nameHop{
-  0%{transform:scale(1)}
-  38%{transform:scale(1.16) translateY(-2px)}
-  70%{transform:scale(1.04) translateY(0)}
-  100%{transform:scale(1.08)}
+  transform:scale(1.055) translateY(-.4px);
+  letter-spacing:.012em;
 }
 @media (prefers-reduced-motion:reduce){
-  tr:hover .pname .linkish,tr:hover .pname .pname-txt{animation:none;transform:scale(1.05)}
+  .pname .linkish,.pname .pname-txt{transition:color .2s ease}
+  tr:hover .pname .linkish,tr:hover .pname .pname-txt{transform:none}
 }
 .avatar{
   width:28px;height:28px;border-radius:50%;flex:none;display:inline-flex;align-items:center;justify-content:center;
@@ -369,16 +394,38 @@ tr:hover .pname .linkish,tr:hover .pname .pname-txt{
 .flag-fb{display:inline-flex;align-items:center;justify-content:center;width:26px;height:17px;flex:none;border-radius:3px;background:var(--bg-soft-2);color:var(--text-3);font-size:9px;font-weight:600}
 .linkish{color:var(--text);cursor:pointer}
 .linkish:hover{color:var(--accent);text-decoration:none}
-.expand-btn{border:none;background:transparent;color:var(--text-3);cursor:pointer;font-size:14px;padding:2px 7px;border-radius:5px}
+/* 行尾展开箭头：单元格定宽并居中（此前箭头带 padding 且 td 右对齐，展开后看着偏右），
+   点开后 › 顺时针转 90° 变成 ⌄ 的样子，靠 transition 平滑过渡。 */
+.rank-table .exp-col{width:46px;padding:0!important;text-align:center;vertical-align:middle}
+.expand-btn{
+  border:none;background:transparent;color:var(--text-3);cursor:pointer;
+  width:26px;height:26px;padding:0;border-radius:7px;line-height:1;
+  display:inline-flex;align-items:center;justify-content:center;
+  font-size:15px;transition:background .18s ease,color .18s ease,transform .26s cubic-bezier(.22,.61,.36,1);
+}
+.expand-btn > .eb-arw{display:inline-block;line-height:1;transition:transform .26s cubic-bezier(.22,.61,.36,1)}
 .expand-btn:hover{background:var(--bg-soft-2);color:var(--accent)}
+.expand-btn[aria-expanded="true"]{background:var(--accent-soft);color:var(--accent)}
+.expand-btn[aria-expanded="true"] > .eb-arw{transform:rotate(90deg)}
 .bars-head{font-weight:600;color:var(--text-2);font-size:11.5px;white-space:nowrap}
 .bars-full{width:100%}
 .barcell{padding:0 10px!important;min-width:150px;vertical-align:middle}
 .barcell.bars-full{padding:9px 14px!important;vertical-align:middle}
-.ministack{display:flex;height:13px;border-radius:4px;overflow:hidden;background:var(--bg-soft);width:100%;min-width:0}
+/* 堆叠条：hover 单段时该段上下同时涨高（transform-origin:center → 水平方向不动），
+   并浮到最上层、加一圈描边，读起来就是「这一段被拎起来了」。
+   容器不能 overflow:hidden，否则涨高的部分会被裁掉 —— 圆角改由首尾段自己带。 */
+.ministack{display:flex;height:13px;border-radius:4px;overflow:visible;background:var(--bg-soft);width:100%;min-width:0}
 .bars-full .ministack{height:18px}
-.ministack span{height:100%;transition:width .4s ease}
-.ministack span:hover{filter:brightness(1.08)}
+.ministack span{height:100%;transition:width .4s ease,transform .18s cubic-bezier(.22,.61,.36,1),filter .18s ease,box-shadow .18s ease;
+  transform-origin:center center;cursor:default}
+.ministack span:first-child{border-radius:4px 0 0 4px}
+.ministack span:last-child{border-radius:0 4px 4px 0}
+.ministack span:only-child{border-radius:4px}
+.ministack span:hover{
+  transform:scaleY(1.55);position:relative;z-index:3;
+  filter:brightness(1.1) saturate(1.06);
+  box-shadow:0 0 0 1px rgba(255,255,255,.55), 0 6px 14px rgba(0,0,0,.22);
+}
 /* 条形放进一条弹性轨道里：轨道吃掉剩余宽度并可收缩（min-width:0），
    条形按轨道宽度的百分比伸缩。此前条形直接以 .bar-row 的 100% 为基准，
    第一名 100% 时会把 gap 与右侧数字一起推出单元格、导致后面的字看不见。 */
@@ -1085,12 +1132,18 @@ tr[data-prow]:hover .pname .linkish,.pname:hover .linkish{
 .rec-chip-tip:hover{border-color:var(--accent);color:var(--text);background:var(--accent-soft)}
 /* 通用轻量浮层（data-tip）：白底深字，跟随目标元素居中弹出，越界自动收进视口 */
 .wb-tip{position:fixed;left:0;top:0;z-index:9999;pointer-events:none;
-  max-width:300px;padding:9px 12px;border-radius:10px;
-  background:var(--bg-elev);color:var(--text);border:1px solid var(--border-2);
-  box-shadow:0 12px 32px rgba(0,0,0,.28);
+  max-width:340px;padding:10px 13px;border-radius:12px;
+  background:color-mix(in srgb,var(--bg-elev) 94%,transparent);
+  backdrop-filter:blur(10px) saturate(1.15);
+  color:var(--text);border:1px solid var(--border-2);
+  box-shadow:0 14px 36px rgba(0,0,0,.26), 0 2px 8px rgba(0,0,0,.14);
   font-size:12px;line-height:1.62;white-space:pre-line;
-  opacity:0;transform:translateY(4px);transition:opacity .14s ease,transform .14s ease}
+  opacity:0;transform:translateY(4px) scale(.985);transform-origin:center bottom;
+  transition:opacity .14s ease,transform .18s cubic-bezier(.22,.61,.36,1)}
 .wb-tip.on{opacity:1;transform:none}
+/* 首行＝标题：与正文拉开一点层次，扫一眼就知道「这是什么」 */
+.wb-tip .wb-tip-t{display:block;font-size:12.5px;font-weight:700;letter-spacing:.01em;margin-bottom:2px}
+.wb-tip .wb-tip-t:only-child{margin-bottom:0}
 /* 各维度计算过程卡片 */
 .dimcalc{border-top:1px dashed var(--border);padding:12px 2px 4px;margin-top:4px}
 .dimcalc:first-of-type{border-top:none;margin-top:0}
@@ -1139,8 +1192,8 @@ tr[data-prow]:hover .pname .linkish,.pname:hover .linkish{
 /* 第二名奖牌框：银色，与第 4 名以后的普通行明确区分 */
 .rank-no.top2{background:linear-gradient(135deg,#c3ccd8,#8e9bab);color:#16202e;
   box-shadow:0 2px 8px rgba(120,132,150,.45)}
-.rank-no.top1{box-shadow:0 2px 10px color-mix(in srgb,var(--m3) 45%,transparent)}
-.rank-no.top3{box-shadow:0 2px 8px color-mix(in srgb,var(--m2) 40%,transparent)}
+.rank-no.top1{box-shadow:0 2px 10px color-mix(in srgb,var(--gold) 45%,transparent)}
+.rank-no.top3{box-shadow:0 2px 8px color-mix(in srgb,var(--bronze) 40%,transparent)}
 
 /* 选手页身份条：国旗 / WCA ID / 性别（放大 + 外框） */
 .pid-box{display:flex;gap:10px;flex-wrap:wrap;margin-top:0}
@@ -1149,6 +1202,26 @@ tr[data-prow]:hover .pname .linkish,.pname:hover .linkish{
   border:1.5px solid var(--border-2);border-radius:12px;
   box-shadow:0 2px 8px rgba(15,23,42,.06)}
 .pid-cell.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.04em}
+/* WCA ID 胶囊：可点击复制。
+   hover 时底色由左往右铺开一条渐变（用 ::before 的 transform:scaleX 做，比切换
+   background-image 更平滑，也不会引起重排），文字保持在上层。 */
+button.pid-copy{position:relative;overflow:hidden;cursor:pointer;font:inherit;line-height:inherit;
+  transition:border-color .2s ease,color .2s ease,box-shadow .2s ease}
+button.pid-copy::before{content:"";position:absolute;inset:0;transform:scaleX(0);transform-origin:left center;
+  background:linear-gradient(100deg,var(--m1),var(--m5) 55%,var(--m6));opacity:.16;
+  transition:transform .34s cubic-bezier(.22,.61,.36,1)}
+button.pid-copy > *{position:relative}
+button.pid-copy:hover{border-color:var(--accent);color:var(--accent);box-shadow:0 3px 14px color-mix(in srgb,var(--accent) 22%,transparent)}
+button.pid-copy:hover::before{transform:scaleX(1)}
+button.pid-copy:active{transform:scale(.985)}
+
+/* 轻提示（复制成功 / 失败） */
+.wb-toast{position:fixed;left:50%;bottom:34px;transform:translate(-50%,10px);z-index:10000;
+  padding:9px 18px;border-radius:999px;font-size:13px;font-weight:600;white-space:nowrap;
+  color:#fff;background:rgba(20,26,34,.92);box-shadow:0 10px 30px rgba(0,0,0,.28);
+  opacity:0;pointer-events:none;transition:opacity .2s ease,transform .26s cubic-bezier(.22,.61,.36,1)}
+.wb-toast.on{opacity:1;transform:translate(-50%,0)}
+[data-theme="dark"] .wb-toast{background:rgba(240,244,250,.96);color:#111821}
 .pid-cell .fi{width:26px;height:19.5px}
 .pid-flag .pid-txt{font-size:14.5px}
 
@@ -1446,3 +1519,10 @@ tr[data-prow]:hover .pname .linkish,.pname:hover .linkish{
 .home-loading .spinner{width:34px;height:34px;border-radius:50%;border:3px solid var(--border);border-top-color:var(--accent);animation:homeSpin .8s linear infinite}
 .home-loading p{font-size:13px;margin:0}
 @keyframes homeSpin{to{transform:rotate(360deg)}}
+
+/* ============ 「中华台北」旗帜 ============
+   站点把 TW 的显示名统一为「中华台北」（与 WCA 官网一致），旗帜也换成相配套的
+   中华台北奥委会会旗：白底 + 红梅花外环 + 青天白日徽。
+   flags.css 是 etl/make_flags.py 自动生成的（fi-tw 用的是地区旗帜），
+   这里用 .fi.fi-tw 提高选择器权重覆盖它 —— 生成器重跑也不会把这个覆盖冲掉。 */
+.fi.fi-tw{background-image:url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20640%20480'%3E%3Crect%20width='640'%20height='480'%20fill='%23ffffff'/%3E%3Ccircle%20cx='320'%20cy='212'%20r='150'%20fill='none'%20stroke='%23d7182a'%20stroke-width='18'/%3E%3Ccircle%20cx='320'%20cy='212'%20r='104'%20fill='%23000095'/%3E%3Cg%20fill='%23ffffff'%3E%3Cpath%20d=%22M306.4%20115.2L320.0%20180.3L333.6%20115.2Z%22/%3E%3Cpath%20d=%22M356.6%20121.4L335.8%20184.6L380.2%20135.0Z%22/%3E%3Cpath%20d=%22M397.0%20151.8L347.4%20196.2L410.6%20175.4Z%22/%3E%3Cpath%20d=%22M416.8%20198.4L351.7%20212.0L416.8%20225.6Z%22/%3E%3Cpath%20d=%22M410.6%20248.6L347.4%20227.8L397.0%20272.2Z%22/%3E%3Cpath%20d=%22M380.2%20289.0L335.8%20239.4L356.6%20302.6Z%22/%3E%3Cpath%20d=%22M333.6%20308.8L320.0%20243.7L306.4%20308.8Z%22/%3E%3Cpath%20d=%22M283.4%20302.6L304.2%20239.4L259.8%20289.0Z%22/%3E%3Cpath%20d=%22M243.0%20272.2L292.6%20227.8L229.4%20248.6Z%22/%3E%3Cpath%20d=%22M223.2%20225.6L288.3%20212.0L223.2%20198.4Z%22/%3E%3Cpath%20d=%22M229.4%20175.4L292.6%20196.2L243.0%20151.8Z%22/%3E%3Cpath%20d=%22M259.8%20135.0L304.2%20184.6L283.4%20121.4Z%22/%3E%3Ccircle%20cx='320'%20cy='212'%20r='44'/%3E%3C/g%3E%3C/svg%3E");background-size:100% 100%}

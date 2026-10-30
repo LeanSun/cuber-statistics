@@ -183,9 +183,11 @@
 
   /* ---------------- 六维配色（可在评分原理页自定义） ---------------- */
   const CKEY = 'goat-modcolors-v1';
+  /* 与 css/style.css 的浅色主题 --m1…--m6 保持一致：
+     这里是「配色自定义」的初始值 / 恢复默认值，两边不一致时恢复默认会跳到另一套颜色。 */
   const CDEF = {
-    m1: '#ff5c8a', m2: '#ffa23e', m3: '#ffd84d', m4: '#4ade80',
-    m5: '#38bdf8', m6: '#a78bfa'
+    m1: '#cc195b', m2: '#d3700d', m3: '#82a008', m4: '#049582',
+    m5: '#0f66bd', m6: '#9436d3'
   };
   let ccur = null;
   function loadColors() {
@@ -205,10 +207,22 @@
     applyColors();
   }
   function resetColors() { ccur = null; loadColors(); try { localStorage.removeItem(CKEY); } catch (e) { } applyColors(); }
+  /* 把配色写到 <html> 的内联样式上。
+     ⚠ 只有**用户真的自定义过**（localStorage 里有记录）才写：否则每次启动都会把
+     css 里浅色 / 深色两套主题的 --m1…--m6 一起盖掉 —— 深色主题永远拿不到深色那一套，
+     主题切换后颜色也不会跟着变。没有自定义时反过来把内联值清掉，交还给 CSS。 */
+  function hasCustomColors() {
+    try { return !!localStorage.getItem(CKEY); } catch (e) { return false; }
+  }
   function applyColors() {
     if (typeof document === 'undefined' || !document.documentElement) return;
+    const root = document.documentElement;
+    if (!hasCustomColors()) {
+      Object.keys(CDEF).forEach(function (k) { root.style.removeProperty('--' + k); });
+      return;
+    }
     const c = colors();
-    Object.keys(c).forEach(function (k) { document.documentElement.style.setProperty('--' + k, c[k]); });
+    Object.keys(c).forEach(function (k) { root.style.setProperty('--' + k, c[k]); });
   }
 
   load();
@@ -222,6 +236,6 @@
     groupTitle: GROUP_TITLE, presets: PRESETS, applyPreset: applyPreset,
     weights: weights, weighted: weighted, overall: overall, normalize: normalize,
     colors: colors, setColor: setColor, resetColors: resetColors, applyColors: applyColors, colorDefaults: CDEF,
-    hasCustomColors: function () { try { return !!localStorage.getItem(CKEY); } catch (e) { return false; } }
+    hasCustomColors: hasCustomColors
   };
 })();

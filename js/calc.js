@@ -87,6 +87,12 @@
     });
   })();
 
+  /* 显示名覆盖：内部仍用 WCA 导出里的英文名做匹配键（"Taiwan"），
+     对外显示统一为「中华台北 / Chinese Taipei」——与 WCA 官网的称呼一致。
+     放在这里而不是改 country-table.js：那张表还会被 isoNorm 用来把
+     导出里的 "Taiwan" 反查成 TW，改掉就会让整批选手的国家认不出来。 */
+  var NAME_ALIAS = { TW: ['Chinese Taipei', '中华台北'] };
+
   function isoNorm(id) {
     if (!id) return '';
     var s = String(id).trim();
@@ -94,13 +100,22 @@
     if (CT[up]) return up;
     if (/^[A-Z]{2}$/.test(up)) return up;
     if (ISO3_TO_2[up]) return ISO3_TO_2[up];
-    /* 按英文名查 */
+    /* 按英文名查（先把显示别名也算进去，导出里若已改成 Chinese Taipei 也能认） */
     var low = s.toLowerCase();
+    for (var a in NAME_ALIAS) { if (NAME_ALIAS[a][0].toLowerCase() === low) return a; }
     for (var k in CT) { if (CT[k][0] && CT[k][0].toLowerCase() === low) return k; }
     return up;
   }
-  function countryEn(iso) { var r = CT[isoNorm(iso)]; return r ? r[0] : (iso || '—'); }
-  function countryZh(iso) { var r = CT[isoNorm(iso)]; return r ? (r[1] || r[0]) : (iso || '—'); }
+  function countryEn(iso) {
+    var k = isoNorm(iso);
+    if (NAME_ALIAS[k]) return NAME_ALIAS[k][0];
+    var r = CT[k]; return r ? r[0] : (iso || '—');
+  }
+  function countryZh(iso) {
+    var k = isoNorm(iso);
+    if (NAME_ALIAS[k]) return NAME_ALIAS[k][1];
+    var r = CT[k]; return r ? (r[1] || r[0]) : (iso || '—');
+  }
   function contOfIso(iso) { var r = CT[isoNorm(iso)]; return r ? r[2] : ''; }
 
   /* ---------------- 项目表（可被 cfg.events 覆盖） ---------------- */

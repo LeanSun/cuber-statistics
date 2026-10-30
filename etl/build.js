@@ -645,8 +645,15 @@ function nrScaleOf(eid, ciso) {
   if (n <= 0) return NR_FLOOR;
   return Math.max(NR_FLOOR, Math.min(1, Math.sqrt(n / NR_REF)));
 }
+/* 纪录链的键。层级不同，比较的「池子」不同：
+   · WR —— 全球一个池子；
+   · CR —— **洲内**一个池子（旧版把 CR 也塞进全球同一个池子，
+           于是欧洲纪录会被亚洲纪录「接走」，保持天数被算短）；
+   · NR —— 国别一个池子。 */
 function recKey(eid, type, level, country) {
-  return eid + '|' + type + '|' + level + '|' + (level === 'NR' ? Calc.isoNorm(country) : '');
+  const tail = level === 'NR' ? Calc.isoNorm(country)
+    : (level === 'CR' ? (Calc.contOfIso(Calc.isoNorm(country)) || '') : '');
+  return eid + '|' + type + '|' + level + '|' + tail;
 }
 function dateNum(d) {
   if (!d) return 0;
@@ -710,11 +717,23 @@ function addRecord(p, eid, type, level, value, comp, year, rr) {
   const R = Math.round(100 * ev.w * S * T * K * G * A * O * 10) / 10;
   const dn = dateNum(comp ? comp.date : (year + '-01-01')) || (year * 10000 + 101);
   const k = recKey(eid, type, level, p.country);
-  /* 保护：纪录序列总量过大时停止收集（退回 held=0），避免 CI 内存溢出 */
+  /* ⚠ 纪录链登记（2026-10-30 修）：
+     WCA 导出在 regional_*_record 里只写**最高的那一级** —— 一条既是 WR 又是 NR 的成绩
+     只标 "WR"，绝不会同时标 "NR"。旧版只把日期写进「本条自己的层级链」，于是某国的 NR
+     链只在「纯 NR」时才前进，一旦之后的纪录升级成 CR/WR 就再也接不上，
+     最后一条 NR 被算成「保持到今天」：实测 Feliks 的 SQ1 平均 NR（2009 年 28.83 秒）
+     被显示成「保持 17 年 3 个月」—— 实际上澳洲早就破掉了。
+     正确做法：一条纪录隐含它下面所有层级，要同时登记到这些链上。 */
   if (recSeqCount < REC_SEQ_MAX) {
-    if (!recSeq[k]) recSeq[k] = [];
-    recSeq[k].push(dn);
-    recSeqCount++;
+    const chain = [k];
+    if (level === 'WR') chain.push(recKey(eid, type, 'CR', p.country), recKey(eid, type, 'NR', p.country));
+    else if (level === 'CR') chain.push(recKey(eid, type, 'NR', p.country));
+    chain.forEach((ck) => {
+      if (recSeqCount >= REC_SEQ_MAX) return;
+      if (!recSeq[ck]) recSeq[ck] = [];
+      recSeq[ck].push(dn);
+      recSeqCount++;
+    });
   }
   p.records.push({
     ev: eid, type: type, level: level, rr: rr || (level === 'CR' ? 'CR' : ''),
