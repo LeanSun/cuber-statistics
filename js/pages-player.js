@@ -203,7 +203,8 @@
     /* 洲锦 / 国家赛冠军此前恒为 0：p.ccGold / p.ncGold 是在领奖台明细被截断成前 10 条
        **之后**才统计的，而明细按 R 排序，洲锦 / 国家赛几乎进不了前十。
        现在改读 ETL 在截断前算好的 podGold（旧数据无该字段时退回逐条统计）。
-       2026-10-30：每张卡片都挂一条「跟随鼠标」的详细说明（data-tip-follow），
+       2026-10-30：每张卡片都挂一条详细说明（data-tip-follow="x" —— 只跟随横坐标，
+           纵向吸附在卡片外侧，不会盖住卡片本身），
        不再只有右上角 ⓘ 才有内容 —— 鼠标划到卡片任意位置都能看到这个数字怎么读。 */
     const m4v = (p.six && p.six.m4) || 0;
     const cardList = [
@@ -219,7 +220,7 @@
       { k: 'player.comps', v: p.comps, tip: t('statTip.comps', { n: U.num(p.comps) }) }
     ];
     cardList.forEach(function (c) {
-      h += '<div class="stat" data-tip="' + esc(c.tip) + '" data-tip-follow="1" tabindex="0">' +
+      h += '<div class="stat" data-tip="' + esc(c.tip) + '" data-tip-follow="x" tabindex="0">' +
         '<div class="k">' + esc(t(c.k)) + '</div><div class="v">' + U.num(c.v) + '</div></div>';
     });
     h += '</div></div>';
@@ -540,7 +541,7 @@
       const has = (p.events || []).indexOf(e.id) >= 0;
       const nm = esc(evName(e));
       if (!has) {
-        h += '<div class="cov-cell empty" data-tip="' + esc(nm + '\n' + t('cov.tip.none')) + '" data-tip-follow="1">' +
+        h += '<div class="cov-cell empty" data-tip="' + esc(nm + '\n' + t('cov.tip.none')) + '" data-tip-follow="x">' +
           Ic.event(e.id, 'ev-mini') +
           '<span class="cov-name">' + nm + '</span><span class="cov-rank">—</span></div>';
         return;
@@ -553,7 +554,7 @@
       /* 悬浮提示：把这个项目上的全部细节一次给全（当前名次 / 最好成绩 / 参赛 /
          复盘次数 / 领奖台 / 纪录 / 保持时长 / 活跃年数），而不仅是格子里的一个名次。 */
       const tip = covTip(p, e, ent, r, best);
-      h += '<div class="cov-cell" style="--a:' + round(q, 2) + '" data-tip="' + esc(tip) + '" data-tip-follow="1">' +
+      h += '<div class="cov-cell" style="--a:' + round(q, 2) + '" data-tip="' + esc(tip) + '" data-tip-follow="x">' +
         Ic.event(e.id, 'ev-mini') + '<span class="cov-name">' + nm + '</span>' +
         '<span class="cov-rank">' + (r > 0 ? 'No.' + r : '—') + '</span></div>';
     });

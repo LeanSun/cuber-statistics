@@ -18,6 +18,7 @@
    ============================================================ */
 const fs = require('fs');
 const path = require('path');
+const { StringDecoder } = require('string_decoder');
 const zlib = require('zlib');
 const { spawn, execFileSync } = require('child_process');
 
@@ -228,6 +229,13 @@ function openEntry(base) {
   }
   const entry = findEntry(base);
   const child = spawn('unzip', ['-p', ZIP, entry], { stdio: ['ignore', 'pipe', 'ignore'] });
+  /* ⚠ 必须给子进程 stdout 显式设 utf8。
+     不设编码时 stdout 是 Buffer 流，管道按 64KB 任意边界切块；
+     streamTsv 里 `buf += chunk` 会把每一块独立 toString('utf8')，
+     恰好跨块边界的多字节汉字/西里尔字母就被拆开、逐个替换成 U+FFFD ——
+     表现为极少数选手名字变成「刘??聪」「Русл??н」（每 2 万个名字里约 1 个）。
+     setEncoding('utf8') 让 Node 改用 StringDecoder，跨块的不完整字节序列会被留到下一块再解。 */
+  if (child.stdout && child.stdout.setEncoding) child.stdout.setEncoding('utf8');
   return child.stdout;
 }
 
@@ -245,11 +253,15 @@ function pick(r, names) {
 function streamTsv(base, onRow) {
   return new Promise((resolve, reject) => {
     const stream = openEntry(base);
+    /* 兜底：无论上游给的是字符串还是 Buffer，都用 StringDecoder 拼字符串，
+       保证跨块边界的多字节字符不会被拆坏（见 openEntry 里 setEncoding 的注释）。 */
+    const decoder = new StringDecoder('utf8');
+    const asText = (chunk) => (typeof chunk === 'string' ? chunk : decoder.write(chunk));
     let buf = '';
     let cols = null;
     let rowN = 0;
     stream.on('data', (chunk) => {
-      buf += chunk;
+      buf += asText(chunk);
       let nl;
       while ((nl = buf.indexOf('\n')) >= 0) {
         const line = buf.slice(0, nl).replace(/\r$/, '');

@@ -27,7 +27,7 @@
     'f.scope': '筛选范围', 'f.scope.country': '按国家', 'f.scope.continent': '按大洲', 'f.scope.region': '按 WCA 地区',
 
     'home.title': '谁是魔方历史上最伟大的选手？',
-    'home.sub': '基于 WCA 官方成绩数据的六维加权评分模型 · M1 纪录持有 / M3 大赛表现 / M2 领奖台 / M4 统治力 / M6 突破幅度 / M5 当前排名',
+    'home.sub': '基于 WCA 官方成绩数据的六维加权评分模型 · M1 纪录持有 / M2 领奖台 / M3 大赛表现 / M4 统治力 / M5 当前排名 / M6 突破幅度',
     'home.searchPh': '搜索选手 / 国家 / 项目…',
     'home.search': '搜索',
     'home.searching': '正在检索全部 30 万 WCA 选手…',
@@ -222,7 +222,7 @@
     'pk.verdict': '结论', 'pk.verdict.d': '当前参数下的胜负判断与可信度。',
 
     'tl.title': '图表可视化',
-    'tl.sub': '历史地位随时间的推移而演变。默认按天步进（30 天/秒），右侧时间精确到日；播放时观察分数竞速图的追赶过程，或切到纪录持有图看世界纪录的易主。',
+    'tl.sub': '历史地位随时间的推移而演变。默认按天步进（60 天/秒），右侧时间精确到日；播放时观察分数竞速图的追赶过程，或切到纪录持有图看世界纪录的易主。',
     'tl.mode.active': '活跃模式', 'tl.mode.cumulative': '累计模式',
     'tl.mode.active.d': '只看最近 36 个月的成就，回答「当下谁最强」', 'tl.mode.cumulative.d': '累计截至该年的全部成就，回答「历史地位何时确立」',
     'tl.mode.tip': '两种模式的区别',
@@ -230,7 +230,7 @@
     'tl.view.rank.d': '每条线是一位选手，纵轴是名次（越靠上越强）。线条交错就是名次易主的瞬间。',
     'tl.view.race.d': '横向条形按历史地位分排序并实时换位。分值口径与总榜完全一致（生涯累计 / 巅峰高度几何加权），只是截至当前播放日期。',
     'tl.view.lane.d': '每个项目一条泳道，色块表示该时段世界纪录由谁持有。鼠标移到色块上，即跟随光标显示持有者姓名、国旗与起止日期；停办项目的泳道只画到该项目最后一届比赛。',
-    'tl.play': '播放', 'tl.pause': '暂停', 'tl.step': '步进', 'tl.step.year': '年度', 'tl.step.month': '月度', 'tl.step.week': '周度', 'tl.metric': '评分维度', 'tl.metric.overall': '综合', 'tl.lane': '单次/平均',
+    'tl.play': '播放', 'tl.pause': '暂停', 'tl.replay': '重播', 'tl.step': '步进', 'tl.step.year': '年度', 'tl.step.month': '月度', 'tl.step.week': '周度', 'tl.metric': '评分维度', 'tl.metric.overall': '综合', 'tl.lane': '单次/平均',
     'tl.holder': '持有者', 'tl.days': '保持', 'tl.events': '重大事件',
     'tl.rail': '事件轨道',
     'tl.rail.d': '点击任一事件可跳到对应日期；播放经过时事件会高亮。',
@@ -359,7 +359,7 @@
     'f.scope': 'Scope', 'f.scope.country': 'By country', 'f.scope.continent': 'By continent', 'f.scope.region': 'By WCA region',
 
     'home.title': 'Who is the greatest speedcuber of all time?',
-    'home.sub': 'A six-dimension weighted model built on official WCA results · M1 Record holding / M3 Championship performance / M2 Podiums / M4 Dominance / M6 Breakthrough margin / M5 Current ranking',
+    'home.sub': 'A six-dimension weighted model built on official WCA results · M1 Record holding / M2 Podiums / M3 Championship performance / M4 Dominance / M5 Current ranking / M6 Breakthrough margin',
     'home.searchPh': 'Search player / country / event…',
     'home.search': 'Search',
     'home.searching': 'Searching all 300k WCA players…',
@@ -552,7 +552,7 @@
     'pk.verdict': 'Verdict', 'pk.verdict.d': 'The call under the current parameters, and how much to trust it.',
 
     'tl.title': 'Charts',
-    'tl.sub': 'How historical standing evolved over time. Daily steps by default (30 days per second), with the date shown to the day; play the score race to watch the catch-up, or switch to record holders to see world records change hands.',
+    'tl.sub': 'How historical standing evolved over time. Daily steps by default (60 days per second), with the date shown to the day; play the score race to watch the catch-up, or switch to record holders to see world records change hands.',
     'tl.mode.active': 'Active', 'tl.mode.cumulative': 'Cumulative',
     'tl.mode.active.d': 'Only the last 36 months: who is strongest right now', 'tl.mode.cumulative.d': 'Everything up to that year: when a legacy was established',
     'tl.mode.tip': 'How the two modes differ',
@@ -560,7 +560,7 @@
     'tl.view.rank.d': 'One line per player, rank on the y-axis (higher is better). Crossings are moments the order changed.',
     'tl.view.race.d': 'Horizontal bars sorted by all-time score, swapping in real time. The scale matches the ranking page exactly (career/peak geometric mean), computed as of the played date.',
     'tl.view.lane.d': 'One lane per event; each block shows who held the world record. Hover for the holding duration (exact start and end dates); discontinued events stop at their last competition.',
-    'tl.play': 'Play', 'tl.pause': 'Pause', 'tl.step': 'Step', 'tl.step.year': 'Year', 'tl.step.month': 'Month', 'tl.step.week': 'Week', 'tl.metric': 'Metric', 'tl.metric.overall': 'Overall', 'tl.lane': 'Single/Avg',
+    'tl.play': 'Play', 'tl.pause': 'Pause', 'tl.replay': 'Replay', 'tl.step': 'Step', 'tl.step.year': 'Year', 'tl.step.month': 'Month', 'tl.step.week': 'Week', 'tl.metric': 'Metric', 'tl.metric.overall': 'Overall', 'tl.lane': 'Single/Avg',
     'tl.smooth': '3-period smoothing',
     'tl.smooth.d': 'Averages each frame over three periods — the current day plus the two days before it. This smooths out spikes caused by a single day of unusually many records, so bars and rank changes move more steadily. Off = the true cumulative total for that day only. It only affects mid-playback jitter: the final frame is still the full all-time score and is never averaged away.',
     'tl.holder': 'Holder', 'tl.days': 'Held', 'tl.events': 'Milestones',

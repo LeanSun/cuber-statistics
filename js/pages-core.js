@@ -11,8 +11,8 @@
      （传 'var(--m1)' 进去只会被忽略、退回默认调色板），于是图表和 DOM 就变成两套配色。
      这里按当前主题给出真实色值，与 css/style.css 的 --m1…--m6 一一对应。 */
   const SIX_HEX = {
-    light: { m1: '#cc195b', m2: '#d3700d', m3: '#82a008', m4: '#049582', m5: '#0f66bd', m6: '#9436d3' },
-    dark: { m1: '#f66fa1', m2: '#f8a34f', m3: '#c6e44e', m4: '#2adfc7', m5: '#52a3f4', m6: '#c795ef' }
+    light: { m1: '#ed58a9', m2: '#e54b52', m3: '#ffa838', m4: '#20b561', m5: '#008fd2', m6: '#a167f1' },
+    dark: { m1: '#ff7bbf', m2: '#fe676a', m3: '#ffcb93', m4: '#4acc79', m5: '#00a7f5', m6: '#b585ff' }
   };
   function themeDark() { try { return document.documentElement.getAttribute('data-theme') === 'dark'; } catch (e) { return false; } }
   function sixHex(k) { return (themeDark() ? SIX_HEX.dark : SIX_HEX.light)[k] || '#8b96a8'; }
@@ -561,16 +561,16 @@
     return Math.max(6, Math.min(100, 100 * (1 - Math.log(r) / Math.log((len || 2000) + 1))));
   }
   function evWeight(ev) { return (M.EV[ev] && M.EV[ev].w) || 0.8; }
-  /* 项目配色（2026-10-30 重做）：
+  /* 项目配色（24 色，2026-10-31 提亮重做）：
      · 色相按黄金角 137.5° 递增 —— 任意长度前缀都不会出现「两段几乎同色」；
-     · 三档明度轮转（Y≈0.222 / 0.255 / 0.288）—— 同族色再靠明度错开一层，
-       相邻两段的 CIE76 色差 ≥ 80（远大于「可分辨」阈值 ~25），不会看混；
-     · 等亮度设计：对白底对比度 3.1–3.9:1、对深底 4.5–5.6:1 —— 浅色 / 深色主题下
-       都是同一套颜色且都清楚（不再像旧版那样有几档黄色在白底上几乎看不见）。 */
+     · 三档明度轮转（oklch L ≈ .72 / .66 / .70）—— 同族色再靠明度错开一层；
+     · 相邻两段 Lab ΔE ≥ 89（远大于「可分辨」阈值 ~25），不会看混；
+     · 对白底 2.4–3.4:1、对深底 5.1–7.4:1 —— 一套颜色同时服务浅色与深色主题，
+       比上一版（偏灰的橄榄 / 藕紫）明显更亮更艳。 */
   const EVCOL = [
-    '#e2503a', '#19a856', '#c160e7', '#858614', '#1f9cd2', '#e65691', '#259616', '#9683ec',
-    '#d0721f', '#169375', '#e656de', '#6b9817', '#4680e3', '#e96a73', '#18a036', '#a560e7',
-    '#ad901a', '#1998a6', '#e23da3', '#46a619', '#7c7feb', '#de5524', '#19a767', '#cf55e6'
+    '#ff716b', '#00ad77', '#b27eff', '#d89600', '#00a4bf', '#f363aa', '#7bba11', '#6289ff',
+    '#fa6e1c', '#00beab', '#c464d9', '#b79e00', '#00b2f6', '#ee5471', '#0cbd59', '#a093ff',
+    '#cf7c00', '#00b4bf', '#ef6dc9', '#8b9d00', '#53a0ff', '#ff7458', '#00ab86', '#bf78f8'
   ];
   function evColor(i) { return EVCOL[((i % EVCOL.length) + EVCOL.length) % EVCOL.length]; }
   function evColorOf(eid) { return evColor(EV_IX[eid] != null ? EV_IX[eid] : 0); }
@@ -900,10 +900,12 @@
     h += '<div class="exp-v3-top">';
     h += '<div class="exp-v3-id">' +
       '<div class="exp-v3-idtxt">' +
-      /* WCA ID：去掉「WCA ·」前缀，直接把 ID 做成与下方国籍 / 性别同款的自适应胶囊
-         （宽度随 ID 长度伸缩，不截断）。 */
+      /* WCA ID：去掉「WCA ·」前缀，做成与选手页同款的「点击复制」胶囊
+         —— 悬停时底色渐变从左铺开（css .pid-copy），点一下弹出「复制成功」。 */
       '<div class="exp-v3-nameline"><b class="exp-v3-name">' + esc(p.name) + '</b>' +
-        '<span class="exp-v3-wca" title="' + esc(t('player.wca')) + '">' + esc(String(p.wcaId || p.id)) + '</span></div>' +
+        '<button type="button" class="exp-v3-wca pid-copy mono" data-copy="' + esc(String(p.wcaId || p.id)) + '"' +
+        ' data-tip="' + esc(t('player.copyId')) + '" aria-label="' + esc(t('player.copyId')) + '">' +
+        esc(String(p.wcaId || p.id)) + '</button></div>' +
       '<div class="exp-v3-meta">' +
       '<span class="m-country">' + flag(p.country) + '<span class="m-cname">' + esc(countryName(p.country)) + '</span></span>' +
       '<span class="m-gender">' + (genderOf(p.gender) === 'F' ? esc(t('f.gender.f')) : esc(t('f.gender.m'))) + '</span>' +

@@ -749,6 +749,43 @@ console.log('== 纪录持有图：悬停提示 / 项目图标 / 去掉虚线与�
   ok(P.tlMsCrossed && typeof P.tlMsCrossed === 'function', '提供「跨过事件日期」的查询接口');
   ok(P.tlDateAt && typeof P.tlDateAt === 'function', '提供时间条位置 → 日期的换算接口');
   ok(P.tlFyAt && typeof P.tlFyAt === 'function', '提供小数天 → 小数年（分数连续变化）');
+  /* ---- 播放按钮：YouTube 式形变 + 结尾变重播 ---- */
+  ok(/id="tlPlay" data-state="(play|pause|replay)"/.test(hR), '播放按钮带 data-state（驱动图标形态）');
+  ok(hR.indexOf('tl-play-ic') >= 0 && hR.indexOf('tl-play-tx') >= 0, '播放按钮是「图标 + 文字」两块结构');
+  ok(hR.indexOf('class="tl-rp"') >= 0 && hR.indexOf('<path d="M12 5V1L7 6') >= 0, '结尾态有「重播」循环箭头图标');
+  {
+    const cs = fs.readFileSync(path.join(ROOT, 'css/style.css'), 'utf8');
+    const tri = /\.tl-pp\{[^}]*clip-path:polygon\(24% 10%/.test(cs);
+    const bars = /\.tl-play\[data-state="pause"\] \.tl-pp\{[\s\S]*?clip-path:polygon\(22% 14%/.test(cs);
+    ok(tri && bars, '▶ 与 ❙❙ 是同一枚 clip-path 多边形的两组顶点（可插值形变）');
+    ok(/clip-path \.3s cubic-bezier|\.tl-pp\{\s*position/.test(cs) && /transition:clip-path/.test(cs),
+      '形变带过渡曲线（不是两张图硬切）');
+    ok(/\.tl-play\[data-state="replay"\] \.tl-rp\{opacity:1/.test(cs), '走到结尾时重播箭头转正浮出');
+  }
+  ok((P.tlRate ? P.tlRate().jump : 0) === 60, '默认动画速率为 60 天/秒（实得 ' + (P.tlRate ? P.tlRate().jump : '?') + '）');
+  {
+    /* ---- 按项目筛选：早年不该出现「后来者」 ----
+       旧口径只查 p.events（生涯玩过没）→ 2007 年才有中国盲拧成绩的人，
+       2004 年的画面里就已经有一条属于他的分数条。 */
+    const byId = {}; M.ranked.forEach((p) => { byId[p.id] = p; });
+    const EV = M.events && M.events.length ? M.events[0].id : '333';
+    const earlyFy = 2004.0;
+    const rows = (typeof P.tlSnapshot === 'function') ? P.tlSnapshot([EV], earlyFy, 'all', 'all', '') : [];
+    let viol = 0, checked = 0;
+    rows.forEach((r) => {
+      const p = byId[r.id]; if (!p) return;
+      const b = (M.evStatRaw ? M.evStatRaw(p, EV) : null);
+      if (b && b.years && b.years.length) {
+        checked++;
+        const fy = Math.min.apply(null, b.years.map(Number));
+        if (fy > Math.floor(earlyFy)) viol++;
+      }
+    });
+    ok(viol === 0, '早年不再出现「该项目上还没起步」的选手（违规 ' + viol + ' / 可核对 ' + checked + '）');
+    /* 该项目在该年份的整体规模应该明显小于今天 —— 说明门槛真的生效而不是把人全删了 */
+    const nowRows = (typeof P.tlSnapshot === 'function') ? P.tlSnapshot([EV], P.tlEndFy(), 'all', 'all', '') : [];
+    ok(nowRows.length >= rows.length, '同一项目的当前帧人数 ≥ 早年人数（' + rows.length + ' → ' + nowRows.length + '）');
+  }
   {
     /* 里程碑的有效日期 = m.date（生产数据带精确日），缺省时回落到「年-01-01」。
        自适应地取首个里程碑的有效日期，把时间窗跨在它前后一天，验证 tlMsCrossed 能命中。
@@ -895,7 +932,9 @@ console.log('== 时间轴绘制（桩 echarts，验证 setOption 真的被调用
     ok(/class="stat" data-tip="[^"]+"/.test(ph), '核心数据每张卡片都有 data-tip（不只右上角 ⓘ）');
     ok(/class="cov-cell[^"]*" data-tip="[^"]+"/.test(ph), '项目领域每个格子都有 data-tip');
     ok(ph.indexOf('data-copy="' + pid + '"') >= 0, 'WCA ID 胶囊带 data-copy（点击复制）');
-    ok(ph.indexOf('data-tip-follow="1"') >= 0, '选手页提示同样跟随鼠标');
+    /* follow="x"：只跟随横坐标、纵向吸附在卡片外侧，不会盖住卡片本身 */
+    ok(ph.indexOf('data-tip-follow="x"') >= 0 && ph.indexOf('data-tip-follow="1"') < 0,
+      '卡片提示只跟随横坐标（不遮挡卡片主体）');
   } else {
     console.log('  · 样例数据没有选手，跳过选手页断言');
   }
@@ -910,13 +949,48 @@ console.log('== 时间轴绘制（桩 echarts，验证 setOption 真的被调用
   const css = fs.readFileSync(path.join(ROOT, 'css/style.css'), 'utf8');
   const mCols = (css.match(/--m[1-6]:#[0-9a-f]{6}/g) || []);
   ok(mCols.length >= 12, '六维配色在浅/深两个主题都定义了（实得 ' + mCols.length + ' 条）');
-  ok(/-{2}m3:#82a008/.test(css) && /-{2}m3:#c6e44e/.test(css), 'M3 浅色 / 深色分别取黄绿的深与亮两档');
+  ok(/-{2}m3:#ffa838/.test(css) && /-{2}m3:#ffcb93/.test(css), 'M3 浅色 / 深色同色相取深亮两档');
+  /* 「偏亮」是被明确要求过的设计方向（2026-10-31：上一版偏灰的橄榄 / 藕紫被判定「太暗」）。
+     浅色主题的六维色对白底只能落在 2–4:1，一旦有人又整体调暗（最低亮度掉到 0.2 以下）
+     或者亮到发白（>0.5，白底上就看不见了），这里会挡住。 */
+  const SIX = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'].map((k) => P.util.sixHex(k));
+  const lumOf = (hx) => {
+    const c = [1, 3, 5].map((i) => parseInt(hx.slice(i, i + 2), 16) / 255).map((u) => u <= 0.04045 ? u / 12.92 : Math.pow((u + 0.055) / 1.055, 2.4));
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  };
+  const minLum = Math.min(...SIX.map(lumOf)), maxLum = Math.max(...SIX.map(lumOf));
+  ok(minLum >= 0.20 && maxLum <= 0.52,
+    '六维配色保持「偏亮」但可读（亮度 ' + minLum.toFixed(3) + '–' + maxLum.toFixed(3) + '，约 2–4:1 对比档）');
   ok(css.indexOf('.fi.fi-tw') >= 0, '中华台北旗帜覆盖规则存在（.fi.fi-tw 权重高于自动生成的 fi-tw）');
   const evPal = P.util.evColor(0) + '|' + P.util.evColor(1) + '|' + P.util.evColor(20);
   ok(/^#[0-9a-f]{6}\|#[0-9a-f]{6}\|#[0-9a-f]{6}$/.test(evPal), '项目配色取色函数返回十六进制（实得 ' + evPal + '）');
   ok(P.util.evColor(0) !== P.util.evColor(1), '相邻两个项目不会拿到同一个颜色');
   const sixHex = P.util.sixHex('m1');
   ok(/^#[0-9a-f]{6}$/.test(sixHex), '六维色的 canvas 版本是真实色值（实得 ' + sixHex + '）');
+
+  /* ---- 名字乱码（U+FFFD）回归 ----
+     旧代码：openEntry 返回 unzip 子进程的原始 Buffer stdout，管道按 64KB 任意边界切块，
+     streamTsv 里 `buf += chunk` 逐个 Buffer 独立 toString('utf8')，
+     恰好跨块边界的多字节汉字/西里尔字母被拆开替换成 U+FFFD → 「刘??聪」「Русл??н」。 */
+  const bsrc = fs.readFileSync(path.join(ROOT, 'etl/build.js'), 'utf8');
+  ok(bsrc.indexOf("child.stdout.setEncoding('utf8')") >= 0,
+    'unzip 管道的 stdout 显式设了 utf8（StringDecoder 接管，跨块不完整序列留到下一块）');
+  ok(bsrc.indexOf("require('string_decoder')") >= 0 && /new StringDecoder\('utf8'\)/.test(bsrc),
+    'streamTsv 用 StringDecoder 兜底 Buffer 分块（即使没设编码也不会解坏名字）');
+  const { StringDecoder: SD } = require('string_decoder');
+  /* 功能验证：让多字节名字出现在所有可能的字节偏移上，再按 64KB 强行切块 */
+  const nm = 'Zicong Liu (刘子聪)';
+  let big = 'id\tname\n';
+  for (let i = 0; i < 5000; i++) big += i + '\t' + 'x'.repeat(i % 7) + nm + '\n';
+  const blob = Buffer.from(big, 'utf8');
+  let naive = '', streamed = '', dOld = '', dNew = new SD('utf8');
+  for (let off = 0; off < blob.length; off += 65536) {
+    const piece = blob.subarray(off, Math.min(off + 65536, blob.length));
+    naive += piece.toString('utf8');     /* 旧写法：逐块独立解码 */
+    streamed += dNew.write(piece);       /* 新写法：StringDecoder 续接残缺字节 */
+  }
+  ok(naive.indexOf('�') >= 0, '复现旧 bug：按 Buffer 分块独立 toString 会解出 U+FFFD');
+  ok(streamed.indexOf('�') < 0 && streamed === big, '改用 StringDecoder 后名字完整无损（实得 ' + blob.length + ' 字节流）');
 }
 
 console.log(fail ? ('\n❌ 失败 ' + fail + ' 项') : '\n✅ 全部通过');

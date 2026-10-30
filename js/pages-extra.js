@@ -132,13 +132,17 @@
   /* 动画速率：可自定义「时间跳跃（天/秒）/ 动画时长 / 刷新间隔」，持久化到 localStorage
      每项同时提供滑杆与数字输入框：滑杆用于快速手调，数字框用于精确输入（如 45 天/秒）。 */
   const RATE_KEY = 'goat-tlrate-v1';
-  /* 默认值按「看得清又不拖沓」来定：30 天/秒约 4.5 分钟走完 23 年，
-     换位补间 200ms 短于大部分相邻帧的累积位移，跟得上播放速度。
+  /* 默认值按「看得清又不拖沓」来定。
+     ★ jump（时间跳跃）：2026-10-31 起默认 **60 天/秒**（原 30，约 2 分钟多一点走完 23 年）；
+       旧用户 localStorage 里存的是 30，若原值等于旧默认就静默升到 60（只升级没动过的人），
+       手动调过速率的人保持自己的值。
+     anim（换位补间）200ms 短于大部分相邻帧的累积位移，跟得上播放速度。
      fps（重绘间隔）此前是个没接线的滑杆 —— 播放改走 requestAnimationFrame 逐帧重绘后
      就没人再读它，改它完全没有效果。2026-10-27 起真正生效：
      播放时每 fps 毫秒才重绘一次图表（0 = 不节流、逐帧重绘）。
      默认 100ms（约 10 帧/秒）兼顾流畅与性能；低端机器调大即可降负载。 */
-  const RATE_DEF = { jump: 30, anim: 200, fps: 100 };
+  const RATE_DEF = { jump: 60, anim: 200, fps: 100 };
+  const RATE_OLD_DEF_JUMP = 30;   /* 迁移标记：旧预设值 → 新预设值 */
   const RATE_META = {
     jump: { min: 1, max: 365, step: 1, unit: () => (t.isEn() ? 'days/s' : ' 天/秒') },
     anim: { min: 0, max: 2500, step: 20, unit: () => 'ms' },
@@ -153,7 +157,13 @@
   function loadRate() {
     try {
       const o = JSON.parse(localStorage.getItem(RATE_KEY));
-      if (o) { const r = Object.assign({}, RATE_DEF, o); Object.keys(RATE_META).forEach((k) => { r[k] = clampRate(k, r[k]); }); return r; }
+      if (o) {
+        const r = Object.assign({}, RATE_DEF, o);
+        Object.keys(RATE_META).forEach((k) => { r[k] = clampRate(k, r[k]); });
+        /* 预设从 30 → 60 天/秒：只把「仍然停在旧预设」的人升上来，不覆盖手调过的值 */
+        if (o.jump === RATE_OLD_DEF_JUMP) { r.jump = RATE_DEF.jump; saveRate(r); }
+        return r;
+      }
     } catch (e) { }
     return Object.assign({}, RATE_DEF);
   }
@@ -255,7 +265,7 @@
     /* 「3 期滑动平滑」已按需求移除：它只在中间帧起作用，用户感知不到差别反而多一个开关。 */
     h += '</div>';
 
-    /* 动画速率自定义（仅分数竞速图需要）：默认 30 天/秒，滑杆 + 数字输入框双通道 */
+    /* 动画速率自定义（仅分数竞速图需要）：默认 60 天/秒，滑杆 + 数字输入框双通道 */
     if (view === 'race') {
       h += '<div class="row tl-top tl-rate" style="margin-top:10px">';
       h += '<span class="flabel">' + esc(t('tl.rate')) + '</span>';
@@ -280,7 +290,18 @@
 
     if (view !== 'lane') {
       h += '<div class="tl-ctl">';
-      h += '<button class="btn btn-primary" id="tlPlay">' + esc(state.tlPlaying ? t('tl.pause') : t('tl.play')) + '</button>';
+      /* 播放 / 暂停 / 重播：**图标 + 文字**，形状过渡走 YouTube 那套
+         （▶ 与 ❙❙ 之间用同一枚 clip-path 多边形插值形变，不是两张图切换），
+         时间走完后图标换成「重播」循环箭头（data-state 由 app.js 驱动）。 */
+      const atEnd = fy >= P.tlEndFy() - 1e-6;
+      const st0 = state.tlPlaying ? 'pause' : (atEnd ? 'replay' : 'play');
+      const tx0 = st0 === 'pause' ? t('tl.pause') : (st0 === 'replay' ? t('tl.replay') : t('tl.play'));
+      h += '<button class="btn btn-primary tl-play" id="tlPlay" data-state="' + st0 + '">' +
+        '<span class="tl-play-ic" aria-hidden="true">' +
+          '<span class="tl-pp"></span>' +
+          '<svg class="tl-rp" viewBox="0 0 24 24"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>' +
+        '</span>' +
+        '<span class="tl-play-tx">' + esc(tx0) + '</span></button>';
       h += '<input type="range" id="tlRange" min="' + sl.min + '" max="' + sl.max + '" step="' + sl.step + '" value="' + sl.value + '">';
       h += '<span class="tl-year" id="tlYear">' + sl.label + '</span>';
       h += '</div>';
@@ -397,7 +418,7 @@
     return h;
   };
 
-  /* 滑块：默认按天步进（30 天/秒），保留年 / 月 / 周切换 */
+  /* 滑块：默认按天步进（60 天/秒），保留年 / 月 / 周切换 */
   const TL_START = new Date(2003, 0, 1);
   const TL_END = (function () {
     const u = (M.meta && M.meta.updated) || '';
@@ -630,6 +651,34 @@
     return t2;
   }
 
+  /* 选手在所选项目里的「第一个有成绩的年份」（查不到返回 null）。
+     ★ 为什么需要它：此前按项目筛选只查 p.events（**生涯**有没有玩过这个项目），
+       于是「2007 年才出现第一条中国三盲成绩」的人，在 2003 年的画面里就已经有一条
+       属于他的分数条 —— 那几年本该是空白。events 只能回答「玩过没有」，
+       回答不了「从哪一年开始的」，所以要读 ETL 下发的 evStat[eid].years。
+     结果按「项目组合」缓存到选手对象上：播放时每帧都会调用，不能逐帧重扫。 */
+  function evFirstYear(p, evList) {
+    const ck = '__evfy_' + evList.join('+');
+    if (p[ck] !== undefined) return p[ck];
+    let first = null;
+    const take = (y) => { const n = +y; if (n > 0 && (first === null || n < first)) first = n; };
+    for (let i = 0; i < evList.length; i++) {
+      const b = (M.evStatRaw ? M.evStatRaw(p, evList[i]) : (p.evStat && p.evStat[evList[i]])) || null;
+      if (b && b.years && b.years.length) for (let j = 0; j < b.years.length; j++) take(b.years[j]);
+    }
+    /* 兜底（长尾名册档没有 evStat）：先用该项目上最早的领奖台 / 纪录年份，
+       再不行退回生涯起始年 —— 宁可少筛一个人，也不能把人凭空删掉。 */
+    if (first === null) {
+      (p.podiums || []).forEach(function (d) { if (evList.indexOf(d.ev) >= 0) take(d.year); });
+      (p.records || []).forEach(function (r) {
+        if (evList.indexOf(r.ev) >= 0) take(String(r.date || '').slice(0, 4));
+      });
+      if (first === null && p.start) take(p.start);
+    }
+    p[ck] = first;
+    return first;
+  }
+
   function snapshot(mode, fy, smooth, region, country, evs, gender, rtype, dim) {
     /* 选中项目（单项目 / 多项目）时，整张图切换成「所选项目的六维能力分排名」，与上方筛选项目实时联动：
          分数取每个所选项目的六维总分（p.sixEv 已含 per-event 六维分 a[6]=t_ev）求和，
@@ -657,6 +706,10 @@
            否则在参数设置页改了六维占比，竞速图不会跟着变）。
            ★ rtype（单次 / 平均）此前在这里被完全忽略 —— 项目模式只认合并档，
              所以「单次 / 平均」筛选看着像失效；现在由 evScopeT 按口径取值。 */
+        /* ★ 该项目（组合）里还没有他的任何成绩 → 这一帧不该有这个人。
+           以前这段缺失，导致早期年份里出现后来才进这个项目的选手（例如 2007 年前的中国三盲）。 */
+        const firstY = evFirstYear(p, evList);
+        if (firstY != null && Math.floor(fy) < firstY) return;
         const t = evScopeT(p, evList, rtype);
         if (t <= 0) return;
         /* ★ 时间演化（此前缺失 → 单/多项目播放时条形纹丝不动，只显示最终名次）：

@@ -650,11 +650,40 @@
         if (box) { box.setAttribute('data-fy', state.tlFy); P.drawTimeline(box); }
         if (P.tlHighlightRail) P.tlHighlightRail(info.fy);
       }
-      if (range) range.addEventListener('input', function () { setFyFromRange(range); });
+      /* 播放按钮形态：播放中=暂停图标，停在结尾=重播图标，其余=播放图标。
+         图标形状由 CSS 用同一枚 clip-path 多边形插值（▶ ⇄ ❙❙），这里只管状态与文案。 */
+      function tlAtEnd() {
+        /* 先看滑块位置：最权威。刚挂载时 state.tlFy 还是 0，但时间轴已经渲染在最后一天，
+           只比 tlFy 会得出「没到结尾」→ 按钮显示播放，点一下瞬间结束又变回重播，
+           用户必须点两次才能真正开始播放。 */
+        try {
+          if (range) {
+            const sl = P.tlSlider(state.tlStep, P.tlEndFy ? P.tlEndFy() : state.tlFy);
+            if (+range.value >= sl.max - 1) return true;
+          }
+        } catch (e) { }
+        return state.tlFy >= (P.tlEndFy ? P.tlEndFy() : 0) - 1e-6;
+      }
+      function setPlayBtn() {
+        const pb = document.getElementById('tlPlay'); if (!pb) return;
+        const st = state.tlPlaying ? 'pause' : (tlAtEnd() ? 'replay' : 'play');
+        pb.setAttribute('data-state', st);
+        const tx = pb.querySelector('.tl-play-tx');
+        if (tx) tx.textContent = st === 'pause' ? t('tl.pause') : (st === 'replay' ? t('tl.replay') : t('tl.play'));
+      }
+      if (range) range.addEventListener('input', function () { setFyFromRange(range); setPlayBtn(); });
       if (play) play.addEventListener('click', function () {
         if (state.tlPlaying) { stopPlay(); return; }
         if (!range) return;
-        state.tlPlaying = true; play.textContent = t('tl.pause');
+        /* 停在结尾时按钮是「重播」：先把时间轴拨回起点再播，否则会立刻再次结束。 */
+        if (tlAtEnd()) {
+          const slog = P.tlSlider(state.tlStep, state.tlFy);
+          range.value = slog.min;
+          setFyFromRange(range);
+        }
+        state.tlPlaying = true;
+        /* 按钮内容是「图标 + 文字」两块，不能直接 textContent（会把图标抹掉） */
+        setPlayBtn();
         /* 播放改用 requestAnimationFrame 逐帧推进：
            每帧按真实经过的时间算出「应该走到第几天」的小数位置，
            · 日期标签每天变一次（整数天跨过去才更新）；
@@ -662,7 +691,7 @@
            · 名次换位时图表自己用很短的过渡补间，不会拖慢整体速度。
            播放原点（tlPlayIdx / tlPlayMs）独立保存，拖动时间轴时实时重置，
            因此播放中也能点击 / 拖动滑块跳到任意时间点并继续播放。 */
-        const rate = (P.tlRate ? P.tlRate() : { jump: 30, anim: 200, fps: 100 });
+        const rate = (P.tlRate ? P.tlRate() : { jump: 60, anim: 200, fps: 100 });
         const daysPerSec = Math.max(0.5, rate.jump || 30);
         /* 重绘间隔（rate.fps，毫秒）：0 = 逐帧重绘；>0 时每 fps 毫秒才重画一次图表。
            重绘是播放中最贵的一步（整张竞速图要重算明细并重排），但日期标签、滑块位置、
@@ -698,7 +727,18 @@
           const curDate = P.tlDateAtFy ? P.tlDateAtFy(fy) : (P.tlDateAt ? P.tlDateAt(idx, state.tlStep) : null);
           if (lastMsDate && curDate && curDate !== lastMsDate) msToastFor(lastMsDate, curDate);
           if (curDate) lastMsDate = curDate;
-          if (pos >= sl.max) { stopPlay(); return; }
+          if (pos >= sl.max) {
+            /* 走完时把时间轴与整数位置精确对齐到最后一格，
+               否则 tlAtEnd() 会因为末尾的小数误差认不出「已到结尾」，按钮不变成重播。 */
+            try {
+              range.value = sl.max;
+              const info = P.tlIdxToInfo(sl.max, state.tlStep);
+              state.tlFy = info.fy;
+              if (lab) lab.textContent = info.label;
+              if (box) { box.setAttribute('data-fy', info.fy); P.drawTimeline(box); }
+            } catch (e2) { }
+            stopPlay(); return;
+          }
           tlRaf = requestAnimationFrame(frame);
         }
         tlRaf = requestAnimationFrame(frame);
@@ -707,8 +747,9 @@
         state.tlPlaying = false;
         clearInterval(tlTimer);
         if (tlRaf) { cancelAnimationFrame(tlRaf); tlRaf = 0; }
-        const pb = document.getElementById('tlPlay'); if (pb) pb.textContent = t('tl.play');
+        setPlayBtn();   /* 走完自动停在结尾时会变成「重播」图标 */
       }
+      setPlayBtn();     /* 首次挂载时同步一次（默认停在结尾 → 显示重播） */
       /* 动画速率自定义：时间跳跃（天/秒）/ 动画时长 / 刷新间隔。
          滑杆（…Cap）与数字输入框共用同一份状态，互相同步；
          数字框失焦或按回车时按 min/max 夹紧并回写，避免出现 0 天/秒这类无效值。 */
@@ -724,7 +765,7 @@
         }
       }
       function applyRate(key, raw, fromNumber) {
-        const r = (P.tlRate ? P.tlRate() : { jump: 30, anim: 200, fps: 100 });
+        const r = (P.tlRate ? P.tlRate() : { jump: 60, anim: 200, fps: 100 });
         const val = (P.tlClampRate ? P.tlClampRate(key, raw) : parseInt(raw, 10));
         if (isNaN(val)) return;
         r[key] = val;
@@ -1148,7 +1189,7 @@
   /* ---------- 自定义设置（速率 / 宽度 / 颜色） ---------- */
   const SETTINGS_KEY = 'goat-settings';
   const PALETTES = {
-    vibrant: ['#cc195b', '#d3700d', '#82a008', '#049582', '#0f66bd', '#9436d3', '#c2334d'],
+    vibrant: ['#ed58a9', '#e54b52', '#ffa838', '#20b561', '#008fd2', '#a167f1', '#00a7a7'],
     pastel: ['#f472b6', '#fbbf24', '#a3e635', '#34d399', '#38bdf8', '#a78bfa', '#fb7185'],
     ocean: ['#0ea5e9', '#06b6d4', '#14b8a6', '#22c55e', '#3b82f6', '#6366f1', '#0d9488'],
     sunset: ['#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#ec4899', '#d946ef']
@@ -1528,20 +1569,30 @@
     return TIP_BOX;
   }
   function hideTip() { TIP_ANCHOR = null; if (TIP_BOX) TIP_BOX.classList.remove('on'); }
-  /* 定位：三种模式
-     · data-tip-follow —— 跟着鼠标走（光标右下 16/18px，贴边自动翻向），堆叠条 / 卡片用；
-     · data-tip-pos="top" —— 挂在元素上方，横向随鼠标（项目图标那一排用）；
-     · 默认 —— 挂在元素正下方，放不下翻到上方。 */
+  /* 定位：四种模式
+     · data-tip-follow="x" —— **只跟随横坐标**：横向跟着光标走，纵向吸附到元素外侧
+       （优先元素上方，上方装不下才翻下方，最后夹进视口），因此永远不会压在被悬停的
+       卡片 / 项目格子上。卡片、项目领域这类「内容是卡片本身」的目标用这个模式。
+     · data-tip-follow（="1"）—— 整块浮在鼠标上方并水平居中，随光标移动；堆叠分段用。
+     · data-tip-pos="top"    —— 挂在元素上方，横向随鼠标（筛选栏那一排项目图标用）。
+     · 默认                  —— 挂在元素正下方，放不下翻到上方。 */
   function placeTip(anchor, cx, cy) {
     const el = tipBox();
     const r = anchor.getBoundingClientRect();
-    const follow = anchor.hasAttribute('data-tip-follow');
+    const followMode = anchor.getAttribute('data-tip-follow');
+    const follow = followMode != null;
     const top = anchor.getAttribute('data-tip-pos') === 'top';
     /* 尺寸只在内容变化时量一次，避免每次 mousemove 都触发重排 */
     const w = TIP_SIZE.w, hh = TIP_SIZE.h;
     const vw = window.innerWidth || 1024, vh = window.innerHeight || 768;
+    const clampX = (px) => Math.max(8, Math.min(px - w / 2, vw - w - 8));
     let x, y;
-    if (follow) {
+    if (followMode === 'x') {
+      x = clampX(cx != null ? cx : r.left + r.width / 2);
+      y = r.top - hh - 10;                       /* 默认贴在被悬停元素的上沿之上 */
+      if (y < 8) y = r.bottom + 10;              /* 上方出界才翻到元素下方 */
+      if (y + hh > vh - 8) y = Math.max(8, vh - hh - 8);   /* 仍放不下就收进视口 */
+    } else if (follow) {
       /* 跟随模式：浮在鼠标**上方**并水平居中（堆叠条那一段涨高后，正上方是最不挡视线、
          也最贴近「这一段是什么」的位置），随光标移动；贴顶时翻到下方。 */
       const px = (cx != null ? cx : r.left + r.width / 2);
@@ -1611,6 +1662,21 @@
     /* 页面滚动 / 重新渲染后，浮层若还停在原位就会「飘」在无关内容上，直接收起 */
     window.addEventListener('scroll', hideTip, true);
   }
+
+  /* ---------- 顶栏：平时完全透明，滚动后叠一层极淡毛玻璃保证文字可读 ---------- */
+  (function topbarScrim() {
+    const bar = document.querySelector ? document.querySelector('.topbar') : null;
+    if (!bar) return;
+    let last = null;
+    const sync = function () {
+      const on = (window.scrollY || window.pageYOffset || 0) > 4;
+      if (on === last) return;
+      last = on;
+      bar.classList.toggle('scrolled', on);
+    };
+    window.addEventListener('scroll', sync, { passive: true });
+    sync();
+  })();
 
   /* ---------- 轻提示（复制成功等） ---------- */
   let TOAST_TIMER = 0;

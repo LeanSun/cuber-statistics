@@ -20,12 +20,15 @@
   --shadow-lg:0 10px 34px rgba(16,24,40,.12);
   --r-sm:7px; --r-md:11px; --r-lg:15px;
   --topbar-h:58px;
-  /* 六维配色（浅色主题）：6 个色相环向排布，相邻两维色相差 ≥50° 且相邻明度差 ≥8，
-     任取两段拼在一起都不会被误读成同一维；每个颜色对白底对比度均 ≥3.0:1。
-     m1 玫红 / m2 橙 / m3 黄绿 / m4 青绿 / m5 蓝 / m6 紫 —— 整条读起来是一条从暖到冷的彩虹。 */
-  --m1:#cc195b; --m2:#d3700d; --m3:#82a008; --m4:#049582;
-  --m5:#0f66bd; --m6:#9436d3; --m7:#c2334d;
-  --grad:linear-gradient(100deg,#cc195b 0%,#d3700d 22%,#82a008 42%,#049582 60%,#0f66bd 80%,#9436d3 100%);
+  /* 六维配色（浅色主题）：OKLCH 手工标定，色相 + 明度双维度错开
+     —— m1 玫粉 L.68 / m2 红 L.63 / m3 金 L.80 / m4 绿 L.68 / m5 蓝 L.62 / m6 紫 L.64。
+     相邻两维既有色相差又有明度差，Lab ΔE 44–90（~20 就够区分了），拼在一起不会被读成一维；
+     整体比上一版明显提亮（上一版偏「土」的橄榄/藕紫已去掉），对白底 1.9–3.9:1、
+     色块够大仍清清楚楚；对深底则是 6.7–12.7:1，两个主题都不会糊。
+     m1 玫粉 / m2 红 / m3 金 / m4 绿 / m5 蓝 / m6 紫；m7 是品牌色的第七点（青）。 */
+  --m1:#ed58a9; --m2:#e54b52; --m3:#ffa838; --m4:#20b561;
+  --m5:#008fd2; --m6:#a167f1; --m7:#00a7a7;
+  --grad:linear-gradient(100deg,#ed58a9 0%,#e54b52 20%,#ffa838 40%,#20b561 60%,#008fd2 80%,#a167f1 100%);
   /* 名次徽章：金 / 银 / 铜（与六维配色解耦，改六维不会把冠军徽章染绿） */
   --gold:#e0a20b; --silver:#b6bfcc; --bronze:#c07845;
   --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",Roboto,Helvetica,Arial,sans-serif;
@@ -50,11 +53,12 @@
   --ok-soft:#122a20;
   --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 22px rgba(0,0,0,.28);
   --shadow-lg:0 14px 40px rgba(0,0,0,.42);
-  /* 六维配色（深色主题）：同一套色相，整体提亮到 L≈70，对 #151b24 对比度 ≥6:1，
-     且在深底上不会糊成一团；色相顺序与浅色主题完全一致，切换主题不会「换一套颜色」。 */
-  --m1:#f66fa1; --m2:#f8a34f; --m3:#c6e44e; --m4:#2adfc7;
-  --m5:#52a3f4; --m6:#c795ef; --m7:#f2708a;
-  --grad:linear-gradient(100deg,#f66fa1 0%,#f8a34f 22%,#c6e44e 42%,#2adfc7 60%,#52a3f4 80%,#c795ef 100%);
+  /* 六维配色（深色主题）：同一套色相统一提亮到 OKLCH L≈0.72–0.90，
+     对 #151b24 对比度 6.7–12.7:1；色相顺序与浅色主题完全一致，
+     切换主题只是「同一组颜色换了亮度」，不是换一套颜色。 */
+  --m1:#ff7bbf; --m2:#fe676a; --m3:#ffcb93; --m4:#4acc79;
+  --m5:#00a7f5; --m6:#b585ff; --m7:#00c3c3;
+  --grad:linear-gradient(100deg,#ff7bbf 0%,#fe676a 20%,#ffcb93 40%,#4acc79 60%,#00a7f5 80%,#b585ff 100%);
   --gold:#f0c04a; --silver:#c9d2de; --bronze:#d99a6c;
 }
 
@@ -97,7 +101,18 @@ code,kbd{font-family:var(--mono);font-size:.92em;background:var(--bg-soft);paddi
 .ev-mini{width:16px;height:16px;vertical-align:-.18em}
 
 /* ============ Topbar ============ */
-.topbar{position:sticky;top:0;z-index:60;background:var(--bg-elev);border-bottom:1px solid var(--border)}
+/* 顶栏：**没有底色、没有分隔线**，菜单文字直接坐在页面背景上（视觉上是页面的一部分）。
+   唯一有形状的是「当前选中项」——一枚圆角低填充胶囊。
+   ⚠ 它是 sticky 的，内容会从下面滚过去；为了让文字不被内容糊住，
+      滚动后（scrollY>4，由 app.js 加 .scrolled）才叠一层极淡的毛玻璃，
+      仍然没有边框 / 分隔线，停下来看就是「页面顶部的一层薄雾」。 */
+.topbar{position:sticky;top:0;z-index:60;background:transparent;border-bottom:0;
+  transition:background .28s ease,backdrop-filter .28s ease}
+.topbar.scrolled{
+  background:color-mix(in srgb,var(--bg) 68%,transparent);
+  backdrop-filter:blur(12px) saturate(1.15);
+  -webkit-backdrop-filter:blur(12px) saturate(1.15);
+}
 .topbar-inner{max-width:1440px;margin:0 auto;height:var(--topbar-h);display:flex;align-items:center;gap:14px;padding:0 16px}
 .brand{display:flex;align-items:center;gap:9px;color:var(--text);font-weight:600;font-size:15px;white-space:nowrap}
 .brand:hover{text-decoration:none}
@@ -115,16 +130,19 @@ code,kbd{font-family:var(--mono);font-size:.92em;background:var(--bg-soft);paddi
     linear-gradient(var(--m6) 0 0) 8.3px 16.6px/7.4px 7.4px no-repeat,
     linear-gradient(var(--m1) 0 0) 16.6px 16.6px/7.4px 7.4px no-repeat;
 }
+/* 菜单项：平时只有文字；hover 只是把字提亮（不铺背景），
+   选中项才有一枚圆角低填充（accent 12%）——去掉了原来 active 底部的下划线指示器。 */
 .nav{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;flex:1;min-width:0}
 .nav::-webkit-scrollbar{display:none}
-.nav a{color:var(--text-2);padding:7px 12px;border-radius:var(--r-sm);white-space:nowrap;font-size:13.5px;position:relative}
-.nav a::after{
-  content:"";position:absolute;left:12px;right:12px;bottom:2px;height:2px;border-radius:2px;
-  background:var(--accent);transform:scaleX(0);transform-origin:center;transition:transform .22s ease;
+.nav a{display:inline-flex;align-items:center;color:var(--text-2);padding:7px 13px;border-radius:999px;
+  white-space:nowrap;font-size:13.5px;
+  transition:color .2s ease,background-color .2s ease}
+.nav a:hover{color:var(--text);text-decoration:none}
+.nav a.active{
+  background:color-mix(in srgb,var(--accent) 12%,transparent);
+  color:var(--accent);font-weight:600;
 }
-.nav a:hover{background:var(--bg-soft);color:var(--text);text-decoration:none}
-.nav a.active{background:var(--accent-soft);color:var(--accent);font-weight:600}
-.nav a.active::after{transform:scaleX(1)}
+.nav a.active:hover{color:var(--accent)}
 .tools{display:flex;align-items:center;gap:8px;margin-left:auto}
 .icon-btn{
   min-width:34px;height:34px;padding:0 9px;display:inline-flex;align-items:center;justify-content:center;
@@ -368,14 +386,16 @@ tr:hover .rank-no{transform:scale(1.08)}
 .pname .linkish,.pname .pname-txt{
   display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   transform-origin:left center;
-  /* 悬停放大：用一条柔和的减速曲线（不是弹簧回弹），位移只有 0.4px、
-     缩放 1.055，快进慢出，看起来是「轻轻托起」而不是突然跳一下。 */
-  transition:transform .26s cubic-bezier(.22,.61,.36,1),color .2s ease,letter-spacing .26s ease;
+  /* 悬停放大：这一版是「看得出来、但不跳」——
+     1. 位移只有 0.6px、缩放 1.10（比原先 1.055 明显，比旧的 1.14 收敛）；
+     2. 全程用一条**减速**曲线 cubic-bezier(.2,.85,.25,1)（快起慢收），不用弹簧回弹的关键帧；
+     3. 同时把字色过渡到强调色、字距微张，读起来是名字被「轻轻托起」而非突然变形。 */
+  transition:transform .3s cubic-bezier(.2,.85,.25,1),color .24s ease,letter-spacing .3s ease;
   will-change:transform;
 }
 tr:hover .pname .linkish,tr:hover .pname .pname-txt{
-  transform:scale(1.055) translateY(-.4px);
-  letter-spacing:.012em;color:var(--accent);
+  transform:scale(1.1) translateY(-.6px);
+  letter-spacing:.015em;color:var(--accent);
 }
 @media (prefers-reduced-motion:reduce){
   .pname .linkish,.pname .pname-txt{transition:color .2s ease}
@@ -731,6 +751,30 @@ tr:hover .pname .linkish,tr:hover .pname .pname-txt{
 }
 .tl-desc-ic{color:var(--accent);flex:none;margin-top:2px}
 .tl-ctl{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+/* ---- 播放 / 暂停 / 重播（YouTube 同款：▶ 与 ❙❙ 是同一枚形状在插值，不是换图） ----
+   图标本体是一块被 clip-path 裁出来的方块（颜色跟随 currentColor），
+   「两条竖杠」与「半个三角形 + 半个三角形」用**同样 10 个顶点**描述，
+   于是浏览器可以直接在两组点之间插值 —— 就是 YouTube / Material 那个经典形变：
+   竖杠一边倾倒一边被拉伸，最终合成一个三角形（反之亦然）。 */
+.tl-play{display:inline-flex!important;align-items:center;gap:8px;min-width:104px;justify-content:center}
+.tl-play-ic{position:relative;width:16px;height:16px;flex:none}
+.tl-pp{
+  position:absolute;inset:0;background:currentColor;
+  clip-path:polygon(24% 10%, 50% 27.33%, 50% 72.67%, 24% 90%, 24% 10%, 50% 27.33%, 84% 50%, 84% 50%, 50% 72.67%, 50% 27.33%);
+  transition:clip-path .3s cubic-bezier(.2,.85,.2,1),opacity .16s ease,transform .3s cubic-bezier(.2,.85,.2,1)
+}
+.tl-play[data-state="pause"] .tl-pp{
+  clip-path:polygon(22% 14%, 40% 14%, 40% 86%, 22% 86%, 22% 14%, 60% 14%, 78% 14%, 78% 86%, 60% 86%, 60% 14%)
+}
+.tl-rp{position:absolute;inset:-1px;width:calc(100% + 2px);height:calc(100% + 2px);fill:currentColor;
+  opacity:0;transform:scale(.55) rotate(-40deg);
+  transition:opacity .18s ease,transform .3s cubic-bezier(.2,.85,.2,1)}
+/* 走到结尾：形变小方块退下去，重播箭头从同一位置转正浮出（YouTube 结束态的做法） */
+.tl-play[data-state="replay"] .tl-pp{opacity:0;transform:scale(.5) rotate(-30deg)}
+.tl-play[data-state="replay"] .tl-rp{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){
+  .tl-pp,.tl-rp{transition:opacity .01s linear}
+}
 .tl-ctl input[type="range"]{flex:1;min-width:160px;accent-color:var(--accent)}
 .tl-year{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;min-width:66px;color:var(--accent)}
 .chart-box{width:100%;min-height:120px;position:relative}
@@ -1201,6 +1245,14 @@ button.pid-copy > *{position:relative}
 button.pid-copy:hover{border-color:var(--accent);color:var(--accent);box-shadow:0 3px 14px color-mix(in srgb,var(--accent) 22%,transparent)}
 button.pid-copy:hover::before{transform:scaleX(1)}
 button.pid-copy:active{transform:scale(.985)}
+button.pid-copy:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* 榜单展开行里的 WCA ID 胶囊是同一个 .pid-copy 组件的小号版本：
+   `button.pid-copy{font:inherit}` 会把 .exp-v3-wca 的等宽小字冲掉，这里显式补回参数。 */
+button.exp-v3-wca.pid-copy{
+  font-family:var(--mono,ui-monospace,SFMono-Regular,Consolas,monospace);
+  font-size:12px;line-height:1.6;letter-spacing:.04em;color:var(--text-2);
+  padding:1px 9px;border-radius:999px;background:var(--bg-soft-2);border:1px solid var(--border)}
+button.exp-v3-wca.pid-copy:hover{color:var(--accent)}
 
 /* 轻提示（复制成功 / 失败） */
 .wb-toast{position:fixed;left:50%;bottom:34px;transform:translate(-50%,10px);z-index:10000;
