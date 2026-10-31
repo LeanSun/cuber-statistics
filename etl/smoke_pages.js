@@ -255,7 +255,7 @@ ok(h3.indexOf('bar-track') >= 0, '条形外层有可收缩的弹性轨道（bar-
   if (hasEv) {
     /* 期望值用与前端完全相同的方式算（t = Σ w_d·s_d），
        避免 3 位小数存储值与重算值在 0.0005 边界上互相打架。 */
-    const SW = (M.meta && M.meta.sixWeights) || { m1: 0.42, m2: 0.14, m3: 0.22, m4: 0.10, m5: 0.04, m6: 0.08 };
+    const SW = (M.meta && M.meta.sixWeights) || { m1: 0.45, m2: 0.15, m3: 0.20, m4: 0.15, m5: 0.01, m6: 0.04 };
     const SK = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'];
     const expect = M.ranked.filter(function (p) { return p.sixEv && p.sixEv['333']; })
       .map(function (p) {
@@ -532,7 +532,7 @@ console.log('== 评分真实性：六维总分（当前模型唯一口径） =='
     ok(M.ranked.every(function (p) { return !(p.overall > 0); }), '无六维分时总分一律为 0（不回退旧 esum）');
   } else {
     ok(sixP.length > 0, '存在带六维分的选手（' + sixP.length + ' 人）');
-    const W = (M.meta && M.meta.sixWeights) || { m1: 0.42, m2: 0.14, m3: 0.22, m4: 0.10, m5: 0.04, m6: 0.08 };
+    const W = (M.meta && M.meta.sixWeights) || { m1: 0.45, m2: 0.15, m3: 0.20, m4: 0.15, m5: 0.01, m6: 0.04 };
     let badT = 0, maxDiff = 0;
     sixP.forEach(function (p) {
       let s = 0;

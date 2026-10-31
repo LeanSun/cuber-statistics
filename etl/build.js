@@ -29,7 +29,7 @@ const ROOT = path.resolve(__dirname, '..');
    站点总分自此 = 六维总分（Σ 维度权重 × 维度分），取代旧的 Σ(单项分×项目权重)。
    维度分 s_d 满足恒等：Σ_d w_d × s_d = 总分（引擎侧已逐人校验，21,363 人 0 例不符）。
    sixdim_site.tsv 缺失时打印告警并留在旧口径，便于排查而非静默出错。 */
-const SIX_W = { m1: 0.42, m2: 0.14, m3: 0.22, m4: 0.10, m5: 0.04, m6: 0.08 };
+const SIX_W = { m1: 0.45, m2: 0.15, m3: 0.20, m4: 0.15, m5: 0.01, m6: 0.04 };
 const SIXK = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'];
 const SIX = new Map();
 (function loadSix() {

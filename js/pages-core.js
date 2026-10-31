@@ -16,7 +16,7 @@
   };
   function themeDark() { try { return document.documentElement.getAttribute('data-theme') === 'dark'; } catch (e) { return false; } }
   function sixHex(k) { return (themeDark() ? SIX_HEX.dark : SIX_HEX.light)[k] || '#8b96a8'; }
-  const SIXW = { m1: 0.42, m2: 0.14, m3: 0.22, m4: 0.10, m5: 0.04, m6: 0.08 };
+  const SIXW = { m1: 0.45, m2: 0.15, m3: 0.20, m4: 0.15, m5: 0.01, m6: 0.04 };
   function sixWeights() { return sixW(); }
   /* 六维权重：优先取「评分原理说明 / 参数设置」页的用户自定义值（已归一化 Σ=1），
      没有自定义时回落到 ETL 下发的 meta.sixWeights。二者默认取值一致，
@@ -120,7 +120,7 @@
      旧版在项目筛选下改用 esum（Σ 100×世界名次^-γ×项目权重，只看当前成绩），
      与六维总分不是同一把尺子，这里整体替换。 */
   const SIXD = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'];
-  const SIXW_DEF = { m1: 0.42, m2: 0.14, m3: 0.22, m4: 0.10, m5: 0.04, m6: 0.08 };
+  const SIXW_DEF = { m1: 0.45, m2: 0.15, m3: 0.20, m4: 0.15, m5: 0.01, m6: 0.04 };
   /* 这份数据是否带按项目分解的六维分（老 data.js 没有 → 退回全站分，不静默出错） */
   let HAS_SIXEV = null;
   function hasSixEv() {
