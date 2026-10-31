@@ -426,14 +426,14 @@
      cs 来自 contribs(p,'career')，已含 name/color/w/raw(=s_d)/v(=w·s_d)。
      整体包在 <details> 里，默认收起，点标题展开（满足「可收回可展开」需求）。 */
   const DIM_ANS = {
-    m1: '破的纪录守了多久', m2: '拿过多少冠亚季军', m3: '锦标赛上突破的加成',
+    m1: '刷新了多少次纪录（守得久再加分）', m2: '拿过多少冠亚季军', m3: '锦标赛上突破的加成',
     m4: '保持在世界前十有多久', m5: '此刻站在世界各榜什么位置', m6: '破纪录瞬间把人类前沿推远多少'
   };
   /* 各维度「原始分」的计算方式（与 M1–M6 封存文档一致，用本选手能看懂的大白话写出），
      不是 s×w=v 的加权，而是「维度分 s 在被归一前的真实累加口径」。 */
   const DIM_FORMULA = {
-    m1: ['每条纪录按「实际持有天数(封顶30年) × 层级价值(WR&gt;CR&gt;NR) × 项目权重 × 同线递减 × 属地系数」逐段累加，再按榜首归一为 1000。',
-      'Per record: held days (cap 30y) × tier value (WR>CR>NR) × event weight × same-line decay × locality, summed over all segments, then normalised to leader = 1000.'],
+    m1: ['每条纪录每刷新一次记 1 份分（同一条线第 n 次 ×0.9ⁿ⁻¹ 递减），再乘「层级价值(WR&gt;CR&gt;NR) × 项目权重 × 属地系数 × 时代折算」；守得久只把该段放大最多 1.5 倍。累加后按榜首归一为 1000。',
+      'Each record improvement scores one unit (n-th refresh on the same line ×0.9^(n-1)), times tier value (WR>CR>NR) × event weight × locality × era; holding long only scales the segment up to 1.5x. Summed, then normalised to leader = 1000.'],
     m2: ['每次冠/亚/季军按「赛级系数(世锦/洲锦1.6，国锦/公开1.0) × 名次权重(1/0.6/0.4) × 赛事强度CSI × 项目权重」累加，本人实力与对手实力各占一半(α=0.5)。',
       'Per podium: tier factor (WC/CC 1.6, NC/open 1.0) × place weight (1/0.6/0.4) × field strength CSI × event weight; own strength and field strength each weigh half (α=0.5).'],
     m3: ['每次在锦标赛上打破的 WR/CR/NR，按「纪录层级(WR1.0/CR0.4/NR0.15) × 赛级(世锦1.0/洲锦0.6/国锦0.4)」累加；公开赛不计。',

@@ -1112,25 +1112,25 @@
       f: ['$$t=\\sum_{d}w_{d}\\,s_{d},\\qquad s_{d}=1000\\cdot\\frac{x_{d}}{\\max_{p}x_{d}},\\qquad \\sum_{d}w_{d}=1$$',
         '$$w=(\\underbrace{0.45}_{M1},\\underbrace{0.20}_{M3},\\underbrace{0.15}_{M2},\\underbrace{0.15}_{M4},\\underbrace{0.04}_{M6},\\underbrace{0.01}_{M5})$$'],
       detail: [
-        ['六个维度回答六个不同的问题：M1 纪录持有（破的纪录守了多久）、M3 大赛表现（锦标赛上突破的加成）、M2 领奖台（拿过多少冠亚季军）、M4 统治力（保持在世界前十有多久）、M6 突破幅度（破纪录瞬间把人类前沿推远多少）、M5 当前排名（此刻站在世界各榜什么位置）。',
-          'The six dimensions answer six different questions: M1 record ownership (how long a broken record was held), M3 championship performance, M2 podiums, M4 dominance (time spent inside the world top ten), M6 breakthrough margin (how far a record pushed the human frontier), M5 current ranking.'],
+        ['六个维度回答六个不同的问题：M1 纪录持有（刷新了多少次纪录，守得久再加分）、M3 大赛表现（锦标赛上突破的加成）、M2 领奖台（拿过多少冠亚季军）、M4 统治力（保持在世界前十有多久）、M6 突破幅度（破纪录瞬间把人类前沿推远多少）、M5 当前排名（此刻站在世界各榜什么位置）。',
+          'The six dimensions answer six different questions: M1 record ownership (how many times records were broken, plus a holding bonus), M3 championship performance, M2 podiums, M4 dominance (time spent inside the world top ten), M6 breakthrough margin (how far a record pushed the human frontier), M5 current ranking.'],
         ['维度分先按「榜首 = 1000」归一再加权，是为了让六个量纲完全不同的维度（M2 原始量级上万、M6 只有几十）能放在同一把尺子上相加；归一后每个维度都是 0–1000 的同刻度分数，权重才具有可读的含义。',
           'Normalising each dimension to leader = 1000 lets dimensions with wildly different scales (M2 in the tens of thousands, M6 in the tens) be summed on one ruler; only then do the weights mean what they say.'],
-        ['跨维相关性已逐对审查：15 对组合中唯一超过 0.7 的只有 M1 × M4 = 0.714，且属于语义近邻（守得住纪录 ⇔ 长期在世界前十），分年代桶内相关系数不下降，判定为真实机制而非时代混杂，处置方式是标注并在权重上压制。',
-          'All 15 dimension pairs were checked: the only pair above 0.7 is M1 x M4 = 0.714, a semantic neighbour rather than a bug; the correlation does not fall inside single-decade buckets, so it is documented and discounted by weight.']
+        ['跨维相关性已逐对审查（只在两维都非零的人身上算）：目前有两对超过 0.7 — M1 × M6 = 0.769（仅 281 人，且 M6 权重只有 4%）、M1 × M4 = 0.732。二者都是语义近邻（刷新纪录 ⇔ 打得狠 / 长期在世界前十），分年代桶内不降，判定为真实机制而非时代混杂，处置方式是标注并在权重上压制。',
+          'All 15 dimension pairs were checked on players non-zero in both: two pairs now exceed 0.7 - M1 x M6 = 0.769 (only 281 players, M6 weighted just 4%) and M1 x M4 = 0.732. Both are semantic neighbours (breaking records vs. raw margin / long top-ten tenure), stable inside decade buckets, so they are documented and discounted by weight.']
       ]
     },
     {
       id: 'm1', h: ['M1 · 纪录持有（权重 45%）', 'M1 · Record ownership (45%)'], g: 'm1',
-      simple: ['不看「破了多少次纪录」，而看「你破的这条纪录，在你的名下守了多久」。一次刷新只是起点，真正的分值是它作为世界/洲/国家纪录存活的时间。',
-        'Not "how many records broken" but "how long the record you set survived under your name". The refresh is the start; the score is the survival time.'],
-      f: ['$$M_{1}=\\sum_{\\text{段}}\\frac{\\min(T,30\\,\\text{y})}{365}\\;V_{L}\\;\\rho_{s}\\;f_{L}\\;w_{e}$$',
-        '$$V_{L}\\in\\{\\text{WR},\\text{CR},\\text{NR}\\},\\qquad \\rho_{s}:\\ \\text{同项目同轨的阶梯递减}$$'],
+      simple: ['核心是「你刷新过多少次纪录」：每刷新一次记一份分值，级别越高、属地竞争越激烈越值钱。守得久只是加分项（最多 +50%），不再决定分数高低。',
+        'The core is how many times you broke records: each improvement scores once, worth more at a higher tier and in a deeper field. Holding long is only a bonus (up to +50%).'],
+      f: ['$$M_{1}=\\sum_{\\text{段}}\\Bigl(\\sum_{k}\\lambda^{\\,n_{k}-1}\\Bigr)\\,V_{L}\\,\\rho_{s}\\,f_{L}\\,w_{e}\\left(1+\\kappa\\,\\frac{\\min(T,30\\,\\text{y})}{30\\,\\text{y}}\\right)$$',
+        '$$\\lambda=0.90\\ (\\text{同线递减}),\\qquad \\kappa=0.50\\ (\\text{持有上限}),\\qquad V_{L}\\in\\{\\text{WR},\\text{CR},\\text{NR}\\}$$'],
       detail: [
-        ['T 为该纪录被下一条刷新前的实际持有天数，截顶 30 年，防止远古纪录因无人挑战而无限膨胀；V<sub>L</sub> 是层级价值（WR &gt; CR &gt; NR）；ρ<sub>s</sub> 让同一项目同一轨道上的第 2、3、4 条纪录递减，避免靠刷同一条线累积。',
-          'T is the days actually held before the next improvement, capped at 30 years so that ancient records cannot inflate forever. V_L is the tier value (WR > CR > NR) and rho_s decays the 2nd, 3rd, 4th record on the same line.'],
-        ['「领先幅度」不再进入本维：那是 M6 的职责。剥离之后，Minh Thai 那条守了 21 年的三阶 WR 这类首段边界问题也随之消失。',
-          'The margin of improvement no longer enters this dimension: that is M6. Removing it also eliminated the first-segment boundary artefact.']
+        ['每一次刷新记 1 份基础分：同一选手在同一条纪录线（项目×轨道×级别×属地）上第 n 次刷新按 λ<sup>n−1</sup> 递减（λ = 0.9），所以「反复刷同一条线」的边际收益越来越低。V<sub>L</sub> 是层级价值（WR 1.0 / CR 0.4 / NR 0.15），ρ<sub>s</sub> 是属地竞争密度，f<sub>L</sub> 是时代折算。',
+          'Each improvement scores one base unit: the n-th refresh on the same record line (event x track x level x territory) is discounted by λ^(n-1) with λ = 0.9, so farming one line gives diminishing returns. V_L is the tier value (WR 1.0 / CR 0.4 / NR 0.15), rho_s the territorial field density, f_L the era factor.'],
+        ['守得久只作乘子：守满 30 年把这一段放大到 1.5 倍（κ = 0.5），时长是加分项而非主轴；「领先幅度」仍归 M6。防刷分：一条小国 NR 的基础分约 0.15 × ρ（小国 ρ 约 0.001~0.02），即使把一条线刷到底，整个生涯的 NR 合计也压在 1 条 WR 之下 —— 实测全站纯 NR 得分最高者仅约 0.31 分，而 1 条 WR 约 0.8~1.5 分。',
+          'Holding is only a multiplier: 30 years caps the segment at 1.5x (kappa = 0.5), so duration is a bonus, not the axis; the margin still belongs to M6. Anti-farming: a small-country NR is worth roughly 0.15 x rho (rho about 0.001-0.02), so even a full career of NRs stays below one WR - the highest pure-NR score on the site is about 0.31, while one WR is about 0.8-1.5.']
       ]
     },
     {
@@ -1151,8 +1151,8 @@
       f: ['$$M_{3}=\\sum_{k}W_{\\text{REC}}(L_{k})\\times W_{\\text{TIER}}(T_{k})$$',
         '$$W_{\\text{REC}}=\\{\\text{WR}:1.0,\\ \\text{CR}:0.4,\\ \\text{NR}:0.15\\},\\qquad W_{\\text{TIER}}=\\{\\text{WC}:1.0,\\ \\text{CC}:0.6,\\ \\text{NC}:0.4\\}$$'],
       detail: [
-        ['它与 M1 并存且各计一次：M1 奖励「守了多久」，M3 奖励「在什么场合打出来」，两者不重复。NR 给 0.15 是承认国家纪录也是真实突破，但含金量远低于 WR。',
-          'It coexists with M1 and each counts once: M1 rewards how long it was held, M3 rewards the stage. NR gets 0.15 as a real but much weaker breakthrough.']
+        ['它与 M1 并存且各计一次：M1 奖励「刷新了几次」，M3 奖励「在什么场合打出来」，两者不重复。NR 给 0.15 是承认国家纪录也是真实突破，但含金量远低于 WR。',
+          'It coexists with M1 and each counts once: M1 rewards how many times you broke records, M3 rewards the stage. NR gets 0.15 as a real but much weaker breakthrough.']
       ]
     },
     {
@@ -1198,8 +1198,8 @@
         'Weights follow three principles - information content, farming resistance and coverage. M1 is the dominant coin at 45%, M3 next at 20%, M2 and M4 tied at 15% each, and M5 lowest at 1% because it is only a cross-section snapshot.'],
       f: ['$$t=0.45\\,s_{M1}+0.20\\,s_{M3}+0.15\\,s_{M2}+0.15\\,s_{M4}+0.04\\,s_{M6}+0.01\\,s_{M5}$$'],
       detail: [
-        ['M1 × M4 = 0.714 是唯一超标的相关对：跳得越远 → 追平越难 → 守得越久，属真实机制。合成时按此折扣理解，不额外合并维度。',
-          'M1 x M4 = 0.714 is the only pair above the threshold: a bigger jump is harder to match and therefore held longer. It is a real mechanism, documented rather than merged away.'],
+        ['M1 × M6 = 0.769、M1 × M4 = 0.732 是仅有的两对超标相关：刷新纪录越多 ⇔ 打得越狠 / 在榜越久，属真实机制（M6 只覆盖 281 人、权重 4%，影响有限）。合成时按此折扣理解，不额外合并维度。',
+          'M1 x M6 = 0.769 and M1 x M4 = 0.732 are the only two pairs above threshold: breaking more records goes with a bigger margin and a longer top-ten tenure - a real mechanism (M6 covers only 281 players at 4% weight). Documented rather than merged away.'],
         ['项目筛选与性别筛选在六维引擎内逐维重算（as-of 年份可任意截取），不是对总分做简单截断；因此「三阶榜」「女子榜」「2015 年为止」都与总榜同一套口径。',
           'Event, gender and as-of filters recompute every dimension inside the engine rather than truncating a total, so per-event, women and as-of boards share one consistent definition.']
       ]

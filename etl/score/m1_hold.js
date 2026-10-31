@@ -183,17 +183,39 @@ for (const k of Object.keys(buckets)) {
   LAD[k] = { ev: b.ev, type: b.type, level: b.level, scope: b.scope, runs: lad.runs };
 }
 
-/* ── 3. 打分（r ≡ 1，无 G_ref） ── */
+/* ── 3. 打分 ──
+ * ★ 2026-10-31 M1-F3（用户改口径）：「破了多少次」升为主轴，「守得多久」降为辅助乘子。
+ *
+ *   段分 = (Σ_次 λ^(n−1)) × V_L × w_e × ⟨f_L·ρ_s⟩ × (1 + κ · min(T,30y)/30y)
+ *     n  = 该选手在该条纪录线（ev|type|level|scope）上第 n 次刷新
+ *     λ  = 同一线重复刷新的衰减（<1 → 自刷递减，防「刷同一条线」）
+ *     κ  = 持有奖励上限（守满 30 年把该段放大到 1+κ 倍，故时长只是辅助）
+ *   其余乘子全部沿用 M1-F2：V_L 1/0.4/0.15、ρ 属地竞争密度、f 时代折算、w_e 项目权重。
+ *   → 小国 NR = 0.15 × ρ(≈0.001~0.02)，几百条也压不过 1 条 WR（V=1, ρ≡1）。 */
+const MODE = process.env.M1_MODE === 'hold' ? 'hold' : 'count';
+const KAPPA = process.env.M1_KAPPA != null ? Number(process.env.M1_KAPPA) : 0.50;
+const LAMBDA = process.env.M1_LAMBDA != null ? Number(process.env.M1_LAMBDA) : 0.90;
+const CAP_Y = 30;
+/* 供挑选的 (κ, λ) 网格：一次跑完，报表里对比 */
+const GRID = [];
+for (const kap of [0.40, 0.50, 0.60]) for (const lam of [0.85, 0.90, 0.95]) GRID.push({ kap, lam });
+const SEL0 = GRID.findIndex((g) => Math.abs(g.kap - KAPPA) < 1e-9 && Math.abs(g.lam - LAMBDA) < 1e-9);
+const SEL = SEL0 < 0 ? 4 : SEL0;   // 不在网格里就退回 (0.50, 0.90)
 const byWho = new Map();
 const whoOf = new Map();
 for (const p of P) {
   if (!(p.records || []).length) continue;
   whoOf.set(p.id, { id: p.id, name: p.name, country: p.country, cont: CL.contOfIso(p.country) || '??' });
-  byWho.set(p.id, { total: 0, n: 0, wr: 0, cr: 0, nr: 0, rows: [], fsum: 0, ysum: 0 });
+  byWho.set(p.id, {
+    total: 0, hold: 0, n: 0, nsub: 0, wr: 0, cr: 0, nr: 0,
+    swr: 0, scr: 0, snr: 0, rows: [], fsum: 0, ysum: 0,
+    grid: new Array(GRID.length).fill(0),
+  });
 }
 let nFirst = 0, sFirst = 0;   // 首段统计（M1-F1 边界消失的量化）
 let segMismatch = 0;          // 年度分解恒等校验计数
 const facts1 = [];            // sixdim 事实表：年度分解
+const lineCnt = new Map();    // bucketKey|pid → 该选手在该条纪录线上已刷新次数
 const Y0 = (d) => new Date(d * 86400000).getUTCFullYear();
 for (const k of Object.keys(LAD)) {
   const b = LAD[k];
@@ -212,13 +234,30 @@ for (const k of Object.keys(LAD)) {
     /* 30 年封顶：若段长超过 cap，按比例缩放切片天数，使 Σdays/365 ≡ years */
     const rawDays = parts.reduce((s, p) => s + p.days, 0);
     const scale = rawDays > 0 && years * 365 < rawDays ? (years * 365) / rawDays : 1;
-    let score = 0, fw = 0, fsum = 0, frsum = 0;
+    let fw = 0, fsum = 0, frsum = 0;
     for (const p of parts) {
       const frac = (p.days * scale) / 365;
-      score += frac * gL * p.fr * w;
       fw += frac;
       frsum += frac * p.fr;
     }
+    /* ★ M1-F3：段内「刷新次数」权重。同一选手在同一条纪录线上第 n 次刷新记 λ^(n−1)，
+     *   故重复刷同一条线的边际贡献递减；n 与 λ 无关，先记指数再对各 λ 求值。 */
+    const ck = k + '|' + r.pid;
+    const n0 = lineCnt.get(ck) || 0;
+    const exps = [];
+    for (let i = 0; i < r.subs.length; i++) exps.push(n0 + i);
+    lineCnt.set(ck, n0 + r.subs.length);
+    const dNorm = Math.min(years, CAP_Y) / CAP_Y;   // 0..1，守满 30 年 = 1
+    const holdScore = years * gL * (fw > 0 ? frsum / fw : 0) * w;
+    let cntScore = 0;
+    for (let gi = 0; gi < GRID.length; gi++) {
+      let cw = 0;
+      for (const e of exps) cw += Math.pow(GRID[gi].lam, e);
+      const sv = cw * gL * (fw > 0 ? frsum / fw : 0) * w * (1 + GRID[gi].kap * dNorm);
+      acc.grid[gi] += sv;
+      if (gi === SEL) cntScore = sv;
+    }
+    const score = MODE === 'hold' ? holdScore : cntScore;
     const fr = fw > 0 ? frsum / fw : 0;           // ⟨f·ρ⟩：段内加权均值（进 score）
     /* 纯 f 的段内均值（不含 ρ），仅用于报表/诊断展示；ρ̄ 由 fr/̄f 反解 */
     let fp = 0;
@@ -226,16 +265,30 @@ for (const k of Object.keys(LAD)) {
     const f = fw > 0 ? fp / fw : 0;
     const rhoBar = f > 0 ? fr / f : 0;
     acc.total += score;
+    acc.hold += holdScore;
     acc.fsum += fr;
     acc.ysum += years;
     acc.n++;
+    acc.nsub += r.subs.length;
     acc[b.level.toLowerCase()]++;
+    if (b.level === 'WR') acc.swr += r.subs.length;
+    else if (b.level === 'CR') acc.scr += r.subs.length;
+    else acc.snr += r.subs.length;
     if (r.gain === 0) { nFirst++; sFirst += score; }
     acc.rows.push({ ev: b.ev, type: b.type, level: b.level, days: c.days, credit: years, f, fr, rho: rhoBar, w, gL, score, t0: r.tStart, t1: r.tEnd, vOut: r.vOut.value });
     /* ── 年度分解（sixdim as-of 用）：与上面同一切片、同一乘子 → 恒等可拆 ── */
-    for (const p of parts) {
-      const frac = (p.days * scale) / 365;
-      facts1.push({ pid: r.pid, ev: b.ev, type: b.type, level: b.level, scope: b.scope, y: p.y, frac, score: frac * gL * p.fr * w });
+    if (MODE === 'hold') {
+      for (const p of parts) {
+        const frac = (p.days * scale) / 365;
+        facts1.push({ pid: r.pid, ev: b.ev, type: b.type, level: b.level, scope: b.scope, y: p.y, frac, score: frac * gL * p.fr * w });
+      }
+    } else {
+      /* 次数口径：段内总分按「年 × f·ρ」占比摊到各年，Σ_y = score 恒等 */
+      const den = frsum > 0 ? frsum : 1;
+      for (const p of parts) {
+        const frac = (p.days * scale) / 365;
+        facts1.push({ pid: r.pid, ev: b.ev, type: b.type, level: b.level, scope: b.scope, y: p.y, frac, score: score * (frac * p.fr) / den });
+      }
     }
     if (Math.abs(fw - years) > 1e-9) segMismatch++;
   }
@@ -261,15 +314,18 @@ fs.writeFileSync(path.join(__dirname, 'M1_hold_full.tsv'),
 const TARGETS = ['2009ZEMD01', '2012PARK03'];
 const EVZ = { '333': '三阶', '222': '二阶', '444': '四阶', '333oh': '三阶单手', pyram: '金字塔', '555': '五阶', skewb: '斜转', minx: '五魔', sq1: 'SQ1', clock: '魔表', '333bf': '三阶盲拧', '666': '六阶', '777': '七阶', '333fm': '最少步', '444bf': '四阶盲拧', '333mbf': '多盲', '333ft': '脚拧', '555bf': '五阶盲拧', magic: '八板', mmagic: '十二板', '333mbo': '旧多盲' };
 const L = [];
-L.push('# M1-F2 · 纪录持有价值（纯持有版）');
+L.push(`# M1-F3 · 纪录持有价值（次数为主 · ${MODE === 'hold' ? '持有口径（对比）' : `κ=${KAPPA} λ=${LAMBDA}`}）`);
 L.push('');
-L.push('> 由 `etl/score/m1_hold.js` 生成。r 分量（领先幅度）已剥离 → M6-F2，');
-L.push('> 本维只回答一件事：**你的纪录守了多久、守得多稳**。');
+L.push('> 由 `etl/score/m1_hold.js` 生成。2026-10-31 用户改口径：');
+L.push('> **「破了多少次」是主轴，「守得多久」降为辅助乘子**；小国狂刷 NR 由 V_L×ρ 双重压制。');
 L.push('');
 L.push('## 口径');
 L.push('');
 L.push('```');
-L.push('M1 = Σ_段 [ min(T,30年)/365 × V_L × w_e × ⟨f_L·ρ_s⟩ ]    ← r ≡ 1');
+L.push('M1 = Σ_段 [ (Σ_次 λ^(n−1)) × V_L × w_e × ⟨f_L·ρ_s⟩ × (1 + κ·min(T,30年)/30年) ]');
+L.push('  n   = 该选手在该条纪录线（ev|type|level|scope）上第 n 次刷新');
+L.push('  λ   = 同一线重复刷新衰减（默认 0.90 → 同一条线自刷收益递减）');
+L.push('  κ   = 持有奖励上限（默认 0.50 → 守满 30 年把该段放大到 1.5 倍）');
 L.push('  T   = 持有天数（被打破即止，未破按快照日）');
 L.push('  V_L = WR 1.0 / CR 0.4 / NR 0.15');
 L.push('  ρ_s = 竞争密度：WR ≡ 1；CR/NR = 属地当年累计 ÷ 全球当年累计（方案 B，按年）');
@@ -277,6 +333,10 @@ L.push('  f_L = 时代折算：ln(1+属地当年累计) / ln(1+属地基准年�
 L.push('  ⟨·⟩ = 持有区间上的乘积均值（按月中点采样）');
 L.push('  w_e = EV_WEIGHT_V2');
 L.push('```');
+L.push('');
+L.push(`> 防刷分：1 条 WR = 1.0 × 1.0 = **1.0**；NR = 0.15 × ρ（小国 ρ 约 0.001~0.02）`);
+L.push(`> → 一条 NR 线刷到底（λ 衰减合计 ≤ 10）也仅 ${F(0.15 * 0.02 * 10)} ~ ${F(0.15 * 0.001 * 10)}，`);
+L.push('> 远小于 1 条 WR。');
 L.push('');
 L.push(`> ρ 口径：**${RHO_MODE === 'time' ? 'B · 按年（生产）' : 'A · 当期快照（对比用）'}**｜` +
   `NR 时代池：**${NR_F_MODE === 'country' ? '国家池（已修）' : '全球池（旧 bug）'}**`);
@@ -287,11 +347,11 @@ L.push(`★ M1-F1 的「首段 r=0 不计分」边界已消失：${num(nFirst)} 
 L.push('');
 L.push('## 总分排行（前 30）');
 L.push('');
-L.push('| # | 选手 | 国家 | WR | CR | NR | 段数 | 平均 f×ρ | M1-F2 |');
-L.push('|---|---|---|---|---|---|---|---|---|');
+L.push('| # | 选手 | 国家 | 刷新次数 | WR | CR | NR | 段数 | 平均 f×ρ | M1-F3 | 旧持有口径 |');
+L.push('|---|---|---|---|---|---|---|---|---|---|---|');
 for (let i = 0; i < Math.min(30, LIST.length); i++) {
   const x = LIST[i];
-  L.push(`| ${i + 1} | ${x.name} | ${x.country} | ${x.wr} | ${x.cr} | ${x.nr} | ${x.n} | ${F(x.fsum / x.n)} | **${F(x.total)}** |`);
+  L.push(`| ${i + 1} | ${x.name} | ${x.country} | **${x.nsub}** | ${x.swr} | ${x.scr} | ${x.snr} | ${x.n} | ${F(x.fsum / x.n)} | **${F(x.total)}** | ${F(x.hold)} |`);
 }
 L.push('');
 for (const tid of TARGETS) {
@@ -299,7 +359,7 @@ for (const tid of TARGETS) {
   if (!x) continue;
   L.push(`## ${x.name}`);
   L.push('');
-  L.push(`**M1-F2 = ${F(x.total)}　全站第 ${rankOf(tid)} 名 / ${num(LIST.length)}**　（WR ${x.wr} / CR ${x.cr} / NR ${x.nr}，${x.n} 段）`);
+  L.push(`**M1-F3 = ${F(x.total)}　全站第 ${rankOf(tid)} 名 / ${num(LIST.length)}**　（刷新 ${x.nsub} 次：WR ${x.swr} / CR ${x.scr} / NR ${x.snr}；${x.n} 段）`);
   L.push('');
   L.push('| 项目 | 轨道 | 得分 | 占比 |');
   L.push('|---|---|---|---|');
@@ -332,4 +392,11 @@ for (const t of TARGETS) {
   if (x) console.log(x.name, F(x.total), 'rank', rankOf(t), '| WR', x.wr, 'CR', x.cr, 'NR', x.nr, '| 段', x.n);
 }
 console.log('top5:', LIST.slice(0, 5).map((x) => `${x.name} ${F(x.total)}`).join(' | '));
+/* ── (κ,λ) 网格对比：同一份段数据，9 个变体的前 5 名 ── */
+for (let gi = 0; gi < GRID.length; gi++) {
+  const g = GRID[gi];
+  const top = [...LIST].sort((a, b) => b.grid[gi] - a.grid[gi]).slice(0, 5)
+    .map((x) => `${x.name} ${F(x.grid[gi])}`).join(' | ');
+  console.log(`κ=${g.kap.toFixed(2)} λ=${g.lam.toFixed(2)}  top5: ${top}`);
+}
 console.log('写出 纪录分_纯持有.md / M1_hold_full.tsv');
