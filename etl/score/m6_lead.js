@@ -1,30 +1,38 @@
 'use strict';
 /* =============================================================================
- * M6-F2 · 领先幅度（破纪录瞬间的突破力度）· 生产脚本
+ * M6-F2 · 领先幅度（时代平权版）· 生产脚本
  * -----------------------------------------------------------------------------
- * 2026-10-25 定稿（M6-F1「对手强度」→ M6-F2「领先幅度」，用户拍板推翻重建）：
+ * 历史：
+ *   2026-10-25 定稿 M6-F2（取代 M6-F1「对手强度」）：M6 = Σ min(ln(prev/new),0.5)，无时代折算。
+ *   2026-10-31 用户判定原口径「早期低垂果实虚高、后期硬核推进清零」损害公平，
+ *              升级为【时代平权】口径（本次）：把每个 gain 除以同时代典型增益并纪元回中，
+ *              使任一纪元的「典型一次 WR 刷新」都≈1单位，去除后期选手先天劣势。
+ *              旧 M6-F2（无时代折算）SHA 见 §9 归档。
  *
- *   语义：你刷新纪录的那一刻，把人类前沿往前推了多远。
- *         gain = ln(前值 / 新值)   —— 三种 format 统一「越小越强」后可比
- *   定稿口径（候选族对照见 m6b_diag6 / M6_候选方向对比）：
- *     · 仅 WR（全球纪录链条；CR/NR 链条含大量缺环与低含金量）
- *     · gain 截顶 0.5（≈ +65%，防单次链条断裂/早期粗糙成绩的假增益）
- *     · M6 = Σ_events min(gain, 0.5)，无人数折算、无时代折算
+ *   语义：你刷新纪录的那一刻，把人类前沿往前推了多远——且【按同时代难度归一】。
+ *         rawNorm_i  = min( ln(prev/new)_i , 0.5 ) / ref_i
+ *           ref_i    = 同一(eid,kind)在该事件「之前」WR 刷新增益的滚动中位数
+ *                      （首条刷新无历史基准 → 记中性 1 单位）
+ *         finalNorm_i = min( rawNorm_i / eraMedian , CAP_N )
+ *           eraMedian = 该 5 年纪元 rawNorm 的中位数（回中→每纪元典型刷新≈1单位）
  *
- *   正确性金标准（m6b_diag6 已验证）：
- *     · 链条数 4,824 ≈ js/data.js records 桶数 4,822
- *     · WR 刷新事件 1,193 = records 重建 1,193（误差 0）
+ *   冻结常量：LEVEL='WR' CAP=0.5 CAP_N=5 FALLBACK_UNIT=1 RECENTER=true BUCKET_YEARS=5
+ *
+ *   正确性金标准（每次复跑必查）：
+ *     · 链条数 4,824 ≈ js/data.js records 桶数 4,822（差 2 = 333mbo 边界）
+ *     · WR 刷新事件 1,193 = records 重建精确一致（误差 0）
+ *     · 标记行 55,244 = records 总数
  *
  *   实现要点（全部踩过的坑）：
  *     1. persons.tsv 国家列 = p[4]（表头 name|gender|wca_id|sub_id|country_id）
- *     2. 同场多条标记 = 不同范围的纪录线同时成立（WR+NR+NR…），范围 key 正确后
- *        自然分离；同 key 同场仍多条 → 取该场最佳一条
- *     3. NAR（北美纪录）是独立层级，不并入 NR
+ *     2. 同场多条标记 = 不同范围的纪录线同时成立，范围 key 正确后自然分离
+ *     3. NAR 是独立层级，不并入 NR
  *     4. multi 编码值须 decodeMulti 折算 cost 后才可比
- *     5. 333fm / number 类：值本身即 cost（步数），无需换向 —— 归一后统一升序
+ *     5. 333fm / number 类：值本身即 cost（步数），无需换向
  *     6. results.tsv person_id = 第 9 列（p[8]）
+ *     7. ref 仅取「此前」事件（无未来信息泄漏）；回中按纪元桶在 wrEv 上统一做
  *
- * 运行：node --max-old-space-size=8192 etl/score/m6_lead.js    （约 25s）
+ * 运行：node --max-old-space-size=8192 etl/score/m6_lead.js    （约 10s）
  * 产出：M6_seats.tsv / M6_by_record.tsv / M6_by_event.tsv / M6_领先幅度.md
  * ============================================================================= */
 const path = require('path');
@@ -34,11 +42,17 @@ const ROOT = path.resolve(__dirname, '../..');
 const ZIP = path.join(ROOT, 'data/raw/WCA_export_v2_288_20261015T000017Z.tsv.zip');
 const TMP = path.join(ROOT, '.workbuddy/tmp/oc');
 
-const CFG = { LEVEL: 'WR', CAP: 0.5 };   // 定稿口径旋钮
+const CFG = {
+  LEVEL: 'WR',
+  CAP: 0.5,          // 单事件 rawGain 截顶（防链条断裂/早期粗糙假增益）
+  CAP_N: 5,          // 归一后 finalNorm 截顶（防极端事件独大）
+  FALLBACK_UNIT: 1,  // 首条刷新无历史基准时的中性单位
+  RECENTER: true,    // 纪元回中：每纪元「典型一次 WR 刷新」≈ 1 单位
+  BUCKET_YEARS: 5    // 回中用的纪元桶宽（年）
+};
 
 const F = (x, n = 4) => Number(x).toFixed(n);
 const num = (x) => Number(x).toLocaleString('en-US');
-const R4 = (v) => Math.round(v * 1e4) / 1e4;
 
 function zipStream(entry, onLine) {
   return new Promise((resolve, reject) => {
@@ -58,7 +72,7 @@ function zipStream(entry, onLine) {
     child.on('error', reject);
   });
 }
-function decodeMulti(v) {   // 与 M4 已封存实现逐字一致
+function decodeMulti(v) {
   if (v < 1e9) {
     const S = String(v).padStart(10, '0');
     const DD = +S.slice(1, 3), TT = Math.min(+S.slice(3, 8), 99999);
@@ -83,8 +97,14 @@ function scopeOf(mark, ctry) {
     default: return null;
   }
 }
+function median(arr) {
+  if (!arr.length) return NaN;
+  const s = [...arr].sort((a, b) => a - b);
+  const m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
 
-/* ── 相关性：秩 + 中心化 pearson（★ 必须中心化，否则是余弦、全矩阵虚高） ── */
+/* ── 相关性：秩 + 中心化 pearson（必须中心化，否则是余弦、全矩阵虚高） ── */
 function spearman(pairs) {
   const n = pairs.length;
   if (n < 10) return { n, rho: NaN };
@@ -145,7 +165,7 @@ async function main() {
   }
   const pname = new Map(), pctr = new Map();
   await zipStream('WCA_export_persons.tsv', (p) => {
-    if (p[2]) { pname.set(p[2], p[0]); pctr.set(p[2], p[4]); }   // ★ 国家 = p[4]
+    if (p[2]) { pname.set(p[2], p[0]); pctr.set(p[2], p[4]); }
   });
 
   /* ═══ S1 扫 results 取标记行 ═══ */
@@ -200,27 +220,98 @@ async function main() {
   console.log(`链条=${num(chains.size)} 同场去重=${num(dedup)} 非单调=${num(skipped)} 刷新事件=${num(events.length)} WR事件=${num(wrN)}`);
   if (wrN !== 1193) console.log(`⚠ WR 事件数 ${wrN} ≠ 基准 1,193 —— 数据快照变更，需复核`);
 
-  /* ═══ S3 定稿口径聚合：仅 WR + 截顶 ═══ */
-  const seats = new Map();    // pid → 聚合
-  const byEv = new Map();     // pid|ev|kind → sum
+  /* ═══ S2.5 时代平权：按(eid,kind)滚动中位数基准 + 纪元回中 ═══ */
+  const wrEv = events.filter((e) => e.level === 'WR');
+  const groups = new Map();
+  for (const e of wrEv) {
+    const k = e.eid + '|' + e.kind;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(e);
+  }
+  for (const [, arr] of groups) {
+    arr.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.cost - b.cost));
+  }
+  const REF_GLOBAL = median(wrEv.map((e) => e.gain));
+  let nFallback = 0;
+  for (const [, arr] of groups) {
+    const gains = arr.map((e) => e.gain);
+    for (let i = 0; i < arr.length; i++) {
+      const e = arr[i];
+      const cappedRaw = Math.min(e.gain, CFG.CAP);
+      let norm, ref;
+      if (i === 0) {
+        norm = CFG.FALLBACK_UNIT; ref = NaN; nFallback++;
+      } else {
+        ref = median(gains.slice(0, i));   // 仅用「此前」事件，无未来泄漏
+        norm = cappedRaw / ref;
+      }
+      e.cappedRaw = cappedRaw;
+      e.rawNorm = norm;                         // 未封顶（供纪元回中用）
+      e.normGain = Math.min(norm, CFG.CAP_N);   // 仅作参考展示
+      e.ref = ref;
+    }
+  }
+  /* 纪元回中：让每一纪元的「典型一次 WR 刷新」≈ 1 单位，完成平等化 */
+  let nCapped = 0;
+  if (CFG.RECENTER) {
+    const byBucket = new Map();
+    for (const e of wrEv) {
+      const b = Math.floor(+e.date.slice(0, 4) / CFG.BUCKET_YEARS) * CFG.BUCKET_YEARS;
+      if (!byBucket.has(b)) byBucket.set(b, []);
+      byBucket.get(b).push(e.rawNorm);
+    }
+    const medOf = new Map();
+    for (const [b, arr] of byBucket) medOf.set(b, median(arr));
+    console.log('纪元回中系数（rawNorm中位数→1）：');
+    for (const b of [...medOf.keys()].sort((x, y) => x - y))
+      console.log(`  ${b}s  rawNorm中位=${F(medOf.get(b), 4)}  系数×${(1 / medOf.get(b)).toFixed(3)}`);
+    for (const e of wrEv) {
+      const b = Math.floor(+e.date.slice(0, 4) / CFG.BUCKET_YEARS) * CFG.BUCKET_YEARS;
+      const fn = Math.min(e.rawNorm / medOf.get(b), CFG.CAP_N);
+      if (fn >= CFG.CAP_N - 1e-9) nCapped++;
+      e.finalNorm = fn;
+    }
+  } else {
+    for (const e of wrEv) {
+      e.finalNorm = e.normGain;
+      if (e.finalNorm >= CFG.CAP_N - 1e-9) nCapped++;
+    }
+  }
+  const norms = wrEv.map((e) => e.finalNorm).sort((a, b) => a - b);
+  const pct = (q) => norms[Math.min(norms.length - 1, Math.floor(q * norms.length))];
+  console.log(`REF_GLOBAL(中位数gain)=${F(REF_GLOBAL,6)} 首条无基准事件=${num(nFallback)} 触CAP_N=${num(nCapped)}`);
+  console.log(`finalNorm分布 min=${F(norms[0],4)} p50=${F(pct(0.5),4)} p90=${F(pct(0.9),4)} p99=${F(pct(0.99),4)} max=${F(norms[norms.length-1],4)}`);
+
+  /* ═══ S3 双口径聚合：旧(无时代折算) vs 新(平权)，新为权威 ═══ */
+  const seats = new Map();
+  const byEv = new Map();
   for (const e of events) {
     if (e.level !== CFG.LEVEL) continue;
-    const g = Math.min(e.gain, CFG.CAP);
+    const gOld = Math.min(e.gain, CFG.CAP);
+    const gNew = e.finalNorm;
     let a = seats.get(e.pid);
-    if (!a) { a = { pid: e.pid, name: pname.get(e.pid) || '', m6: 0, n: 0, raw: 0, maxGain: 0, evs: new Set(), firstDate: e.date }; seats.set(e.pid, a); }
-    a.m6 += g; a.raw += e.gain; a.n++;
-    if (e.gain > a.maxGain) a.maxGain = e.gain;
+    if (!a) {
+      a = { pid: e.pid, name: pname.get(e.pid) || '', m6old: 0, m6new: 0, m6raw: 0,
+            n: 0, maxGainOld: 0, evs: new Set(), firstDate: e.date };
+      seats.set(e.pid, a);
+    }
+    a.m6old += gOld; a.m6new += gNew; a.m6raw += e.gain; a.n++;
+    if (e.gain > a.maxGainOld) a.maxGainOld = e.gain;
     a.evs.add(e.eid + '|' + e.kind);
     const bk = e.pid + '|' + e.eid + '|' + e.kind;
-    byEv.set(bk, (byEv.get(bk) || 0) + g);
+    byEv.set(bk, (byEv.get(bk) || 0) + gNew);
   }
-  const LIST = [...seats.values()].sort((a, b) => b.m6 - a.m6);
-  const rankOf = (pid) => LIST.findIndex((x) => x.pid === pid) + 1;
-  const total = LIST.reduce((s, a) => s + a.m6, 0);
-  console.log(`M6-F2 有分人数=${num(LIST.length)} 总量=${F(total)} 耗时=${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  const OLD = [...seats.values()].sort((a, b) => b.m6old - a.m6old);
+  const NEW = [...seats.values()].sort((a, b) => b.m6new - a.m6new);
+  const totalOld = OLD.reduce((s, a) => s + a.m6old, 0);
+  const totalNew = NEW.reduce((s, a) => s + a.m6new, 0);
+  console.log(`有分人数=${num(NEW.length)} 总量OLD=${F(totalOld)} 总量NEW=${F(totalNew)} 耗时=${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  console.log(`[自检] OLD总量应≈75.5181（封存旧基准），偏差=${F(totalOld - 75.5181, 4)}`);
+  const oldRank = new Map(), newRank = new Map();
+  OLD.forEach((a, i) => oldRank.set(a.pid, i + 1));
+  NEW.forEach((a, i) => newRank.set(a.pid, i + 1));
 
-  /* ═══ S4 正交性矩阵 ═══ */
-  const D = 'etl/score/';
+  /* ═══ S4 正交性矩阵（新 M6 权威，旧 M6 仅作解封对照）═══ */
   const loadTsv = (file, pc, vc) => {
     const m = new Map();
     const lines = fs.readFileSync(path.join(__dirname, file), 'utf8').trim().split('\n');
@@ -238,127 +329,128 @@ async function main() {
   const M5 = loadTsv('M5_seats.tsv', 0, 2);
   let M6F1 = null;
   try { M6F1 = loadTsv('M6F1_归档/M6_seats.tsv', 0, 2); } catch { /* 归档缺失则跳过 */ }
-  const m6Map = new Map(LIST.map((a) => [a.pid, a.m6]));
+  const m6NewMap = new Map(NEW.map((a) => [a.pid, a.m6new]));
+  const m6OldMap = new Map(OLD.map((a) => [a.pid, a.m6old]));
   const mtx = [];
   for (const [nm, m] of [['M1-F2 纯持有', M1F2], ['M1-F1 原版', M1F1], ['M2', M2], ['M4', M4], ['M5', M5]]) {
-    const r = crossRho(m6Map, m);
+    const r = crossRho(m6NewMap, m);
     const mark = Math.abs(r.rho) > 0.7 ? ' ❌' : (Math.abs(r.rho) > 0.5 ? ' ⚠️' : '');
     mtx.push(`  ×${nm.padEnd(12)} ρ=${F(r.rho)}${mark}  (n=${num(r.n)})`);
   }
   if (M6F1) {
-    const r = crossRho(m6Map, M6F1);
+    const r = crossRho(m6NewMap, M6F1);
     mtx.push(`  ×M6-F1对手   ρ=${F(r.rho)}  (n=${num(r.n)})`);
   }
-  /* 时代分层：按首次 WR 年代分桶看桶内相关（判别「时代混杂」vs「真实人层面重叠」） */
+  const mtxOld = [];
+  for (const [nm, m] of [['M1-F2 纯持有', M1F2], ['M1-F1 原版', M1F1], ['M2', M2], ['M4', M4], ['M5', M5]]) {
+    const r = crossRho(m6OldMap, m);
+    mtxOld.push(`  ×${nm.padEnd(12)} ρ=${F(r.rho)}  (n=${num(r.n)})`);
+  }
   const strat = [];
   {
     const buckets = {};
-    for (const a of LIST) {
+    for (const a of NEW) {
       const b = Math.floor(+a.firstDate.slice(0, 4) / 5) * 5;
       (buckets[b] = buckets[b] || []).push(a);
     }
     for (const b of Object.keys(buckets).map(Number).sort((x, y) => x - y)) {
       const arr = buckets[b];
       if (arr.length < 15) continue;
-      const pr = arr.filter((a) => M1F2.has(a.pid)).map((a) => [a.m6, M1F2.get(a.pid)]);
+      const pr = arr.filter((a) => M1F2.has(a.pid)).map((a) => [a.m6new, M1F2.get(a.pid)]);
       if (pr.length >= 15) strat.push({ b, n: pr.length, rho: spearman(pr).rho });
     }
   }
 
-  /* ═══ S5 导出 ═══ */
+  /* ═══ S5 导出（封存原文件名）═══ */
   fs.writeFileSync(path.join(__dirname, 'M6_seats.tsv'),
     'pid\tname\tm6\tn_refresh\tn_tracks\tmax_gain\tfirst_wr\n' +
-    LIST.map((a) => `${a.pid}\t${a.name.replace(/\t/g, ' ')}\t${F(a.m6)}\t${a.n}\t${a.evs.size}\t${F(a.maxGain)}\t${a.firstDate}`).join('\n') + '\n', 'utf8');
+    NEW.map((a) => `${a.pid}\t${a.name.replace(/\t/g, ' ')}\t${F(a.m6new)}\t${a.n}\t${a.evs.size}\t${F(a.maxGainOld)}\t${a.firstDate}`).join('\n') + '\n', 'utf8');
   fs.writeFileSync(path.join(__dirname, 'M6_by_record.tsv'),
-    'pid\tevent\tkind\tdate\tprev_cost\tnew_cost\tgain\tcapped_gain\tsame_person\n' +
-    events.filter((e) => e.level === CFG.LEVEL).sort((a, b) => a.date < b.date ? -1 : 1)
-      .map((e) => `${e.pid}\t${e.eid}\t${e.kind}\t${e.date}\t${F(e.prevCost)}\t${F(e.newCost)}\t${F(e.gain, 6)}\t${F(Math.min(e.gain, CFG.CAP), 6)}\t${e.samePerson ? 1 : 0}`).join('\n') + '\n', 'utf8');
+    'pid\tevent\tkind\tdate\tprev_cost\tnew_cost\tgain\tcapped_gain\tref\traw_norm\tfinal_norm\tsame_person\n' +
+    wrEv.sort((a, b) => a.date < b.date ? -1 : 1)
+      .map((e) => `${e.pid}\t${e.eid}\t${e.kind}\t${e.date}\t${F(e.prevCost)}\t${F(e.newCost)}\t${F(e.gain,6)}\t${F(e.cappedRaw,6)}\t${e.ref ? F(e.ref,6) : 'NA'}\t${F(e.rawNorm,4)}\t${F(e.finalNorm,4)}\t${e.samePerson ? 1 : 0}`).join('\n') + '\n', 'utf8');
   {
-    const evName = pname; // 占位避免未用告警
     const rows = [...byEv.entries()].map(([k, v]) => { const [pid, ev, kind] = k.split('|'); return { pid, name: (seats.get(pid) || {}).name || '', ev, kind, m6: v }; }).sort((a, b) => b.m6 - a.m6);
     fs.writeFileSync(path.join(__dirname, 'M6_by_event.tsv'),
       'pid\tname\tevent\tkind\tm6\n' + rows.map((r) => `${r.pid}\t${r.name.replace(/\t/g, ' ')}\t${r.ev}\t${r.kind}\t${F(r.m6)}`).join('\n') + '\n', 'utf8');
   }
 
   /* ═══ S6 报告 ═══ */
-  const EVZ = { '333': '三阶', '222': '二阶', '444': '四阶', '333oh': '三阶单手', pyram: '金字塔', '555': '五阶', skewb: '斜转', minx: '五魔', sq1: 'SQ1', clock: '魔表', '333bf': '三阶盲拧', '666': '六阶', '777': '七阶', '333fm': '最少步', '444bf': '四阶盲拧', '333mbf': '多盲', '333ft': '脚拧', '555bf': '五阶盲拧', magic: '八板', mmagic: '十二板', '333mbo': '旧多盲' };
   const L = [];
-  L.push('# M6-F2 · 领先幅度（破纪录瞬间的突破力度）');
+  L.push('# M6-F2 · 领先幅度（时代平权版）');
   L.push('');
-  L.push('> 由 `etl/score/m6_lead.js` 生成，所有数字现算。');
+  L.push('> 由 `etl/score/m6_lead.js` 生成（2026-10-31 升级为时代平权口径）。所有数字现算。');
   L.push('');
   L.push('## 0 一句话');
   L.push('');
-  L.push('**你刷新纪录的那一刻，把人类前沿推远了多少。** gain = ln(前值/新值)，');
-  L.push('破 0.01 秒得 0.002，砍掉三分之一得 0.40 —— 只奖「打得狠」，不奖「守得久」（那是 M1-F2）。');
+  L.push('**你刷新纪录的那一刻，把人类前沿推远了多少——且按同时代难度归一。** 早期低垂果实不再虚高，后期指甲盖级硬核推进不再清零。');
+  L.push(`OLD(无时代折算) 总量 ${F(totalOld)} → NEW(时代平权) 总量 ${F(totalNew)}（六维归一按 max 计，绝对刻度不影响合成）。`);
   L.push('');
   L.push('## 1 口径');
   L.push('');
   L.push('```');
-  L.push('M6 = Σ_events min( gain, 0.5 )        gain = ln(前值/新值)');
-  L.push('  · 仅 WR 链条（CR/NR 链条含大量缺环与低含金量，不取）');
-  L.push('  · 截顶 0.5（≈ +65%，防链条断裂/早期粗糙成绩的假增益');
-  L.push('    —— 实测全级别口径 p99 达 1.29，截顶仅影响 1% 尾部）');
-  L.push('  · 无人数折算、无时代折算、自我刷新也计（连续刷是真实力度）');
-  L.push('  · 归一：time(ms) 直接比 / number(步数) 直接比 / multi 解码 cost');
-  L.push('    三种 format 统一「越小越强」，比率 ln(prev/new) 跨 format 可比');
+  L.push('finalNorm_i = min( rawNorm_i / eraMedian , CAP_N )');
+  L.push('  rawNorm_i = min( ln(prev/new)_i , 0.5 ) / ref_i');
+  L.push('    ref_i = 同一(eid,kind)在该事件之前的 WR 刷新 gain 滚动中位数');
+  L.push('          （首条刷新无历史基准 → 记中性 1 单位）');
+  L.push('  eraMedian = 该 5 年纪元 rawNorm 的中位数（回中→每纪元典型刷新≈1单位）');
+  L.push(`CFG: LEVEL=WR CAP=${CFG.CAP} CAP_N=${CFG.CAP_N} 首条中性=${CFG.FALLBACK_UNIT} RECENTER=${CFG.RECENTER} 桶=${CFG.BUCKET_YEARS}年`);
   L.push('```');
   L.push('');
-  L.push(`数据：链条 ${num(chains.size)} 条（基准 4,822±2 ✓）｜WR 刷新事件 ${num(wrN)} 条（基准 1,193 ✓）｜同场去重 ${num(dedup)}｜有分 ${num(LIST.length)} 人｜总量 ${F(total)}｜耗时 ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  L.push(`数据：链条 ${num(chains.size)} 条｜WR 刷新事件 ${num(wrN)} 条（基准 1,193 ✓）｜同场去重 ${num(dedup)}｜有分 ${num(NEW.length)} 人`);
+  L.push(`REF_GLOBAL(全WR gain中位数)=${F(REF_GLOBAL,6)}；首条无基准事件=${num(nFallback)}；触CAP_N=${num(nCapped)}`);
+  L.push(`finalNorm分布：min=${F(norms[0],4)} p50=${F(pct(0.5),4)} p90=${F(pct(0.9),4)} p99=${F(pct(0.99),4)} max=${F(norms[norms.length-1],4)}（p50=1.0 即平权成功）`);
   L.push('');
-  L.push('## 2 正交性');
+  L.push('## 2 正交性（新 M6 权威；旧 M6 解封对照）');
   L.push('');
   L.push('```');
+  L.push('--- 新 M6（时代平权）---');
   L.push(...mtx);
+  L.push('--- 旧 M6（无时代折算，封存对照）---');
+  L.push(...mtxOld);
   L.push('```');
   L.push('');
-  L.push('判读：×M1-F2（剥离 r 后的纯持有）= 0.58 ⚠️ —— 低于 0.7 否决线但需如实标注。');
-  L.push('×M1-F1 原版 0.73 正是 r 双计的实证，剥离后降到 0.58。');
-  L.push('×M4 0.50 属中等（先驱们既跳得猛又常年在榜）。');
-  L.push('');
-  L.push('**时代分层检验**（按首次 WR 年代分桶，桶内 ρ(M6, M1-F2)）：');
+  L.push('**时代分层检验**（按首次 WR 年代分桶，桶内 ρ(新M6, M1-F2)）：');
   L.push('');
   L.push('| 首次 WR 年代 | n | 桶内 ρ |');
   L.push('|---|---|---|');
   for (const s of strat) L.push(`| ${s.b}–${s.b + 4} | ${s.n} | ${F(s.rho)} |`);
   L.push('');
-  L.push('桶内相关不降 → 0.58 **不是时代混杂，是真实的人层面机制**：跳得越远 →');
-  L.push('后人追平越难 → 守得越久。「打得狠」与「守得稳」在 WR 层面结构性联动，');
-  L.push('两维不可能完全正交 —— 这是保留决定的已知代价，总分合成时按 0.58 折扣预期。');
+  L.push('## 3 全站榜（新 M6 前 30，附旧名次与升降）');
   L.push('');
-  L.push('## 3 全站榜（前 30）');
+  L.push('| # | 选手 | M6新 | M6旧 | 旧名次 | 名次Δ | 刷新次数 |');
+  L.push('|---|---|---|---|---|---|---|');
+  for (let i = 0; i < Math.min(30, NEW.length); i++) {
+    const a = NEW[i];
+    const or = oldRank.get(a.pid), nr = newRank.get(a.pid);
+    const delta = or - nr;
+    const dstr = delta === 0 ? '—' : (delta > 0 ? `+${delta}` : `${delta}`);
+    L.push(`| ${i + 1} | ${a.name} | **${F(a.m6new)}** | ${F(a.m6old)} | #${or} | ${dstr} | ${a.n} |`);
+  }
   L.push('');
-  L.push('| # | 选手 | M6 | 刷新次数 | 项目/轨 | 最大单次 gain |');
+  L.push('## 4 锚点检验（旧→新，名次变化）');
+  L.push('');
+  L.push('| 选手 | M6旧 | M6新 | 旧名次 | 新名次 | 刷新次数 |');
   L.push('|---|---|---|---|---|---|');
-  for (let i = 0; i < Math.min(30, LIST.length); i++) {
-    const a = LIST[i];
-    L.push(`| ${i + 1} | ${a.name} | **${F(a.m6)}** | ${a.n} | ${a.evs.size} | ${F(a.maxGain)} |`);
-  }
-  L.push('');
-  L.push('## 4 锚点检验');
-  L.push('');
-  L.push('| 选手 | M6 | 名次 |');
-  L.push('|---|---|---|');
   for (const nm of ['Feliks Zemdegs', 'Max Park', 'Yiheng Wang', 'Tymon Kolasiński', 'Stanley Chapel', 'Erik Akkersdijk', 'Lin Kaijun']) {
-    const a = LIST.find((x) => x.name === nm);
-    if (a) L.push(`| ${nm} | ${F(a.m6)} | #${rankOf(a.pid)} |`);
+    const a = NEW.find((x) => x.name === nm);
+    if (a) L.push(`| ${nm} | ${F(a.m6old)} | **${F(a.m6new)}** | #${oldRank.get(a.pid)} | #${newRank.get(a.pid)} | ${a.n} |`);
   }
   L.push('');
-  L.push('## 5 已知边界');
+  L.push('## 5 已知边界 / 升级说明');
   L.push('');
-  L.push('- 链条第一段（各项目/轨首条 WR）无前值可比，天然无 gain——Minh Thai 的 22.95 在此口径得 0 分（「打得狠」需要参照物）。');
-  L.push('- 2026 年为部分年，不影响本口径（逐事件计分，无窗口截断问题）。');
-  L.push('- WR 链条依赖官方 regional_single/average_record 标记的完整性；快照变更须复核 WR 事件数 = 1,193±快照漂移。');
-  L.push('- 仅 WR → 人口 281 人（六维中最少）；如需扩圈可开放 WR+CR（747 人，ρ×M1-F2 需复测），当前不采用。');
+  L.push('- 2026-10-31 升级：原「无时代折算」口径令早期大数值低含金量刷新虚高、后期硬核推进清零；现按(项目×轨)滚动中位数基准 + 纪元回中修正。');
+  L.push(`- 代价：新 M6 ×M1-F2 升至 0.67（仍 ⚠️ 未破 0.7），×M1-F1 破 0.7（❌）。原因：平权后 M6≈「破纪录次数×同时代难度」，与「长期霸榜」(M1) 更同向——以正交性换取时代公平，符合本次修复首要诉求。`);
+  L.push('- ref 仅取「此前」事件（无未来泄漏）；首条刷新记中性 1 单位；CAP_N 封顶触顶事件见上。');
+  L.push('- 尚未接入 build.js（见封存 §10 #4）；接入时站点 m6 字段含义即本口径。');
+  L.push('- 链条首段（各项目/轨首条 WR）无前值可比，天然无 gain——Minh Thai 得 0 分。');
   L.push('');
   fs.writeFileSync(path.join(__dirname, 'M6_领先幅度.md'), L.join('\n') + '\n', 'utf8');
 
   console.log(mtx.join('\n'));
-  console.log('top10:', LIST.slice(0, 10).map((a) => `${a.name} ${F(a.m6)}`).join(' | '));
-  for (const nm of ['Feliks Zemdegs', 'Max Park', 'Yiheng Wang', 'Tymon Kolasiński', 'Stanley Chapel']) {
-    const a = LIST.find((x) => x.name === nm);
-    if (a) console.log(`  ${nm}: ${F(a.m6)} rank ${rankOf(a.pid)} (刷新${a.n}次, ${a.evs.size}项目轨)`);
-  }
+  console.log('--- 旧 M6 对照 ---');
+  console.log(mtxOld.join('\n'));
+  console.log('top10 NEW:', NEW.slice(0, 10).map((a) => `${a.name} ${F(a.m6new)} (旧#${oldRank.get(a.pid)})`).join(' | '));
   console.log('写出 M6_seats.tsv / M6_by_record.tsv / M6_by_event.tsv / M6_领先幅度.md');
 }
 

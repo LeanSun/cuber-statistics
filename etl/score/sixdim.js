@@ -30,7 +30,8 @@
  *   M3_facts.tsv  (pid,ev,type,lvl,tier,year,add)                ← m3_record_bonus.js
  *   M4_facts.tsv  (pid,ev,track,year,contrib)                    ← m4_dominance.js
  *   M5_facts.tsv  (year,pid,ev,kind,rank,score)                  ← m5_facts.js
- *   M6_by_record.tsv (pid,event,kind,date,…)                     ← m6_lead.js
+ *   M6_by_record.tsv (pid,event,kind,date,prev,new,gain,capped_gain,ref,raw_norm,final_norm,same) ← m6_lead.js
+ *                   ※ M6 取 c[10]=final_norm（时代平权版）；c[7]=capped_gain 为旧口径，勿用 ※
  *
  * 用法示例：
  *   node sixdim.js                                              # 六维全量总分榜
@@ -186,7 +187,7 @@ for (const dim of OPT.dims) {
       const kind = c[2] === 'avg' ? 'avg' : 'single';
       if (OPT.track !== 'both' && kind !== OPT.track) continue;
       if (OPT.ev && c[1] !== OPT.ev) continue;
-      put(c[0], c[1], +c[7]);
+      put(c[0], c[1], +c[10]);   // c[10]=final_norm（时代平权版 M6）；c[7]=capped_gain 为旧口径，勿用
     }
   }
   sub.set(dim, m);
