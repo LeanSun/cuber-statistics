@@ -14,6 +14,15 @@
  *   不做时代折算（每一条破纪录成就等权；时代因子作为可调旋钮，默认关）。
  *   不受 S5 属地门槛约束——WR/CR/NR 是客观成就，客场破纪录照样计。
  *
+ * ★ 开荒（pioneer）不计分（2026-10-31 用户拍板）：
+ *   WCA 的纪录标记含义是「该成绩成为当时的当前纪录」。当某个
+ *   （范围, 项目, 轨道）在此之前 **没有任何成绩** 时，第一个被录入的成绩会自动成为
+ *   WR / CR / NR —— 它前面没有人可以打破，因此不构成「打破纪录」，不计入 M3。
+ *   典型：2003 年世锦赛 18 条 WR 中 16 条属开荒（当时 555 项目全球仅 15 人参赛、
+ *   盲拧仅 3 人、最少步仅 2 人）；1982 年 Minh Thai 的 22.95 亦属此类。
+ *   可调：`--pio=<0..1>`，默认 0（完全不计）；`--pio=1` 退回旧口径做对比。
+ *   注：判定范围随纪录级别变化 —— WR 看全球线，CR 看选手所属洲，NR 看选手所属国家。
+ *
  * 只读 m2.js（tierOf / isContinentalType / isMultiRegion / LEVEL_OF），不改任何封存文件。
  * 用法：node --max-old-space-size=6144 etl/score/m3_record_bonus.js
  */
@@ -29,6 +38,8 @@ const num = (v) => Number(v).toLocaleString('en-US');
 
 const W_REC = { WR: 1.0, CR: 0.4, NR: 0.15 };
 const W_TIER = { WC: 1.0, CC: 0.6, NC: 0.4 };
+// 开荒（首条、无前值）权重：默认 0 = 不计分。--pio=1 可退回旧口径对比。
+const PIO_W = (() => { const a = process.argv.find((s) => s.startsWith('--pio=')); return a ? Number(a.slice(6)) : 0; })();
 const CONT_CODES = new Set(['AfR', 'AsR', 'ER', 'NAR', 'OcR', 'SAR']); // 六大洲纪录
 const TIER_CN = { WC: '世锦赛', CC: '洲锦赛', NC: '国锦赛' };
 const LEVEL_CN = { WR: '世界纪录', CR: '洲纪录', NR: '国家纪录' };
@@ -82,7 +93,7 @@ function levelOf(val) {
   const compInfo = new Map();
   await streamTsv('WCA_export_competitions.tsv', (r) => {
     if (!r[0]) return;
-    compInfo.set(r[0], { name: r[1] || r[0], year: +r[14] || 0, iso: (isoOf.get(r[6]) || '').toUpperCase() });
+    compInfo.set(r[0], { name: r[1] || r[0], year: +r[14] || 0, month: +r[15] || 0, day: +r[16] || 0, iso: (isoOf.get(r[6]) || '').toUpperCase() });
   });
   const ctypes = new Map();
   await streamTsv('WCA_export_championships.tsv', (r) => {
@@ -91,6 +102,35 @@ function levelOf(val) {
     ctypes.get(r[1]).add(String(r[2] || '').trim());
   });
 
+  // ── 预扫描：建立「首条成绩」边界（用于判定开荒）──────────────────────
+  // seq = 比赛日期 + 结果 id，保证同一天内也有稳定先后（id 小者先录入）。
+  const minEV = new Map();                 // (ev|type)        → 全球最早 seq
+  const minNat = new Map();                // (iso|ev|type)    → 该国最早 seq
+  const minCont = new Map();               // (cont|ev|type)   → 该洲最早 seq
+  const seqOf = (compId, idRaw) => {
+    const c = compInfo.get(compId);
+    if (!c || !c.year) return 0;
+    return (c.year * 10000 + c.month * 100 + c.day) * 1e9 + (+idRaw || 0);
+  };
+  if (PIO_W < 1) {
+    await streamTsv('WCA_export_results.tsv', (r) => {
+      const pid = r[8]; if (!pid) return;
+      const ev = r[6]; if (!ev) return;
+      const seq = seqOf(r[4], r[0]); if (!seq) return;
+      const isoS = (pInfo.get(pid) || {}).iso || '';
+      const cont = (isoInfo.get(isoS) || {}).cont || '?';
+      for (const [type, v] of [['S', r[2]], ['A', r[3]]]) {
+        const val = +v;
+        if (!v || v === 'NULL' || !(val > 0)) continue;   // 无成绩 / DNF(-1) / DNS(-2) 不算
+        const k = ev + '|' + type;
+        let m = minEV.get(k); if (m === undefined || seq < m) minEV.set(k, seq);
+        const kn = isoS + '|' + k; m = minNat.get(kn); if (m === undefined || seq < m) minNat.set(kn, seq);
+        const kc = cont + '|' + k; m = minCont.get(kc); if (m === undefined || seq < m) minCont.set(kc, seq);
+      }
+    });
+    console.log('预扫描（首条成绩边界）：全球线 ' + minEV.size + ' · 国家线 ' + minNat.size + ' · 洲线 ' + minCont.size);
+  }
+
   // ── 主扫描：累计每位选手在锦标赛上破纪录的加分 ──────────────────────
   const bonus = new Map();                 // pid -> { sum, WR, CR, NR }
   const facts3 = [];                       // sixdim 事实表导出用
@@ -98,6 +138,9 @@ function levelOf(val) {
   const cntByTier = { WC: 0, CC: 0, NC: 0 };
   const cntByTierLevel = {};               // "WC|WR" -> n
   let rawFlags = 0;                        // 未去重前的纪录标记数
+  let fullBonus = 0;                       // 不剔除开荒时的总量（仅对比用）
+  const pioByLevel = { WR: 0, CR: 0, NR: 0 };
+  const pioByTier = { WC: 0, CC: 0, NC: 0 };
   const seen = new Set();                  // 去重键 (pid|comp|ev|type|level)
 
   const ensure = (pid) => { let b = bonus.get(pid); if (!b) { b = { sum: 0, WR: 0, CR: 0, NR: 0 }; bonus.set(pid, b); } return b; };
@@ -113,6 +156,9 @@ function levelOf(val) {
     const ev = r[6];
     // single(col10) / average(col11)
     const flags = [['S', r[10]], ['A', r[11]]];
+    const pIso = (pInfo.get(pid) || {}).iso || '';
+    const pCont = (isoInfo.get(pIso) || {}).cont || '?';
+    const seq = seqOf(compId, r[0]);
     for (const [type, raw] of flags) {
       const lvl = levelOf(raw);
       if (!lvl) continue;
@@ -120,19 +166,31 @@ function levelOf(val) {
       const key = pid + '|' + compId + '|' + ev + '|' + type + '|' + lvl;
       if (seen.has(key)) continue;
       seen.add(key);
-      const add = W_REC[lvl] * W_TIER[tier];
+      // 开荒判定：该范围 × 项目 × 轨道在此之前无任何成绩 → 是「第一个记录」而非「打破纪录」
+      let pio = 0;
+      if (PIO_W < 1 && seq) {
+        const k = ev + '|' + type;
+        const at = lvl === 'WR' ? minEV.get(k)
+          : lvl === 'CR' ? minCont.get(pCont + '|' + k)
+            : minNat.get(pIso + '|' + k);
+        pio = (at !== undefined && seq <= at) ? 1 : 0;
+      }
+      const rawAdd = W_REC[lvl] * W_TIER[tier];
+      fullBonus += rawAdd;
+      if (pio) { pioByLevel[lvl]++; pioByTier[tier]++; }
+      const add = rawAdd * (pio ? PIO_W : 1);
       const b = ensure(pid);
       b.sum += add; b[lvl] += add;
       cntByLevel[lvl]++; cntByTier[tier]++;
       const kl = tier + '|' + lvl; cntByTierLevel[kl] = (cntByTierLevel[kl] || 0) + 1;
-      facts3.push({ pid, ev, type, lvl, tier, year: comp.year || 0, add });
+      facts3.push({ pid, ev, type, lvl, tier, year: comp.year || 0, add, pio });
     }
   });
   /* ── 事实表导出（sixdim 查询引擎用；纯写出，不影响任何计算） ──
      as-of 截取 = 过滤 year ≤ asOf */
   fs.writeFileSync(path.join(__dirname, 'M3_facts.tsv'),
-    'pid\tev\ttype\tlvl\ttier\tyear\tadd\n' +
-    facts3.map((x) => [x.pid, x.ev, x.type, x.lvl, x.tier, x.year, x.add.toFixed(4)].join('\t')).join('\n') + '\n', 'utf8');
+    'pid\tev\ttype\tlvl\ttier\tyear\tadd\tpioneer\n' +
+    facts3.map((x) => [x.pid, x.ev, x.type, x.lvl, x.tier, x.year, x.add.toFixed(4), x.pio].join('\t')).join('\n') + '\n', 'utf8');
   console.log('已写 M3_facts.tsv（', facts3.length, '行）');
 
   // ── 读取 M2 全量排名（纯数据导出，不解析报告文本）────────────────────
@@ -202,6 +260,13 @@ function levelOf(val) {
     ' 合计=' + (cntByLevel.WR + cntByLevel.CR + cntByLevel.NR), '（原始标记 ' + rawFlags + '，多轮次已去重）');
   console.log('按赛事级别：',
     'WC=' + cntByTier.WC, ' CC=' + cntByTier.CC, ' NC=' + cntByTier.NC);
+  const pioTot = pioByLevel.WR + pioByLevel.CR + pioByLevel.NR;
+  console.log('开荒（首条、无前值，权重 ' + PIO_W + '）：',
+    'WR=' + pioByLevel.WR, ' CR=' + pioByLevel.CR, ' NR=' + pioByLevel.NR, ' 合计=' + pioTot,
+    '  [' + (pioTot / (cntByLevel.WR + cntByLevel.CR + cntByLevel.NR) * 100).toFixed(1) + '%]');
+  console.log('剔除开荒后加分：', F(totalBonus), '（不剔除为', F(fullBonus), '，剔除掉',
+    F(fullBonus - totalBonus), '分 =', ((fullBonus - totalBonus) / fullBonus * 100).toFixed(1) + '%）');
+  console.log('开荒按赛事级别：WC=' + pioByTier.WC, ' CC=' + pioByTier.CC, ' NC=' + pioByTier.NC);
   console.log('');
   console.log('── 组合 Top25（M2 基线 + M3 破纪录加分，全量重排）──');
   combined.slice(0, 25).forEach((c, i) => {
