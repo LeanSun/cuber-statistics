@@ -246,6 +246,7 @@ function buildLadder(subs, meta, opt) {
   list.sort((x, y) => x.day - y.day || x.cost - y.cost || x.tie - y.tie);
   const kept = [];
   let dropped = 0;
+  let tied = 0;
   for (const s of list) {
     const last = kept[kept.length - 1];
     if (last && last.day === s.day) {
@@ -253,7 +254,15 @@ function buildLadder(subs, meta, opt) {
       else dropped++;
       continue;
     }
-    if (last && !isBetter(last, s)) { dropped++; continue; }  // 非进步条目（数据噪声）
+    if (last && !isBetter(last, s)) {
+      /* ★ opt.allowTie（2026-10-31 新增，默认 false = 保持 M4/M6 原行为）
+       *   主指标 cost 完全相同 = **追平纪录**，不是数据噪声。WCA 会把追平也标为
+       *   WR（333fm 单次 19 步被 6 人先后追平），旧逻辑把这类条目整条丢弃，
+       *   导致追平者拿不到任何持有段（董百强因此丢掉 2 条 WR）。
+       *   打开后：追平者成为新的持有段，原持有者的独占期在追平当天结束。 */
+      if (!(o.allowTie && s.cost === last.cost)) { dropped++; continue; }
+      tied++;
+    }
     kept.push(s);
   }
 
@@ -307,7 +316,7 @@ function buildLadder(subs, meta, opt) {
     prevOut = r.vOut;
     prevLast = lastSub;
   }
-  return { runs, dropped, raw: list.length, kept: kept.length };
+  return { runs, dropped, tied, raw: list.length, kept: kept.length };
 }
 
 /* ── 项目定价：w_e 是唯一的跨项目价格 ────────────────────────────

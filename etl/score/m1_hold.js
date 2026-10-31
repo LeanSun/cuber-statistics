@@ -178,8 +178,12 @@ for (const p of P) {
 const LAD = {};
 for (const k of Object.keys(buckets)) {
   const b = buckets[k];
+  /* ★ 2026-10-31 修：allowTie —— 「追平纪录」(cost 完全相同) 旧逻辑被当噪声丢弃，
+     导致追平者拿不到持有段（董百强 333fm 平均 24.33 / 单次 19 步两条 WR 都被吞掉）。
+     M1 语义是「占有纪录位多久」，追平者同样是纪录持有者，必须成段。
+     M4/M6 不传该参数，行为不变。 */
   const lad = RN.buildLadder(b.subs, { ev: b.ev, type: b.type },
-    { mode: 'level', endFromHeld: true, exportDay: EXPORT });
+    { mode: 'level', endFromHeld: true, exportDay: EXPORT, allowTie: true });
   LAD[k] = { ev: b.ev, type: b.type, level: b.level, scope: b.scope, runs: lad.runs };
 }
 
