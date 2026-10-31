@@ -11,8 +11,17 @@
  *   W_REC = { WR:1.0, CR:0.4, NR:0.15 }            // 镜像 M1 的级别价值常量，保持口径一致
  *   W_TIER = { WC:1.0, CC:0.6, NC:0.4 }            // 世锦赛破纪录最重，国锦赛最轻
  *   单次(single)与平均(average)各计一次（同一比赛同项目同类型去重，避免多轮次重复刷）。
- *   不做时代折算（每一条破纪录成就等权；时代因子作为可调旋钮，默认关）。
  *   不受 S5 属地门槛约束——WR/CR/NR 是客观成就，客场破纪录照样计。
+ *
+ * ★ 时代折算 f（2026-11-01 用户拍板，方案「标准 f」）：
+ *   早期锦标赛纪录的含金量远低于现代 —— 2003 年全世界只有 90 名活跃选手却产出 72 条
+ *   锦标赛纪录，2026 年 52,166 人只产出 505 条；按每万人折算相差约 82 倍。
+ *   f(y,ev) = min(1, ln(1+N(y,ev)) / ln(1+base(ev)))，N = 该年该项目的活跃选手数，
+ *   base(ev) = 该项目历史峰值的活跃人数（活跃项目即最新年；停办项目取其鼎盛年，
+ *   避免「没有未来基准 → f=1 不打折」的漏洞）。
+ *   与 M1 的 f_L 同为 ln(1+N) 形式，六维内部口径统一。
+ *   可调：`--era=<0..1>`，单条加分 = 原价 × f^ERA。默认 1 = 标准 f（满额折算）；
+ *   `--era=0.5` = 温和（√f）；`--era=0` = 关闭（退回旧口径）。
  *
  * ★ 开荒（pioneer）不计分（2026-10-31 用户拍板）：
  *   WCA 的纪录标记含义是「该成绩成为当时的当前纪录」。当某个
@@ -40,6 +49,8 @@ const W_REC = { WR: 1.0, CR: 0.4, NR: 0.15 };
 const W_TIER = { WC: 1.0, CC: 0.6, NC: 0.4 };
 // 开荒（首条、无前值）权重：默认 0 = 不计分。--pio=1 可退回旧口径对比。
 const PIO_W = (() => { const a = process.argv.find((s) => s.startsWith('--pio=')); return a ? Number(a.slice(6)) : 0; })();
+// 时代折算强度：单条加分 ×= f^ERA。默认 1 = 标准 f；0.5 = 温和 √f；0 = 关闭。
+const ERA_P = (() => { const a = process.argv.find((s) => s.startsWith('--era=')); return a ? Number(a.slice(5)) : 1; })();
 const CONT_CODES = new Set(['AfR', 'AsR', 'ER', 'NAR', 'OcR', 'SAR']); // 六大洲纪录
 const TIER_CN = { WC: '世锦赛', CC: '洲锦赛', NC: '国锦赛' };
 const LEVEL_CN = { WR: '世界纪录', CR: '洲纪录', NR: '国家纪录' };
@@ -112,11 +123,21 @@ function levelOf(val) {
     if (!c || !c.year) return 0;
     return (c.year * 10000 + c.month * 100 + c.day) * 1e9 + (+idRaw || 0);
   };
-  if (PIO_W < 1) {
+  const actN = new Map();                  // (year|ev) → Set(pid)，时代折算的活跃人数表
+  if (PIO_W < 1 || ERA_P > 0) {
     await streamTsv('WCA_export_results.tsv', (r) => {
       const pid = r[8]; if (!pid) return;
       const ev = r[6]; if (!ev) return;
-      const seq = seqOf(r[4], r[0]); if (!seq) return;
+      const cId0 = r[4];
+      const cy = (compInfo.get(cId0) || {}).year || 0;
+      if (cy) {
+        const ke = cy + '|' + ev;
+        let st = actN.get(ke);
+        if (!st) { st = new Set(); actN.set(ke, st); }
+        st.add(pid);
+      }
+      if (PIO_W >= 1) return;              // 只差人数表，无需开荒边界
+      const seq = seqOf(cId0, r[0]); if (!seq) return;
       const isoS = (pInfo.get(pid) || {}).iso || '';
       const cont = (isoInfo.get(isoS) || {}).cont || '?';
       for (const [type, v] of [['S', r[2]], ['A', r[3]]]) {
@@ -129,7 +150,39 @@ function levelOf(val) {
       }
     });
     console.log('预扫描（首条成绩边界）：全球线 ' + minEV.size + ' · 国家线 ' + minNat.size + ' · 洲线 ' + minCont.size);
+    console.log('预扫描（活跃人数表）：' + actN.size + ' 个 (年×项目) 组合');
   }
+
+  // ── 时代折算 f(y,ev) = min(1, ln(1+N(y,ev)) / ln(1+base(ev))) ──────────
+  // base(ev) 取该项目历史峰值活跃人数：活跃项目即最新年，停办项目取其鼎盛年
+  // （若硬取最新年，magic/mmagic 等停办项目 N=0 → f=1，早期纪录反而逃过折算）。
+  const baseN = new Map();
+  for (const [ke, st] of actN) {
+    const ev = ke.slice(ke.indexOf('|') + 1);
+    if (st.size > (baseN.get(ev) || 0)) baseN.set(ev, st.size);
+  }
+  const nAt = (y, ev) => { const st = actN.get(y + '|' + ev); return st ? st.size : 0; };
+  const fOf = (y, ev) => {
+    if (ERA_P <= 0) return 1;
+    const b = baseN.get(ev) || 0;
+    if (!b) return 1;
+    const a = nAt(y, ev);
+    if (!a) return 1;
+    return Math.pow(Math.min(1, Math.log(1 + a) / Math.log(1 + b)), ERA_P);
+  };
+  // 开荒判定（主扫描与报告附录共用，避免两处逻辑漂移）：
+  // 该「范围 × 项目 × 轨道」在此之前无任何成绩 → 是「第一个记录」而非「打破纪录」。
+  const isPio = (idRaw, compId, ev, type, lvl, pid) => {
+    if (PIO_W >= 1) return 0;
+    const seq = seqOf(compId, idRaw); if (!seq) return 0;
+    const k = ev + '|' + type;
+    const pIso = (pInfo.get(pid) || {}).iso || '';
+    const pCont = (isoInfo.get(pIso) || {}).cont || '?';
+    const at = lvl === 'WR' ? minEV.get(k)
+      : lvl === 'CR' ? minCont.get(pCont + '|' + k)
+        : minNat.get(pIso + '|' + k);
+    return (at !== undefined && seq <= at) ? 1 : 0;
+  };
 
   // ── 主扫描：累计每位选手在锦标赛上破纪录的加分 ──────────────────────
   const bonus = new Map();                 // pid -> { sum, WR, CR, NR }
@@ -141,6 +194,9 @@ function levelOf(val) {
   let fullBonus = 0;                       // 不剔除开荒时的总量（仅对比用）
   const pioByLevel = { WR: 0, CR: 0, NR: 0 };
   const pioByTier = { WC: 0, CC: 0, NC: 0 };
+  let bonusNoEra = 0;                      // 同口径但不做时代折算的合计（对比用）
+  let eraSum = 0, eraN = 0;                // f 的算术均值
+  const eraByDec = new Map();              // 年代 → { s, n }
   const seen = new Set();                  // 去重键 (pid|comp|ev|type|level)
 
   const ensure = (pid) => { let b = bonus.get(pid); if (!b) { b = { sum: 0, WR: 0, CR: 0, NR: 0 }; bonus.set(pid, b); } return b; };
@@ -156,9 +212,6 @@ function levelOf(val) {
     const ev = r[6];
     // single(col10) / average(col11)
     const flags = [['S', r[10]], ['A', r[11]]];
-    const pIso = (pInfo.get(pid) || {}).iso || '';
-    const pCont = (isoInfo.get(pIso) || {}).cont || '?';
-    const seq = seqOf(compId, r[0]);
     for (const [type, raw] of flags) {
       const lvl = levelOf(raw);
       if (!lvl) continue;
@@ -167,30 +220,32 @@ function levelOf(val) {
       if (seen.has(key)) continue;
       seen.add(key);
       // 开荒判定：该范围 × 项目 × 轨道在此之前无任何成绩 → 是「第一个记录」而非「打破纪录」
-      let pio = 0;
-      if (PIO_W < 1 && seq) {
-        const k = ev + '|' + type;
-        const at = lvl === 'WR' ? minEV.get(k)
-          : lvl === 'CR' ? minCont.get(pCont + '|' + k)
-            : minNat.get(pIso + '|' + k);
-        pio = (at !== undefined && seq <= at) ? 1 : 0;
-      }
+      const pio = isPio(r[0], compId, ev, type, lvl, pid);
       const rawAdd = W_REC[lvl] * W_TIER[tier];
       fullBonus += rawAdd;
       if (pio) { pioByLevel[lvl]++; pioByTier[tier]++; }
-      const add = rawAdd * (pio ? PIO_W : 1);
+      const y0 = comp.year || 0;
+      const ff = fOf(y0, ev);                       // 时代折算（--era=0 时恒为 1）
+      const addNoEra = rawAdd * (pio ? PIO_W : 1);
+      bonusNoEra += addNoEra;
+      eraSum += ff; eraN++;
+      const dk = y0 <= 2005 ? '2003-05' : y0 <= 2010 ? '2006-10'
+        : y0 <= 2015 ? '2011-15' : y0 <= 2020 ? '2016-20' : '2021+';
+      let dv = eraByDec.get(dk); if (!dv) { dv = { s: 0, n: 0 }; eraByDec.set(dk, dv); }
+      dv.s += ff; dv.n++;
+      const add = addNoEra * ff;
       const b = ensure(pid);
       b.sum += add; b[lvl] += add;
       cntByLevel[lvl]++; cntByTier[tier]++;
       const kl = tier + '|' + lvl; cntByTierLevel[kl] = (cntByTierLevel[kl] || 0) + 1;
-      facts3.push({ pid, ev, type, lvl, tier, year: comp.year || 0, add, pio });
+      facts3.push({ pid, ev, type, lvl, tier, year: y0, add, pio, f: ff });
     }
   });
   /* ── 事实表导出（sixdim 查询引擎用；纯写出，不影响任何计算） ──
      as-of 截取 = 过滤 year ≤ asOf */
   fs.writeFileSync(path.join(__dirname, 'M3_facts.tsv'),
-    'pid\tev\ttype\tlvl\ttier\tyear\tadd\tpioneer\n' +
-    facts3.map((x) => [x.pid, x.ev, x.type, x.lvl, x.tier, x.year, x.add.toFixed(4), x.pio].join('\t')).join('\n') + '\n', 'utf8');
+    'pid\tev\ttype\tlvl\ttier\tyear\tadd\tpioneer\tf\n' +
+    facts3.map((x) => [x.pid, x.ev, x.type, x.lvl, x.tier, x.year, x.add.toFixed(4), x.pio, F(x.f)].join('\t')).join('\n') + '\n', 'utf8');
   console.log('已写 M3_facts.tsv（', facts3.length, '行）');
 
   // ── 读取 M2 全量排名（纯数据导出，不解析报告文本）────────────────────
@@ -264,9 +319,18 @@ function levelOf(val) {
   console.log('开荒（首条、无前值，权重 ' + PIO_W + '）：',
     'WR=' + pioByLevel.WR, ' CR=' + pioByLevel.CR, ' NR=' + pioByLevel.NR, ' 合计=' + pioTot,
     '  [' + (pioTot / (cntByLevel.WR + cntByLevel.CR + cntByLevel.NR) * 100).toFixed(1) + '%]');
-  console.log('剔除开荒后加分：', F(totalBonus), '（不剔除为', F(fullBonus), '，剔除掉',
-    F(fullBonus - totalBonus), '分 =', ((fullBonus - totalBonus) / fullBonus * 100).toFixed(1) + '%）');
+  console.log('剔除开荒后加分（未做时代折算）：', F(bonusNoEra), '（不剔除为', F(fullBonus), '，剔除掉',
+    F(fullBonus - bonusNoEra), '分 =', ((fullBonus - bonusNoEra) / fullBonus * 100).toFixed(1) + '%）');
   console.log('开荒按赛事级别：WC=' + pioByTier.WC, ' CC=' + pioByTier.CC, ' NC=' + pioByTier.NC);
+  if (ERA_P > 0) {
+    console.log('时代折算（--era=' + ERA_P + '）：平均 f=' + F(eraSum / eraN) +
+      '　加分 ' + F(bonusNoEra) + ' → ' + F(totalBonus) +
+      '（' + ((totalBonus / bonusNoEra - 1) * 100).toFixed(1) + '%）');
+    for (const d of ['2003-05', '2006-10', '2011-15', '2016-20', '2021+']) {
+      const v = eraByDec.get(d); if (!v) continue;
+      console.log('   ' + d + ' 平均 f=' + F(v.s / v.n) + '（' + num(v.n) + ' 条）');
+    }
+  }
   console.log('');
   console.log('── 组合 Top25（M2 基线 + M3 破纪录加分，全量重排）──');
   combined.slice(0, 25).forEach((c, i) => {
@@ -303,9 +367,11 @@ function levelOf(val) {
   L.push('');
   L.push('- **适用范围**：仅锦标赛 —— 世锦赛(WC) / 洲锦赛(CC) / 国锦赛(NC)。普通赛(OP)不计。');
   L.push('- **纪录级别**：世界纪录(WR) + 洲纪录(CR) + 国家纪录(NR) 三级都计分。');
-  L.push('- **单条加分** = `W_REC[级别] × W_TIER[赛事级别]`');
+  L.push('- **单条加分** = `W_REC[级别] × W_TIER[赛事级别] × f(年,项目)^ERA`');
   L.push('  - `W_REC = { WR:1.0, CR:0.4, NR:0.15 }`，镜像 M1 的级别价值常量，保持口径一致');
   L.push('  - `W_TIER = { WC:1.0, CC:0.6, NC:0.4 }`，世锦赛破纪录最重、国锦赛最轻');
+  L.push('  - `f(y,ev) = min(1, ln(1+N(y,ev)) / ln(1+base(ev)))`，N = 该年该项目活跃选手数，');
+  L.push('    `base(ev)` = 该项目历史峰值人数。开荒条目另有 `× PIO_W`（默认 0 = 不计分）。');
   L.push('- **单次(single)与平均(average)各计一次**；同一比赛同项目同类型多轮次只计一次（去重）。');
   L.push('- **不做时代折算**：每一条破纪录成就等权（时代因子作为可调旋钮，默认关）。');
   L.push('- **不受 S5 属地门槛约束**：WR/CR/NR 是客观成就，客场破纪录照样计。');
@@ -414,7 +480,7 @@ function levelOf(val) {
         const key = pid + '|' + compId + '|' + ev + '|' + type + '|' + lvl;
         if (seen3.has(key)) continue;
         seen3.add(key);
-        const add = W_REC[lvl] * W_TIER[tier];
+        const add = W_REC[lvl] * W_TIER[tier] * fOf(comp.year || 0, ev) * (isPio(r[0], compId, ev, type, lvl, pid) ? PIO_W : 1);
         const ck = tier + '|' + lvl;
         if (!cross[nm][ck]) cross[nm][ck] = { n: 0, sum: 0 };
         cross[nm][ck].n++; cross[nm][ck].sum += add;
@@ -463,7 +529,8 @@ function levelOf(val) {
   L.push('  第 3 节的组合榜（M2 融合分 + M3 独立加分）即「M2 + M3」总榜预览，基于 M2 全量排名重排，边界已自检。');
   L.push('- 破纪录加分**不改变 M2 的头部格局**（Feliks / Max / Tymon 仍居前三），主要抬升「在大赛上破过纪录」的选手；');
   L.push('  头部三强之间的差距会被放大（Feliks 因锦标赛破的 WR 最多，受益最大）。');
-  L.push('- 权重 `W_REC` / `W_TIER` 与「是否引入时代折算」均为可调旋钮，看效果可再微调。');
+  L.push('- 权重 `W_REC` / `W_TIER`、`--era`（时代折算强度，默认 1 = 标准 f）、`--pio`（开荒权重，默认 0）');
+  L.push('  均为可调旋钮，看效果可再微调。');
   L.push('');
   L.push('---');
   L.push('只读 m2.js 与 M2_ranking.tsv（M2 内核导出的全量排名数据文件）；不改动 m1.js / m2.js，');
