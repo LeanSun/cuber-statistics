@@ -25,6 +25,13 @@ WCA_export*
 !etl/score/sixdim_by_event_single.tsv.gz
 !etl/score/sixdim_by_event_avg.tsv.gz
 
+# 例外：单次 / 平均的逐项目精确档（前端懒加载，各约 3MB）。
+# 由 etl/score/make_sixev_lazy.js 生成；不入库的话线上切口径只能退回比例近似，
+# 「单项目 + 单次/平均」的榜内排序会失真（333 单次真实前 1000 只有 564 人进前 1000）。
+# 扩展名用 .tsvz 而非 .gz：浏览器把 .gz 当下载资源，fetch() 会得到 204 空响应。
+!etl/score/sixev_single.tsvz
+!etl/score/sixev_avg.tsvz
+
 # 例外：六维模型脚本 / 封存文档 / 站点分表（模型真源，需随仓库版本化；
 # 中间事实表与诊断 TSV 仍然忽略，避免把几十 MB 的中间产物推上去）
 !etl/score/*.js

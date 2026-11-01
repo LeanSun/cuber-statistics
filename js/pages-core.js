@@ -139,12 +139,88 @@
        · 否则按「各维度的全局单次(平均)分 ÷ 全局合并分」把合并档逐维缩放——
          Σ 缩放后 ≡ 该档全局维度分，**总量精确**，只有项目之间的份额是比例分摊。
      这样「总计 / 单次 / 平均」在项目筛选下不再是死开关（此前 sixIn 完全忽略 rt）。 */
+  /* ── 单次 / 平均的逐项目**精确**档（懒加载，2026-11-01）─────────────────
+     build.js 只下发合并档 sixEv：三份逐项目明细会让 data.js 从 82MB 涨到 ≈105MB，
+     超过 GitHub 单文件 100MB 硬限。于是旧做法用「全局单次/合并比例」缩放合并档，
+     但该比例因人而异（333 上 0.46–0.63），且混入了归一化分母差（三档的 mx 不同），
+     项目内排序会被打乱 —— 实测 333 单次真实第 1 在榜内第 31、真实第 6 在第 313、
+     真实前 1000 只有 564 人进榜内前 1000。
+     现改为：切到单次/平均时按需拉 etl/score/sixev_{single,avg}.tsv.gz（2.0 / 1.8MB），
+     用 DecompressionStream 解压后按 (pid, ev) 直接取精确六维分；首屏零成本。
+     未就绪 / 不支持解压时仍退回旧近似，加载完成自动重渲染。 */
+  const SIXEV = { single: null, avg: null };
+  const SIXEV_ST = { single: 0, avg: 0 };   /* 0 未开始 / 1 加载中 / 2 就绪 / -1 失败 */
+  const SIXEV_URL = { single: 'etl/score/sixev_single.tsvz', avg: 'etl/score/sixev_avg.tsvz' };
+  function sixEvReady(rt) {
+    return (rt === 'single' || rt === 'avg') && SIXEV_ST[rt] === 2 && !!SIXEV[rt];
+  }
+  function sixEvState(rt) { return (rt === 'single' || rt === 'avg') ? SIXEV_ST[rt] : 0; }
+  /* 解析：每行 `pid \t ev:s1,s2,s3,s4,s5,s6;ev:...`（无 t，前端按当前权重现算） */
+  function parseSixEvTxt(txt) {
+    const out = new Map();
+    const L = txt.split('\n');
+    for (let i = 0; i < L.length; i++) {
+      const ln = L[i];
+      if (!ln) continue;
+      const tab = ln.indexOf('\t');
+      if (tab < 0) continue;
+      const segs = ln.slice(tab + 1).split(';');
+      const o = {};
+      for (let j = 0; j < segs.length; j++) {
+        const s = segs[j];
+        const q = s.indexOf(':');
+        if (q < 0) continue;
+        const a = s.slice(q + 1).split(',');
+        o[s.slice(0, q)] = [+a[0] || 0, +a[1] || 0, +a[2] || 0, +a[3] || 0, +a[4] || 0, +a[5] || 0];
+      }
+      out.set(ln.slice(0, tab), o);
+    }
+    return out;
+  }
+  function ensureSixEv(rt) {
+    if (rt !== 'single' && rt !== 'avg') return;
+    if (SIXEV_ST[rt] !== 0) return;
+    if (typeof fetch !== 'function' || typeof DecompressionStream === 'undefined') { SIXEV_ST[rt] = -1; return; }
+    SIXEV_ST[rt] = 1;
+    /* 不带 query 版本号：实测（Chrome 156 + 本地静态服务）给这个二进制资源加任何 ?x=1
+       都会拿到 204 空响应（不带 query 则 200 正常），而 204 属于「成功」状态码，
+       r.ok 为 true、body 为 0 字节 —— 解析出空 Map，榜单会静默变成所有人 0 分。
+       代价是依赖 HTTP 缓存（GitHub Pages 10 分钟），数据更新后最多滞后一轮。 */
+    fetch(SIXEV_URL[rt])
+      .then(function (r) { if (!r.ok || r.status === 204) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
+      .then(function (buf) {
+        /* GitHub Pages 可能已经按 Content-Encoding 解过一层，此时 buf 就是明文；
+           只有真的是 gzip magic（1f 8b）才再解一次，避免重复解压报错。 */
+        const u8 = new Uint8Array(buf);
+        if (u8[0] === 0x1f && u8[1] === 0x8b) {
+          const stream = new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'));
+          return new Response(stream).text();
+        }
+        return new Response(buf).text();
+      })
+      .then(function (txt) {
+        SIXEV[rt] = parseSixEvTxt(txt);
+        SIXEV_ST[rt] = 2;
+        /* 重新渲染当前页：榜单从近似值切到精确值 */
+        if (window.GOAT && typeof window.GOAT.render === 'function') window.GOAT.render(true);
+      })
+      .catch(function () { SIXEV_ST[rt] = -1; });
+  }
   function sixIn(p, ids, rt) {
     if (!p || !ids || !ids.length) return null;
-    const exact = (rt === 'single' ? p.sixEvS : rt === 'avg' ? p.sixEvA : null);
-    const se = exact || p.sixEv;
+    const wantTrack = (rt === 'single' || rt === 'avg');
+    let se, ratio = null;
+    if (wantTrack && sixEvReady(rt)) {
+      /* 精确档就绪：只用精确档。缺项＝该选手在此口径下该项目无分，
+         不回退合并档，否则两套口径会混在同一张榜上。 */
+      se = SIXEV[rt].get(p.id) || null;
+      if (!se) return null;
+    } else {
+      const pre = wantTrack ? (rt === 'single' ? p.sixEvS : p.sixEvA) : null;
+      se = pre || p.sixEv;
+      if (!pre && wantTrack) ratio = trackRatio(p, rt);
+    }
     if (!se) return null;
-    const ratio = (!exact && (rt === 'single' || rt === 'avg')) ? trackRatio(p, rt) : null;
     const w = sixW();
     const s = [0, 0, 0, 0, 0, 0], parts = [];
     let hit = 0;
@@ -395,7 +471,11 @@
     evName: evName, contName: contName, regionName: regionName, countryName: countryName,
     sixW: sixW, evColorOf: evColorOf, evColor: evColor, sixHex: sixHex, themeDark: themeDark,
     scoreOf: scoreOf, contribs: contribs, ecBox: ecBox, infoTip: infoTip, strength: strength, fmtScore: fmtScore,
-    topicPool: topicPool
+    topicPool: topicPool, sixEvState: sixEvState, ensureSixEv: ensureSixEv,
+    /* 调试用：确认「按项目分解」这条链路是否真的启用（sixEv 缺失时会静默退回全站分） */
+    hasSixEv: hasSixEv, evScopeIds: evScopeIds, sixIn: sixIn,
+    sixEvSize: function (rt) { return SIXEV[rt] ? SIXEV[rt].size : -1; },
+    sixEvProbe: function (rt, pid) { return SIXEV[rt] ? (SIXEV[rt].get(pid) || null) : null; }
   };
 
   /* 另类统计页的候选池：套用顶部筛选条（国家 / 大洲 / 性别 / 年份区间 /
@@ -629,6 +709,9 @@
     /* 项目口径：显式选了项目就只统计这些项目上的六维分，名次与条尾数字随之重排。 */
     const scope = evScopeIds(state);
     const useEv = !!scope && hasSixEv();
+    /* 单次 / 平均 + 项目筛选：逐项目精确档是懒加载的，这里顺带触发一次（幂等）。
+       未就绪时下面的 sixIn 会退回「全局比例近似」，加载完成后 ensureSixEv 会重渲染。 */
+    if (useEv && (rt === 'single' || rt === 'avg')) ensureSixEv(rt);
     /* 六维单独筛选：state.dimSel 取 m1..m6 之一时，榜上分数改用该维度的维度分 s_d，
        等于「只看这一维」的单维排行榜（与项目筛选叠加时取所选项目范围内的该维分）。 */
     const dimSel = (state.dimSel && MOD.indexOf(state.dimSel) >= 0) ? state.dimSel : '';
@@ -776,6 +859,18 @@
     h += '<span class="tiny muted">' + esc(t('rank.perPage')) + '</span>';
     h += '<a class="btn" href="#/model">' + Ic.glyph('sliders') + ' ' + esc(t('rank.params')) + '</a>';
     h += '</div>';
+    /* 单次/平均 + 项目筛选：逐项目精确档是懒加载的，这里如实告知加载状态。
+       加载中先显示近似值，完成后 ensureSixEv 会自动重渲染；失败则明确说是近似值。 */
+    if ((evMode || multiMode) && (rt === 'single' || rt === 'avg')) {
+      const st = sixEvState(rt);
+      if (st === 1) {
+        h += '<div class="note-box reveal">' + Ic.glyph('info') + '<div>' +
+          esc(t('rank.sixEvLoad', { type: t('rank.type.' + rt) })) + '</div></div>';
+      } else if (st === -1) {
+        h += '<div class="warnbox reveal" style="margin-bottom:12px">' +
+          esc(t('rank.sixEvFail', { type: t('rank.type.' + rt) })) + '</div>';
+      }
+    }
     if (multiMode || evMode) {
       /* 口径说明：三种选择方式统一按「历史地位分」排序，项目筛选只影响选手池与广度折减 */
       h += '<div class="note-box reveal">' + Ic.glyph('info') + '<div>' + esc(t('rank.ruleNote')) + '</div></div>';

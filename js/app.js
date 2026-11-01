@@ -1795,5 +1795,9 @@
       + '如需预览演示版，可在网址后加 <code>?demo=1</code>。</p></div>';
     return;
   }
+  /* 暴露重渲染入口：单次/平均的逐项目精确档是懒加载的（pages-core 的 ensureSixEv），
+     数据到位后需要在不改路由状态的前提下重画当前页。 */
+  window.GOAT = window.GOAT || {};
+  window.GOAT.render = render;
   render();
 })();
