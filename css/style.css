@@ -1400,7 +1400,39 @@ button.exp-v3-wca.pid-copy:hover{color:var(--accent)}
 /* .btn 自带 display:inline-flex，会压过 [hidden] 的 display:none —— 必须显式补一条 */
 .tl-zoom-reset[hidden]{display:none}
 #tlChart[data-view="lane"],#tlChart[data-view="lane"] canvas{cursor:grab}
+/* 鼠标压在选手色块上时恢复普通指针（用户 2026-11-01：只有空白处才是抓手，色块上不该显示抓手）。
+   .over-seg 由 charts 的 showTip / hideTip 事件增删，见 pages-extra 的 bindLaneCursor。 */
+#tlChart[data-view="lane"].over-seg,#tlChart[data-view="lane"].over-seg canvas{cursor:default}
 #tlChart[data-view="lane"].dragging,#tlChart[data-view="lane"].dragging canvas{cursor:grabbing}
+
+/* ---- 纪录持有图 tooltip：段内刷新日期（小胶囊，自动换行，绝不顶出弹窗） ---- */
+.tl-tip-sub{margin-top:6px;padding-top:6px;border-top:1px solid rgba(128,128,128,.22)}
+.tl-tip-sub-h{font-size:11px;font-weight:700;margin-bottom:4px}
+.tl-tip-chips{display:flex;flex-wrap:wrap;gap:3px;max-width:262px}
+.tl-tip-chips i{font-style:normal;font-size:10.5px;line-height:1.55;padding:0 6px;border-radius:999px;
+  background:rgba(128,128,128,.16);font-variant-numeric:tabular-nums;white-space:nowrap}
+.tl-tip-chips i.more{background:transparent;opacity:.6;padding:0 2px}
+
+/* ---- 分数竞速图：登顶时长徽标（图表下方一行，点击切换「天 / 年月日」） ---- */
+.tl-crown{display:flex;justify-content:flex-start;margin-top:8px}
+.tl-crown[hidden]{display:none}
+.tl-crown-btn{display:inline-flex;align-items:center;gap:7px;padding:6px 14px 6px 11px;
+  border-radius:999px;border:1px solid var(--border-2);background:var(--bg-elev);
+  color:var(--text-2);font-size:12.5px;line-height:1;cursor:pointer;
+  transition:border-color .16s,color .16s,box-shadow .16s,transform .16s}
+.tl-crown-btn:hover{border-color:color-mix(in srgb,var(--accent) 55%,var(--border-2));
+  color:var(--text);box-shadow:0 4px 14px rgba(0,0,0,.07);transform:translateY(-1px)}
+.tl-crown-ic{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;
+  border-radius:6px;background:color-mix(in srgb,var(--accent) 16%,transparent);flex:none}
+.tl-crown-ic svg{width:12px;height:12px;fill:var(--accent)}
+.tl-crown-flag{width:15px;height:11px;border-radius:2px;flex:none;
+  box-shadow:0 0 0 1px rgba(0,0,0,.12)}
+.tl-crown-flag[hidden]{display:none}
+.tl-crown-name{color:var(--text);font-weight:700;max-width:200px;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.tl-crown-lab{opacity:.72}
+.tl-crown-val{color:var(--text);font-weight:700;font-variant-numeric:tabular-nums}
+.tl-crown-swap{opacity:.4;font-size:11px;margin-left:1px}
 
 /* ============ 重大事件：浮在分数竞速图右下角的可折叠弹窗 ============ */
 .tl-stage{position:relative}

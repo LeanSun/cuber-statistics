@@ -357,7 +357,6 @@
 
     /* 纪录持有图：按需求不再在图表下方罗列持有者清单（原 laneList /「纪录内容」），
        姓名 / 国旗 / 起止时间改为鼠标移到色块上时跟随光标显示（见 Charts.lanes 的 tooltip）。 */
-
     /* 重大事件：竞速图横轴是分数，里程碑竖线无处安放。
        按需求做成「浮在分数竞速图右下角」的一块：
          · 折叠标签 —— 点开可看到全部事件，点条目跳到对应时间；
@@ -384,6 +383,22 @@
       h += '</div></div></div>';
     }
     h += '</div>';
+
+    /* 登顶时长徽标（仅分数竞速图）：紧贴图表下方一行，不遮住任何条形。
+       「榜单第一」会随筛选口径变化，所以有地区 / 国家 / 性别筛选时文案从「世界第一」降级为「第一」。 */
+    if (view !== 'lane') {
+      const crownLab = (geoCountry || geoRegion || (state.gender && state.gender !== 'all'))
+        ? t('tl.crown.label') : t('tl.crown.labelW');
+      h += '<div class="tl-crown" id="tlCrown" hidden>' +
+        '<button type="button" class="tl-crown-btn" id="tlCrownBtn" title="' + esc(t('tl.crown.tip')) + '">' +
+        '<span class="tl-crown-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3.2 8.4l4.6 3.4L12 4.2l4.2 7.6 4.6-3.4-1.7 9.9H4.9L3.2 8.4z"/></svg></span>' +
+        '<img class="tl-crown-flag" alt="" hidden>' +
+        '<b class="tl-crown-name"></b>' +
+        '<span class="tl-crown-lab">' + esc(crownLab) + '</span>' +
+        '<b class="tl-crown-val"></b>' +
+        '<span class="tl-crown-swap" aria-hidden="true">⇄</span>' +
+        '</button></div>';
+    }
 
     /* 纪录持有图（lane 视图）下方不再罗列冗长的「重大事件」清单 —— 重大事件仅在「分数竞速图」中呈现；
        竞速图已在右下角 ms-pop 里给出事件轨道与到达提示。 */
@@ -573,7 +588,13 @@
       try { inst = window.Charts.render(box, opt, { notMerge: !sameStruct }); } catch (e) { inst = null; }
       box.__tlSig = sig;
       if (inst) { box.removeAttribute('data-ec-fail'); }
-      if (view === 'lane') P.tlSyncZoomBtn(box);
+      if (view === 'lane') {
+        P.tlSyncZoomBtn(box);
+        bindLaneCursor(box, inst);
+      } else if (inst) {
+        P.bindTlCrown(box);
+        if (P.tlCrownPaint) P.tlCrownPaint(box, fy);
+      }
       return inst;
     } catch (e) {
       /* 早期这里把异常整个吞掉，结果线上只看到一块空白图表、控制台也没有线索。
@@ -588,6 +609,29 @@
       return null;
     }
   };
+
+  /* ---------- 纪录持有图：光标形态 ---------- */
+  /* 交互约定（用户 2026-11-01 更新）：
+       · 鼠标压在选手色块上 → 普通指针（色块上没有可拖的东西，抓手会误导）；
+       · 鼠标在空白处     → 抓手，可按住左右拖动（缩放后才有平移余量）。
+     ECharts 在命中 series 项时会触发 showTip，离开时 hideTip，用它切换 .over-seg 即可，
+     不必自己做命中测试。 */
+  function bindLaneCursor(box, inst) {
+    if (!inst || typeof inst.on !== 'function') return;
+    box.__lcBox = box;
+    if (inst.__lcBound) return;
+    inst.__lcBound = true;
+    inst.on('showTip', function () {
+      const b = box.__lcBox; if (b) b.classList.add('over-seg');
+    });
+    inst.on('hideTip', function () {
+      const b = box.__lcBox; if (b) b.classList.remove('over-seg');
+    });
+    /* 鼠标直接移出画布时个别版本不会补发 hideTip，兜一层 */
+    try {
+      box.addEventListener('mouseleave', function () { box.classList.remove('over-seg'); });
+    } catch (e) { }
+  }
 
   /* ---------- 纪录持有图：缩放 / 平移 ---------- */
   /* 交互约定（用户 2026-11-01 指定）：
@@ -823,7 +867,13 @@
     return first;
   }
 
-  function snapshot(mode, fy, smooth, region, country, evs, gender, rtype, dim) {
+  /* 竞速分求值器：吃一位选手 + 一个时间点，返回他在这一刻的竞速分（≤0 表示这一帧不计入）。
+     抽成独立函数是为了三处复用：
+       ① 常规快照（每帧一次全量扫描）；
+       ② 登顶时间线的「候选筛选」（在若干采样时刻取榜首）；
+       ③ 登顶时间线的「逐点求解」（只看候选集合，反复调用）。
+     三处必须是同一把尺子，否则榜首时间线与画面上的 #1 会对不上。 */
+  function mkScorer(mode, smooth, region, country, evs, gender, rtype, dim) {
     /* 选中项目（单项目 / 多项目）时，整张图切换成「所选项目的六维能力分排名」，与上方筛选项目实时联动：
          分数取每个所选项目的六维总分（p.sixEv 已含 per-event 六维分 a[6]=t_ev）求和，
          与「历史地位排名」单 / 多项目筛选共用同一把六维尺子（不再依赖缺失的逐项目按年统计）。
@@ -841,9 +891,11 @@
     function cum(p, y) { return cumY(p[key] || {}, y); }
     function cumF(p, f) { return cumFY(p[key] || {}, f); }
     const END_Y = 2026;
-    const rows = [];
-    M.ranked.forEach(function (p) {
-      if (!inScope(p, region, country, gender, evs)) return;
+    /* 六维单独筛选：直接用该维度的维度分作为基准分，再乘同一条年度进度曲线，
+       这样「只看 M3」的竞速图里条形只按大赛表现这一维比拼。 */
+    const dimMode = (dim && ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'].indexOf(dim) >= 0);
+    return function valueOf(p, fy) {
+      if (!inScope(p, region, country, gender, evs)) return 0;
       if (evList) {
         /* 多项目（含单项目）：把所选项目的六维分逐维求和，再用当前权重合成，
            与榜单「项目筛选」完全同一把尺子（不再直接读 ETL 预置的 a[6]，
@@ -853,9 +905,9 @@
         /* ★ 该项目（组合）里还没有他的任何成绩 → 这一帧不该有这个人。
            以前这段缺失，导致早期年份里出现后来才进这个项目的选手（例如 2007 年前的中国三盲）。 */
         const firstY = evFirstYear(p, evList);
-        if (firstY != null && Math.floor(fy) < firstY) return;
+        if (firstY != null && Math.floor(fy) < firstY) return 0;
         const t = evScopeT(p, evList, rtype);
-        if (t <= 0) return;
+        if (t <= 0) return 0;
         /* ★ 时间演化（此前缺失 → 单/多项目播放时条形纹丝不动，只显示最终名次）：
            总分 t 是「截至今天」的能力值，必须再乘一条随时间推进的进度曲线，
            播放时才会逐年长出来。进度曲线用「该选手在所选项目上的年度荣誉累计占比」，
@@ -875,41 +927,59 @@
           const gcf = smooth ? ((cumF(p, fy) + cumF(p, fy - 1) + cumF(p, fy - 2)) / 3) : cumF(p, fy);
           ratio = gAll > 0 ? Math.max(0, Math.min(1, gcf / gAll)) : 1;
         }
-        const v = t * ratio;
-        if (v <= 0) return;
-        rows.push({
-          name: p.name, country: p.country, hue: p.hue, id: p.id, iso: p.country,
-          value: v, color: countryColor(p.country), flag: window.Charts.flagUri(p.country)
-        });
-        return;
+        return t * ratio;
       }
       const all = cum(p, END_Y);
-      /* 六维单独筛选：直接用该维度的维度分作为基准分，再乘同一条年度进度曲线，
-         这样「只看 M3」的竞速图里条形只按大赛表现这一维比拼。
-         该维没有年度荣誉累计（all=0，如仅靠当前排名拿分）时，进度曲线取 1
+      /* 该维没有年度荣誉累计（all=0，如仅靠当前排名拿分）时，进度曲线取 1
          （显示其当前维度分），而不是把整条丢弃。 */
-      const dimMode = (dim && ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'].indexOf(dim) >= 0);
-      if (all <= 0 && !dimMode) return;
+      if (all <= 0 && !dimMode) return 0;
       let cf = cumF(p, fy);
       if (smooth) cf = (cumF(p, fy) + cumF(p, fy - 1) + cumF(p, fy - 2)) / 3;
       const ratio = all > 0 ? Math.max(0, Math.min(1, cf / all)) : 1;
-      if (ratio <= 0) return;
-      let v;
+      if (ratio <= 0) return 0;
       if (dimMode) {
         const sv = rtype === 'single' ? (p.sixS || p.six) : (rtype === 'avg' ? (p.sixA || p.six) : p.six);
-        v = (sv ? (sv[dim] || 0) : 0) * ratio;
-      } else {
-        const sc = P.util.scoreOf(p, rtype);
-        const career = sc.career * ratio;
-        const ratio2 = Math.max(0.05, Math.min(3, sc.peak / Math.max(sc.career, 0.01)));
-        v = career * Math.pow(ratio2, 0.4);
+        return (sv ? (sv[dim] || 0) : 0) * ratio;
       }
-      if (v <= 0) return;
-      rows.push({ name: p.name, country: p.country, hue: p.hue, id: p.id, iso: p.country, value: v, color: countryColor(p.country), flag: window.Charts.flagUri(p.country) });
-    });
-    return rows.sort(function (a, b) { return b.value - a.value; })
-      /* 排名序号 1–15（barRace 画在条形左端外侧） */
-      .map(function (r, i) { r.no = i + 1; return r; });
+      const sc = P.util.scoreOf(p, rtype);
+      const career = sc.career * ratio;
+      const ratio2 = Math.max(0.05, Math.min(3, sc.peak / Math.max(sc.career, 0.01)));
+      return career * Math.pow(ratio2, 0.4);
+    };
+  }
+
+  /* ★ 性能（2026-11-01）：这里原来会把**所有有分的选手**都塞进数组再整体排序 ——
+     早期年份只有几百人有分，播到 2020 年代变成几万人，于是每帧要分配几万个对象、
+     排一次几万元素的序，帧时间随播放推进越来越长，画面就「跟不上分数变化」。
+     实际只有前 15 名会被画出来，所以改成「只保留前 K 名」的插入式选择：
+     绝大多数选手连第 15 名的门槛都过不了，直接跳过，不分配对象、不排序。 */
+  function snapshot(mode, fy, smooth, region, country, evs, gender, rtype, dim, topK) {
+    const val = mkScorer(mode, smooth, region, country, evs, gender, rtype, dim);
+    const K = (topK > 0) ? Math.round(topK) : 0;
+    const out = [];
+    const ranked = M.ranked;
+    function makeRow(p, v) {
+      return {
+        name: p.name, country: p.country, hue: p.hue, id: p.id, iso: p.country,
+        value: v, color: countryColor(p.country), flag: window.Charts.flagUri(p.country)
+      };
+    }
+    for (let i = 0; i < ranked.length; i++) {
+      const p = ranked[i];
+      const v = val(p, fy);
+      if (!(v > 0)) continue;
+      if (!K) { out.push(makeRow(p, v)); continue; }
+      if (out.length >= K && v <= out[out.length - 1].value) continue;
+      const row = makeRow(p, v);
+      let j = out.length;
+      while (j > 0 && out[j - 1].value < v) j--;
+      out.splice(j, 0, row);
+      if (out.length > K) out.pop();
+    }
+    if (!K) out.sort(function (a, b) { return b.value - a.value; });
+    /* 排名序号 1–15（barRace 画在条形左端外侧） */
+    for (let i = 0; i < out.length; i++) out[i].no = i + 1;
+    return out;
   }
 
   /* 暴露给冒烟测试：验证筛选项目确实改变了竞速图结果 */
@@ -925,6 +995,17 @@
   P.laneScopeOf = laneScopeOf;
   P.recScopeLabel = recScopeLabel;
   P.tlDaysBetweenDn = daysBetweenDn;
+  /* 供冒烟测试：竞速快照（topK=0 → 全量排序）与登顶时长的内部工具 */
+  P._snap = snapshot;
+  P.tlCrownSince = crownSince;
+  P.tlCrownYmd = daysToYmd;
+  P.tlCrownComputeSync = function () {
+    const rec = crownCompute({
+      mode: 'cumulative', smooth: false, region: '', country: '',
+      evs: [], gender: 'all', rtype: 'all', dim: ''
+    }, '__smoke', P.tlEndFy(), true);
+    return rec ? rec.spells : [];
+  };
 
   /* 重大事件到达提示：给定「上一步 / 当前」两个日期（YYYY-MM-DD），
      返回这一步刚刚跨过的事件（可能多条）。供 app.js 在时间推进时调用。 */
@@ -1180,7 +1261,7 @@
     }
     const TOP = 15;
     const rate = loadRate();
-    const all = snapshot(mode, fy, smooth, region, country, evs, gender, rtype, dim); // 已按 value 降序，带 no
+    const all = snapshot(mode, fy, smooth, region, country, evs, gender, rtype, dim, TOP); // 已按 value 降序，带 no
     /* 竞速图需要「按选手 id 键控」才能在名次变化时让条形与姓名一起滑动。
        这里维护一个稳定的「选手宇宙」(box.__raceU)：首次或筛选口径变化时，用逐年采样
        把历年进过前 N 名的选手都收进来；之后每帧只在宇宙内更新名次/分数，
@@ -1208,6 +1289,22 @@
       }
       return { id: id, name: '', iso: '', flag: '', color: '#cfcfcf', value: 0, rank: TOP + 1, no: TOP + 1 };
     });
+    /* 登顶时长徽标：记住本帧的榜首（画到条形上的第 1 名），并确保「榜首时间线」已经算过。
+       徽标本身由 drawTimeline 在渲染后调用 P.tlCrownPaint 更新，这里只负责把数据挂到容器上。 */
+    if (box) {
+      box.__raceLeader = (all[0] && all[0].no === 1) ? all[0] : null;
+      box.__crown = CROWN_CACHE[raceSig] || null;
+      if (!box.__crown) {
+        /* 失败也不能把整张图带崩：徽标算不出来就只是不显示 */
+        try {
+          crownCompute({
+            mode: mode, smooth: !!smooth, region: region || '', country: country || '',
+            evs: evs || [], gender: gender || 'all', rtype: rtype || 'all', dim: dim || ''
+          }, raceSig, P.tlEndFy());
+        } catch (e) { }
+        box.__crown = CROWN_CACHE[raceSig] || null;
+      }
+    }
     return window.Charts.barRace(rows, { top: TOP, duration: rate.anim });
   }
 
@@ -1220,7 +1317,7 @@
       ? [2006, 2010, 2014, 2018, 2022, 2025]
       : [2005, 2010, 2015, 2020, 2025];
     sampleYears.forEach(function (y) {
-      const s = snapshot(mode, y, smooth, region, country, evs, gender, rtype, dim).slice(0, TOP + 8);
+      const s = snapshot(mode, y, smooth, region, country, evs, gender, rtype, dim, TOP + 8);
       for (let i = 0; i < s.length; i++) {
         const id = s[i].id;
         if (!seen[id]) { seen[id] = 1; ids.push(id); }
@@ -1228,6 +1325,214 @@
     });
     return ids;
   }
+
+  /* ================= 登顶时长（分数竞速图的「世界第一持续了多久」徽标） ================= */
+  /* 需求（2026-11-01）：在竞速图上给出「某选手登顶（当前 N 名榜第一）的持续时间」，
+     以「xx 天」显示，单击可在「xx 年 xx 月 xx 天」之间切换。
+     做法：竞速名次是逐帧算出来的，没有现成的历史时间线，所以这里**按当前筛选口径**
+     离线重建一条「榜首时间线」：
+       ① 采样 18 个时刻，各做一次全量扫描，取每个时刻的前 10 名 → 候选集（几十人）；
+       ② 只在候选集里按周扫描求每个时刻的榜首；
+       ③ 榜首换人时用二分把交接点精确到天。
+     为什么可以先筛候选集：每位选手的竞速分随时间**单调不减**（年度累计 × 总分的占比），
+     榜首只会在各时刻的前列里产生；再加上每周扫描而非一次性求解，漏判的概率极低。
+     整个构建按片（每帧一小段）跑，不阻塞主线程；结果按筛选签名缓存，换筛选才重算。 */
+  const CROWN_CACHE = {};
+  let CROWN_SEQ = 0;
+  const CROWN_TOP = 10;
+  const CROWN_SAMPLES = 18;
+  function crownIt(fn) {
+    return (window.requestAnimationFrame || function (f) { return setTimeout(f, 16); })(function () {
+      try { fn(); } catch (e) { }
+    });
+  }
+  function playerById(pid) {
+    if (!pid) return null;
+    if (!M.__byId) { M.__byId = {}; (M.ranked || []).forEach(function (p) { M.__byId[p.id] = p; }); }
+    return M.__byId[pid] || null;
+  }
+  /* 年（小数）→ 绝对日序号，用来把「持续时长」换算成准确的天数 / 年月日 */
+  function fyToDays(f) {
+    const y = Math.floor(f);
+    return Date.UTC(y, 0, 1) / 86400000 + (f - y) * (tlIsLeap(y) ? 366 : 365);
+  }
+  /* 天数 → 「x 年 x 个月 x 天」。从**真实起点日**（startDays，绝对日序号）往后推，
+     所以「正好一年」会得到 1 年 0 个月 0 天，而不是因为跨了闰年变成 11 个月 30 天。 */
+  function daysToYmd(days, startDays) {
+    const n = Math.max(0, Math.round(days));
+    const a = new Date((startDays == null ? Date.UTC(2000, 0, 1) / 86400000 : startDays) * 86400000);
+    const b = new Date(a.getTime() + n * 86400000);
+    let y = b.getUTCFullYear() - a.getUTCFullYear();
+    let m = b.getUTCMonth() - a.getUTCMonth();
+    let d = b.getUTCDate() - a.getUTCDate();
+    if (d < 0) { m--; d += new Date(Date.UTC(b.getUTCFullYear(), b.getUTCMonth(), 0)).getUTCDate(); }
+    if (m < 0) { y--; m += 12; }
+    return { y: Math.max(0, y), m: Math.max(0, m), d: Math.max(0, d) };
+  }
+  /* 在 [a,b] 内二分出「pid 最早成为榜首」的时刻（a 处还不是，b 处已经是） */
+  function refineCrown(list, val, a, b, pid) {
+    function leaderAt(t) {
+      let bi = -1, bv = 0;
+      for (let i = 0; i < list.length; i++) {
+        const v = val(list[i], t);
+        if (v > bv) { bv = v; bi = i; }
+      }
+      return bi >= 0 ? list[bi].id : null;
+    }
+    let lo = a, hi = b;
+    for (let i = 0; i < 8; i++) {
+      const mid = (lo + hi) / 2;
+      if (leaderAt(mid) === pid) hi = mid; else lo = mid;
+    }
+    return hi;
+  }
+  function crownCompute(cfg, sig, endFy, sync) {
+    const rec = CROWN_CACHE[sig] = { ready: false, spells: [], busy: true, ts: ++CROWN_SEQ };
+    /* sync = 同步跑完（只给冒烟测试用）；正常路径按片让出主线程 */
+    const defer = sync ? function (f) { f(); } : crownIt;
+    const val = mkScorer(cfg.mode, cfg.smooth, cfg.region, cfg.country, cfg.evs, cfg.gender, cfg.rtype, cfg.dim);
+    const t0 = 2003.25;
+    const t1 = Math.max(t0 + 0.5, endFy || P.tlEndFy());
+    const samples = [];
+    for (let i = 0; i < CROWN_SAMPLES; i++) samples.push(t0 + (t1 - t0) * i / (CROWN_SAMPLES - 1));
+    const candIds = [], seen = {};
+    let si = 0;
+    function sampleTick() {
+      const tt = samples[si];
+      const best = [];
+      const ranked = M.ranked;
+      for (let i = 0; i < ranked.length; i++) {
+        const p = ranked[i];
+        const v = val(p, tt);
+        if (!(v > 0)) continue;
+        if (best.length >= CROWN_TOP && v <= best[best.length - 1].v) continue;
+        let j = best.length;
+        while (j > 0 && best[j - 1].v < v) j--;
+        best.splice(j, 0, { id: p.id, v: v });
+        if (best.length > CROWN_TOP) best.pop();
+      }
+      for (let i = 0; i < best.length; i++) {
+        const id = best[i].id;
+        if (id && !seen[id]) { seen[id] = 1; candIds.push(id); }
+      }
+      si++;
+      if (si < CROWN_SAMPLES) { defer(sampleTick); return; }
+      phaseTwo();
+    }
+    function phaseTwo() {
+      const list = [];
+      for (let i = 0; i < candIds.length; i++) {
+        const p = playerById(candIds[i]);
+        if (p) list.push(p);
+      }
+      if (!list.length) { rec.busy = false; rec.ready = true; return; }
+      const stops = [];
+      for (let x = t0; x <= t1; x += 7 / 365.25) stops.push(x);
+      const spells = [];
+      let prevPid;
+      let k = 0;
+      function leaderAt(t) {
+        let bi = -1, bv = 0;
+        for (let i = 0; i < list.length; i++) {
+          const v = val(list[i], t);
+          if (v > bv) { bv = v; bi = i; }
+        }
+        return bi >= 0 ? list[bi].id : null;
+      }
+      function stepTick() {
+        let n = 0;
+        while (k < stops.length && n < 240) {
+          const tt = stops[k];
+          const pid = leaderAt(tt);
+          if (pid !== prevPid) {
+            let from = tt;
+            if (k > 0) from = refineCrown(list, val, stops[k - 1], tt, pid);
+            spells.push({ pid: pid, from: from });
+            prevPid = pid;
+          }
+          k++; n++;
+        }
+        if (k < stops.length) { defer(stepTick); return; }
+        rec.spells = spells;
+        rec.ready = true;
+        rec.busy = false;
+        /* 缓存上限：签名组合不多，超了先丢最旧的（当前正在用的那份除外） */
+        const ks = Object.keys(CROWN_CACHE);
+        if (ks.length > 8) {
+          ks.sort(function (a, b) { return CROWN_CACHE[a].ts - CROWN_CACHE[b].ts; });
+          for (let i = 0; i < ks.length - 8; i++) if (ks[i] !== sig) delete CROWN_CACHE[ks[i]];
+        }
+        crownRepaint();
+      }
+      defer(stepTick);
+    }
+    defer(sampleTick);
+    return rec;
+  }
+  /* 某选手在 fy 时刻「连续登顶」的起点（找不到返回 null） */
+  function crownSince(spells, pid, fy) {
+    if (!spells || !pid) return null;
+    for (let i = spells.length - 1; i >= 0; i--) {
+      if (spells[i].pid === pid && spells[i].from <= fy + 1e-6) return spells[i].from;
+    }
+    return null;
+  }
+  function crownEl() { try { return document.getElementById('tlCrown'); } catch (e) { return null; } }
+  /* 由 drawTimeline 每帧调用：更新徽标文案（只有天数变化时才写 DOM） */
+  P.tlCrownPaint = function (box, fy) {
+    const el = crownEl();
+    if (!el) return;
+    const lead = box && box.__raceLeader;
+    const rec = box && box.__crown;
+    if (!lead || !rec || !rec.ready) { el.hidden = true; return; }
+    const since = crownSince(rec.spells, lead.id, fy);
+    if (since == null) { el.hidden = true; return; }
+    const days = Math.max(0, Math.round(fyToDays(fy) - fyToDays(since)));
+    const fmt = box.__crownFmt === 'ymd' ? 'ymd' : 'd';
+    const key = lead.id + '|' + days + '|' + fmt;
+    if (el.getAttribute('data-k') === key) return;
+    el.setAttribute('data-k', key);
+    const flag = el.querySelector('.tl-crown-flag');
+    const nm = el.querySelector('.tl-crown-name');
+    const dv = el.querySelector('.tl-crown-val');
+    if (nm) nm.textContent = lead.name || '';
+    if (flag) {
+      const uri = window.Charts.flagUri(lead.iso);
+      if (uri) { flag.src = uri; flag.hidden = false; } else { flag.removeAttribute('src'); flag.hidden = true; }
+    }
+    if (dv) {
+      if (fmt === 'd') dv.textContent = (U.num ? U.num(days) : String(days)) + (t.isEn() ? ' d' : ' 天');
+      else {
+        const ymd = daysToYmd(days, Math.round(fyToDays(since)));
+        dv.textContent = t.isEn()
+          ? ((ymd.y ? ymd.y + 'y ' : '') + (ymd.m ? ymd.m + 'mo ' : '') + ymd.d + 'd')
+          : ((ymd.y ? ymd.y + ' 年 ' : '') + (ymd.m ? ymd.m + ' 个月 ' : '') + ymd.d + ' 天');
+      }
+    }
+    el.hidden = false;
+  };
+  function crownRepaint() {
+    /* 构建完成后立刻按当前时间点补画一次（不等下一次 drawTimeline） */
+    const boxes = document.querySelectorAll ? document.querySelectorAll('#tlChart') : [];
+    for (let i = 0; i < boxes.length; i++) {
+      const b = boxes[i];
+      if (b.getAttribute('data-view') === 'race') P.tlCrownPaint(b, parseFloat(b.getAttribute('data-fy')) || P.tlEndFy());
+    }
+  }
+  P.bindTlCrown = function (box) {
+    const el = crownEl();
+    if (!el || el.__bound) return;
+    el.__bound = true;
+    try { box.__crownFmt = localStorage.getItem('goat-crown-fmt') === 'ymd' ? 'ymd' : 'd'; } catch (e) { box.__crownFmt = 'd'; }
+    const btn = el.querySelector('.tl-crown-btn');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+      box.__crownFmt = box.__crownFmt === 'ymd' ? 'd' : 'ymd';
+      try { localStorage.setItem('goat-crown-fmt', box.__crownFmt); } catch (e) { }
+      el.removeAttribute('data-k');
+      P.tlCrownPaint(box, parseFloat(box.getAttribute('data-fy')) || P.tlEndFy());
+    });
+  };
 
   /* ================= 另类统计 ================= */
   const TABS = [

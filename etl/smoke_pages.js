@@ -1172,5 +1172,119 @@ console.log('== 时间轴绘制（桩 echarts，验证 setOption 真的被调用
   ok(streamed.indexOf('�') < 0 && streamed === big, '改用 StringDecoder 后名字完整无损（实得 ' + blob.length + ' 字节流）');
 }
 
+/* == 纪录持有图：段内只画姓名（无国旗）+「×N」刷新角标 + tooltip 刷新日期排布 ==
+   2026-11-01 用户要求：
+     ① 泳道色块上只显示姓名，国旗只在 tooltip 里出现；
+     ② 同一人连续刷新多次合并成一段时，段上要能看出「刷了几次」；
+     ③ tooltip 里刷新日期太多时不能顶出弹窗（改成小胶囊 + 自动换行）。 */
+console.log('== 纪录持有图：段内姓名 / 刷新次数 ==');
+{
+  const C = win.Charts;
+  if (C && typeof C.lanes === 'function') {
+    /* 桩：把 1970-01-01 起的天数当坐标，1 天 = 0.1px，便于算几何 */
+    win.echarts = win.echarts || {};
+    win.echarts.graphic = {
+      clipRectByRect: function (r) { return r; }
+    };
+    const seg = {
+      from: 2005, to: 2015, holder: 'Multi Holder', iso: 'AU', id: '2009ZEMD01',
+      days: 3650, fromDn: 20050101, toDn: 20150101,
+      subs: [20050101, 20070615, 20090101, 20110420, 20130905, 20150101]
+    };
+    const opt = C.lanes([{ ev: '333', label: '3x3x3', segs: [seg] }], { y0: 2003, y1: 2016, laneH: 30 });
+    const ri = opt.series && opt.series[0] && opt.series[0].renderItem;
+    ok(!!ri, '泳道 series 有 renderItem');
+    if (ri) {
+      const api = {
+        value: function (i) { return opt.series[0].data[0].value[i]; },
+        /* x：小数年 → 像素；y：泳道序号 → 像素 */
+        coord: function (p) { return [60 + (p[0] - 2003) * 40, 40 + (p[1] || 0) * 40]; },
+        size: function () { return [0, 30]; },
+        visual: function () { return '#3355cc'; }
+      };
+      const grp = ri({ dataIndex: 0, coordSys: { x: 0, y: 0, width: 900, height: 300 } }, api);
+      const kids = (grp && grp.children) || [];
+      ok(!kids.some(function (k) { return k.type === 'image'; }), '段内不画国旗（没有 image 图元）');
+      ok(kids.some(function (k) { return k.type === 'text' && k.style && k.style.text === 'Multi Holder'; }),
+        '段内仍然画姓名');
+      const badge = kids.filter(function (k) { return k.type === 'text' && k.style && k.style.text === '×6'; })[0];
+      ok(!!badge, '合并段带「×6」刷新次数角标（实得 ' +
+        JSON.stringify(kids.filter(function (k) { return k.type === 'text'; }).map(function (k) { return k.style.text; })) + '）');
+      if (badge) {
+        const bar = kids.filter(function (k) { return k.type === 'rect'; })[0];
+        const nmTx = kids.filter(function (k) { return k.type === 'text' && k.style.text === 'Multi Holder'; })[0];
+        ok(badge.style.x > bar.shape.x + bar.shape.width * 0.5, '角标贴在段尾一侧');
+        ok(!nmTx || nmTx.style.x + 60 < badge.style.x, '姓名与角标不重叠');
+      }
+      /* 段内刻度：6 次刷新 → 5 根竖线（首条是段首，不画） */
+      const ticks = kids.filter(function (k) { return k.type === 'path'; })[0];
+      ok(!!ticks && (ticks.shape.path.match(/M/g) || []).length >= 3,
+        '段内按刷新位置画竖线（实得 ' + (ticks ? (ticks.shape.path.match(/M/g) || []).length : 0) + ' 根）');
+    }
+    const fmt = opt.tooltip && opt.tooltip.formatter;
+    ok(typeof fmt === 'function', 'tooltip 有 formatter');
+    if (typeof fmt === 'function') {
+      const html = fmt({ data: opt.series[0].data[0] });
+      ok(html.indexOf('tl-tip-chips') >= 0, '刷新日期用胶囊容器排版（自动换行，不顶出弹窗）');
+      ok(html.indexOf('刷新 6 次') >= 0 || html.indexOf('Refreshed 6 times') >= 0,
+        'tooltip 明确写出刷新次数');
+      ok(html.indexOf('Multi Holder') >= 0, 'tooltip 里有姓名');
+      /* 胶囊最多 9 枚，其余折成「+N」 */
+      const chips = (html.match(/<i[ >]/g) || []).length;
+      ok(chips <= 10, '胶囊数量有上限（实得 ' + chips + '，≤10）');
+    }
+    ok(opt.tooltip && opt.tooltip.confine === false,
+      'tooltip 不再被 confine 关在图表内（允许超出顶层）');
+  }
+}
+
+/* == 竞速图快照：只算前 K 名，但结果必须与「全量排序后取前 K」完全一致 ==
+   2026-11-01 修「播放越久越慢」：原先把所有有分选手塞进数组排序，播到后期每帧几万个对象，
+   帧时间越来越长；改成只保留前 15 名。这里验证改写没有改变结果。 */
+console.log('== 竞速图快照 top-K 一致性 ==');
+{
+  if (typeof P._snap === 'function') {
+    [[[], 2010], [[], 2026], [['333'], 2015], [['333', '222'], 2020]].forEach(function (cs) {
+      const evs = cs[0], y = cs[1], K = 15;
+      const full = P._snap('cumulative', y, false, '', '', evs, 'all', 'all', '', 0);
+      const topk = P._snap('cumulative', y, false, '', '', evs, 'all', 'all', '', K);
+      const same = topk.length === Math.min(K, full.length) &&
+        topk.every(function (r, i) {
+          return r.id === full[i].id && Math.abs(r.value - full[i].value) < 1e-9 && r.no === i + 1;
+        });
+      ok(same, 'top-' + K + ' 与全量排序一致（项目 ' + (evs.join('+') || '全部') + ' / ' + y +
+        '，实得 ' + topk.length + '/' + full.length + '）');
+    });
+  }
+}
+
+/* == 登顶时长：时间线自洽（单调、覆盖、能算出天数） == */
+console.log('== 登顶时长 ==');
+{
+  if (typeof P.tlCrownSince === 'function' && typeof P.tlCrownYmd === 'function') {
+    const D0 = Date.UTC(2010, 0, 1) / 86400000;
+    const ymd = P.tlCrownYmd(365, D0);
+    ok(ymd && ymd.y === 1 && ymd.m === 0 && ymd.d === 0, '365 天 → 1 年 0 个月 0 天（实得 ' +
+      JSON.stringify(ymd) + '）');
+    const ymd2 = P.tlCrownYmd(400, D0);
+    ok(ymd2.y === 1 && ymd2.m === 1, '400 天 → 1 年 1 个月（实得 ' + JSON.stringify(ymd2) + '）');
+    const since = P.tlCrownSince([{ pid: 'a', from: 2010 }, { pid: 'b', from: 2015 }], 'b', 2020);
+    ok(since === 2015, '取最近一次登顶起点（实得 ' + since + '）');
+    const none = P.tlCrownSince([{ pid: 'a', from: 2010 }], 'z', 2020);
+    ok(none === null, '没登顶过的人返回 null');
+    /* 真正跑一次榜首时间线（样本数据规模小，可以直接跑完） */
+    const spells = P.tlCrownComputeSync();
+    ok(Array.isArray(spells) && spells.length > 0, '榜首时间线算出了 ' + (spells || []).length + ' 段');
+    if (Array.isArray(spells) && spells.length) {
+      let mono = true;
+      for (let i = 1; i < spells.length; i++) if (!(spells[i].from > spells[i - 1].from)) mono = false;
+      ok(mono, '时间线按时间严格递增');
+      ok(spells[0].from <= 2004, '首段从数据起点开始（实得 ' + spells[0].from + '）');
+      ok(spells[spells.length - 1].from <= P.tlEndFy() + 1e-6, '末段不晚于数据结尾');
+      ok(spells.every(function (s) { return !!s.pid; }), '每段都有榜首');
+    }
+  }
+}
+
 console.log(fail ? ('\n❌ 失败 ' + fail + ' 项') : '\n✅ 全部通过');
 process.exit(fail ? 1 : 0);
