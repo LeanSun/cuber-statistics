@@ -1686,23 +1686,37 @@
   P.crownLabel = crownLabel;
 
   function crownEl() { try { return document.getElementById('tlCrown'); } catch (e) { return null; } }
-  /* 量出一段文字在徽标数值样式（14px / 800 / 等宽数字）下的像素宽，
-     把徽标宽度锁死到「较长格式（xx 年 xx 个月 xx 天）」的显示宽度，
-     这样在「xx 天 / xx 年 xx 月 xx 天」之间切换时徽标不会忽宽忽窄。
+  /* 量出一段文字在徽标数值样式下的像素宽，用于把徽标数值区锁定为固定宽度。
+     ★ 量的是「上界模板」而不是当前文本：时长会随时间推进、筛选范围变化而增长
+     （「96 天」→「1 年 2 个月 20 天」），若按当前文本锁宽，数值位数一变宽度就跟着抖。
+     模板用两位数字占位（88 年 88 个月 88 天）：tabular-nums 下同位数等宽，
+     WCA 始于 2003 年，年/月/日都不可能超过两位，因此它就是最大显示宽度的上界。
+     字体等属性直接从真实元素（dv）的计算样式取，避免与实际渲染的字体族/字重不一致。
      结果按文本缓存，避免逐帧重复测量。 */
   const _crownMeasCache = {};
-  function measureVal(txt) {
+  const CROWN_VAL_TPL = function () { return t.isEn() ? '88y 88mo 88d' : '88 年 88 个月 88 天'; };
+  function measureVal(txt, ref) {
     if (_crownMeasCache[txt] != null) return _crownMeasCache[txt];
     let w = 0;
     try {
       const s = document.createElement('span');
       s.style.cssText = 'position:absolute;left:-9999px;top:0;visibility:hidden;white-space:nowrap;' +
-        'font:800 14px "Segoe UI",system-ui,-apple-system,sans-serif;letter-spacing:-.2px;font-variant-numeric:tabular-nums';
+        'font-variant-numeric:tabular-nums';
+      let cs = null;
+      try { cs = ref && window.getComputedStyle ? window.getComputedStyle(ref) : null; } catch (e2) { cs = null; }
+      if (cs && cs.fontSize) {
+        s.style.fontFamily = cs.fontFamily || 'system-ui,sans-serif';
+        s.style.fontSize = cs.fontSize;
+        s.style.fontWeight = cs.fontWeight || '800';
+        s.style.letterSpacing = cs.letterSpacing || 'normal';
+      } else {
+        s.style.cssText += ';font:800 14px system-ui,sans-serif;letter-spacing:-.2px';
+      }
       s.textContent = txt;
       document.body.appendChild(s);
       w = s.offsetWidth || 0;
       document.body.removeChild(s);
-    } catch (e) { w = (txt.length || 1) * 9; }
+    } catch (e) { w = 0; }
     if (!w) w = (txt.length || 1) * 9;
     _crownMeasCache[txt] = w;
     return w;
@@ -1760,10 +1774,10 @@
     const ymdTxt = t.isEn()
       ? ((ymd.y ? ymd.y + 'y ' : '') + (ymd.m ? ymd.m + 'mo ' : '') + ymd.d + 'd')
       : ((ymd.y ? ymd.y + ' 年 ' : '') + (ymd.m ? ymd.m + ' 个月 ' : '') + ymd.d + ' 天');
-    /* 锁死徽标宽度 = 较长格式（xx 年 xx 个月 xx 天）的显示宽度：
-       ymd 格式在任意时长下都不会比「xx 天」短（哪怕几千天），
-       于是无论当前显示天还是年月日，徽标宽度都恒定，切换时不再伸缩。 */
-    try { dv.style.minWidth = measureVal(ymdTxt) + 'px'; } catch (e) { }
+    /* 锁死徽标数值宽度 = 「xx 年 xx 个月 xx 天」的最大显示宽度（两位数字上界模板）：
+       无论当前显示「xx 天」还是「xx 年 xx 个月 xx 天」，无论时长怎么增长，
+       徽标整体宽度都恒定，切换格式 / 播放推进 / 换筛选范围时都不再伸缩。 */
+    try { dv.style.minWidth = measureVal(CROWN_VAL_TPL(), dv) + 'px'; } catch (e) { }
     if (fmt === 'd') dv.textContent = (U.num ? U.num(days) : String(days)) + (t.isEn() ? ' d' : ' 天');
     else dv.textContent = ymdTxt;
   };

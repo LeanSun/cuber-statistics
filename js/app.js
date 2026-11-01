@@ -369,12 +369,16 @@
       h += '<div class="ev-row">';
       const evBtn = function (e) {
         const on = inSet(e.id);
-        const off = e.retired && !state.retired;
         const nm = t.isEn() ? e.en : e.zh;
         /* 项目名称浮层：原生 title 有 1 秒延迟且位置由系统决定，
            这里改用 body 级浮层，并指定出现在**鼠标上方**（data-tip-pos="top"）。 */
-        const tip = off ? (nm + (t.isEn() ? ' · retired (enable “retired events” above)' : ' · 停办（需先开启「含停办项目」）')) : nm;
-        return '<button class="ev-tab' + (on ? ' on' : '') + (e.retired ? ' retired' : '') + '" data-evtab="' + e.id + '"' +
+        /* 排除态：停办项目且当前「不计入」（state.retired=false）时打 excluded 标记，
+           由 CSS 给虚线边框 + 更淡 + 斜杠，明确提示它此刻不进榜单。
+           切换「计入/不计入」开关会整页重渲染，按钮的 excluded 类随之增减。 */
+        const excluded = e.retired && !state.retired;
+        const tip = excluded ? (nm + (t.isEn() ? ' · discontinued · currently excluded' : ' · 停办项目 · 当前不计入')) :
+          (e.retired ? (nm + (t.isEn() ? ' · discontinued' : ' · 停办项目')) : nm);
+        return '<button class="ev-tab' + (on ? ' on' : '') + (e.retired ? ' retired' : '') + (excluded ? ' excluded' : '') + '" data-evtab="' + e.id + '"' +
           ' data-tip="' + esc(tip) + '" data-tip-pos="top" aria-label="' + esc(nm) + '">' + window.Icons.event(e.id) + '</button>';
       };
       activeEv.forEach(function (e) { h += evBtn(e); });

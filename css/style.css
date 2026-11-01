@@ -511,7 +511,7 @@ tr:hover .pname .linkish,tr:hover .pname .pname-txt{
 .ev-sep{width:1px;height:26px;background:var(--border-2);margin:0 2px;flex:none}
 .ev-tab{
   display:inline-flex;align-items:center;justify-content:center;width:46px;height:46px;border:1.5px solid var(--border-2);
-  background:var(--bg-elev);border-radius:var(--r-md);cursor:pointer;color:var(--text-2);
+  background:var(--bg-elev);border-radius:var(--r-md);cursor:pointer;color:var(--text-2);position:relative;
   transition:transform .16s cubic-bezier(.34,1.5,.64,1),border-color .16s,background .16s,color .16s,box-shadow .16s;
 }
 .ev-tab .ev-ic{width:27px;height:27px;font-size:27px;color:inherit;opacity:.92;transition:transform .2s cubic-bezier(.34,1.6,.5,1)}
@@ -524,6 +524,16 @@ tr:hover .pname .linkish,tr:hover .pname .pname-txt{
 .ev-tab.retired:hover{opacity:.9;filter:none}
 /* 选中（含停办已开启）的停办项目：恢复满不透明，与正常选中态一致 */
 .ev-tab.retired.on{opacity:1;filter:none}
+/* 停办且「不计入」时的排除态：虚线边框 + 更淡 + 斜杠，明确「当前不计入榜单」。
+   切换顶部「计入/不计入」开关整页重渲染时，excluded 类随之增减，按钮外观即时变化。 */
+.ev-tab.retired.excluded{border-style:dashed;opacity:.34;filter:grayscale(.9);box-shadow:none;cursor:not-allowed}
+.ev-tab.retired.excluded .ev-ic{color:var(--text-3);opacity:.5}
+.ev-tab.retired.excluded::after{
+  content:"";position:absolute;left:14%;right:14%;top:50%;height:2px;
+  background:var(--text-3);opacity:.55;border-radius:2px;transform:rotate(-45deg);transform-origin:center;
+}
+/* 排除态 hover 仍保持被排除观感，不回弹成可用色 */
+.ev-tab.retired.excluded:hover{opacity:.34;filter:grayscale(.9);border-color:var(--border-2);transform:none;box-shadow:none}
 .ev-tab.disabled{opacity:.28;pointer-events:none;filter:grayscale(.8)}
 .ev-tab.pop .ev-ic{animation:evPop .44s cubic-bezier(.34,1.6,.5,1)}
 @keyframes evPop{0%{transform:scale(1) rotate(0)}35%{transform:scale(1.32) rotate(-12deg)}70%{transform:scale(.92) rotate(7deg)}100%{transform:scale(1.1) rotate(-5deg)}}
