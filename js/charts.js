@@ -284,6 +284,35 @@
     });
   }
 
+  /* ---------- 文本宽度测量（供条形竞赛判断「条内能否放下完整国旗+名字」） ---------- */
+  /* 用 canvas 的 measureText 精确测宽，比「字数 × 固定字宽」靠得住：
+     中英混排（如 "Baoqiang Dong (董百强)"）里汉字约占 11.5px、拉丁字母约 6px，
+     用同一个平均字宽估算必然一头偏大一头偏小。结果按「字体|文本」缓存，
+     竞速图每帧只会命中缓存，不产生额外测量开销。 */
+  const _twCache = {};
+  let _twCtx = null;
+  let _twTried = false;
+  function textW(s, font) {
+    if (!s) return 0;
+    const key = font + '\u0001' + s;
+    const hit = _twCache[key];
+    if (hit != null) return hit;
+    if (!_twTried) {
+      _twTried = true;
+      /* 冒烟测试环境可能没有 canvas 2d 上下文，失败后永久回退到估算值 */
+      try { _twCtx = document.createElement('canvas').getContext('2d'); } catch (e) { _twCtx = null; }
+    }
+    let w = 0;
+    if (_twCtx) {
+      try { _twCtx.font = font; w = _twCtx.measureText(s).width || 0; } catch (e) { w = 0; }
+    }
+    if (!w) w = s.length * 7.2;
+    /* 缓存上限保护：名字集合有限，正常不会触发 */
+    if (Object.keys(_twCache).length > 20000) { for (const k in _twCache) delete _twCache[k]; }
+    _twCache[key] = w;
+    return w;
+  }
+
   /* ---------- 条形竞赛（value 型 Y 轴 + 按选手 id 键控，名次变化时条形与姓名/国旗整体滑动） ---------- */
   function barRace(items, opts) {
     opts = opts || {};
@@ -349,32 +378,44 @@
             shape: { x: x0, y: yc - h / 2, width: w, height: h, r: 5 },
             style: { fill: d.color || T.m[0], stroke: T.elev, lineWidth: 1 }
           }];
-          let tx = x0 + 6;
-          /* 排名序号不再在条形左端外侧画第二份：原先 Y 轴标签（#1…#n，落在半格上）
-             与这里自画的序号（落在条形上）是两套坐标，视觉上就是「序号与行错开」。
-             现在序号统一由 Y 轴给出（轴范围 1..n，与名次 1:1），这里只画条形内容。 */
+          /* 名字/国旗的落位规则（用户 2026-11-01 指定）：
+             ① 条内放得下「完整国旗 + 完整名字」→ 照旧画在条形左端内侧（白字）；
+             ② 放不下（条形太短）→ 整块挪到「条形 + 条尾分数」的后方（正文色），不再截成半个字。
+             两种模式的坐标由同一组元素的两个 x 表达，配合 transition:['style']，
+             ECharts 会把 x 插值成一段横向滑动，跨越阈值不会瞬跳。 */
+          const FONT = '600 11.5px "Segoe UI",system-ui,sans-serif';
           const uri = d.flag || flagUri(d.iso);
+          const flagW = uri ? 20 : 0;
+          const nameW = textW(d.name, FONT);
+          const scoreTxt = val > 0 ? f2(val) : '';
+          const scoreW = textW(scoreTxt, FONT);
+          const inside = w >= 6 + flagW + nameW + 6;
+          const ax = inside ? (x0 + 6) : (x1 + 6 + scoreW + 6);   /* 国旗左边缘 = 文本块锚点 */
+          let tx = ax + flagW;
           if (uri) {
             /* 国旗不加白底片：仅给图片加一层轻微阴影（紧贴轮廓的深色描边 + 轻微投影），
                让国旗在同色色条上也能描出边缘、不被浸没。 */
             kids.push({ type: 'image', transition: ['style'], style: {
-              image: uri, x: tx, y: yc - 5, width: 15, height: 11,
+              image: uri, x: ax, y: yc - 5, width: 15, height: 11,
               shadowBlur: 1.2, shadowColor: 'rgba(0,0,0,0.7)', shadowOffsetX: 0, shadowOffsetY: 1
             } });
-            tx += 20;
           }
-          const room = x0 + w - tx - 6;
-          const per = 7.2;
           let txt = d.name;
-          const maxc = Math.max(1, Math.floor(room / per));
-          if (txt.length > maxc) txt = maxc > 1 ? txt.slice(0, maxc - 1) + '…' : txt.slice(0, maxc);
+          if (!inside) {
+            /* 极端情况的安全阀：名字长到画布右边缘都装不下时，才按可用宽度补省略号 */
+            const avail = Math.max(0, api.getWidth() - 6 - tx);
+            if (nameW > avail) {
+              const maxc = Math.max(1, Math.floor(avail / 7.2));
+              txt = maxc > 1 ? txt.slice(0, maxc - 1) + '…' : txt.slice(0, maxc);
+            }
+          }
           if (txt) {
             kids.push({
               type: 'text', transition: ['style'], style: {
-                text: txt, x: tx, y: yc, fill: '#fff',
-                font: '600 11.5px "Segoe UI",system-ui,sans-serif',
+                text: txt, x: tx, y: yc, fill: inside ? '#fff' : T.text2,
+                font: FONT,
                 textVerticalAlign: 'middle', textBaseline: 'middle',
-                shadowBlur: 2, shadowColor: 'rgba(0,0,0,0.55)', shadowOffsetX: 0, shadowOffsetY: 1
+                shadowBlur: inside ? 2 : 0, shadowColor: 'rgba(0,0,0,0.55)', shadowOffsetX: 0, shadowOffsetY: 1
               }
             });
           }
@@ -382,8 +423,8 @@
              两位小数（与全站分数显示一致），右侧留白已同步加宽到 86。 */
           kids.push({
             type: 'text', transition: ['style'], style: {
-              text: val > 0 ? f2(val) : '', x: x1 + 6, y: yc,
-              fill: T.text2, font: '600 11.5px "Segoe UI",system-ui,sans-serif',
+              text: scoreTxt, x: x1 + 6, y: yc,
+              fill: T.text2, font: FONT,
               textVerticalAlign: 'middle', textBaseline: 'middle'
             }
           });

@@ -847,6 +847,52 @@ console.log('== 竞速图序号 ==');
   }
 }
 
+/* == 竞速图姓名落位：条内放不下时移到「条形 + 分数」之后 ==
+   用户反馈：条形太短时名字被截成「H…」甚至只剩一个字母。现在的规则是
+   条内放得下「完整国旗 + 完整名字」才画在条内，否则整块挪到条尾分数之后。
+   这里用桩 api 直接跑 renderItem，按条形几何断言落位，避免只靠肉眼看截图。 */
+console.log('== 竞速图姓名落位 ==');
+{
+  const C = win.Charts;
+  const NAME = 'Oscar Roth Andersen';
+  if (C && typeof C.barRace === 'function') {
+    const LEFT = 34;           /* 桩坐标系的绘图区左边界 */
+    const opt = C.barRace([
+      { id: 'long', name: NAME, iso: 'CN', flag: '', color: '#c00', value: 200, rank: 1, no: 1 },
+      { id: 'short', name: NAME, iso: 'CN', flag: '', color: '#c00', value: 18, rank: 2, no: 2 }
+    ], { top: 2 });
+    const ri = opt.series[0].renderItem;
+    const mkApi = function (val, rank) {
+      return {
+        value: function (i) { return i === 0 ? val : rank; },
+        /* 1 分 = 1px，方便直接拿 value 当条长断言 */
+        coord: function (p) { return [LEFT + p[0], 40 + p[1] * 30]; },
+        size: function () { return [0, 20]; },
+        getWidth: function () { return 900; }
+      };
+    };
+    const pick = function (grp) {
+      const kids = (grp && grp.children) || [];
+      return {
+        bar: kids.filter(function (k) { return k.type === 'rect'; })[0],
+        name: kids.filter(function (k) { return k.type === 'text' && k.style && k.style.text === NAME; })[0]
+      };
+    };
+    const L = pick(ri({ dataIndex: 0 }, mkApi(200, 1)));
+    const S = pick(ri({ dataIndex: 1 }, mkApi(18, 2)));
+    ok(!!(L.bar && L.name && S.bar && S.name), '两行都画出了条形与姓名');
+    if (L.bar && L.name && S.bar && S.name) {
+      const lRight = L.bar.shape.x + L.bar.shape.width;
+      const sRight = S.bar.shape.x + S.bar.shape.width;
+      ok(L.name.style.x < lRight - 20, '长条：名字画在条形内部（x=' + Math.round(L.name.style.x) + ' < 条尾 ' + Math.round(lRight) + '）');
+      ok(S.name.style.x > sRight + 10, '短条：名字移到「条形 + 分数」之后（x=' + Math.round(S.name.style.x) + ' > 条尾 ' + Math.round(sRight) + '）');
+      ok(S.name.style.text === NAME, '短条：名字不再被省略号截断（' + S.name.style.text + '）');
+      ok(S.name.style.fill !== L.name.style.fill, '短条名字改用正文色（条内是反白色，条外是正文色）');
+      ok(L.name.style.text === NAME, '长条：名字同样是完整姓名');
+    }
+  }
+}
+
 /* == 时间轴真正「画」出来 == 
    此前冒烟只校验了 P.timeline 返回的 HTML，从未真正执行 drawTimeline ——
    而 drawTimeline 内部把所有异常都 catch 掉了，于是「页面空白、测试全绿」两者可以同时成立。
