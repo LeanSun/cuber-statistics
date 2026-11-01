@@ -260,7 +260,12 @@
 
     h += '<div class="card reveal">';
     h += '<div class="row tl-top">';
-    h += '<div class="fgroup"><div class="seg" id="tlViewSeg">';
+    /* ★ 2026-11-01 第六轮修复「切换视图后按钮位置跳动」：
+       竞速视图比纪录视图多了「维度」标签（.flabel）把整行撑高，
+       .tl-top 用 align-items:flex-end，于是视图切换按钮在竞速视图里比纪录视图低约 20px。
+       这里补一个不可见的 .flabel 占位，让视图段的高度与带标签的维度段完全一致，
+       两个视图下按钮垂直位置恒定不变。 */
+    h += '<div class="fgroup"><span class="flabel" aria-hidden="true" style="visibility:hidden">.</span><div class="seg" id="tlViewSeg">';
     VIEWS.forEach(function (v) {
       h += '<button data-tlview="' + v[0] + '" class="' + (view === v[0] ? 'on' : '') + '">' + Ic.glyph(v[2]) + ' ' + esc(t(v[1])) + '</button>';
     });
@@ -1681,6 +1686,27 @@
   P.crownLabel = crownLabel;
 
   function crownEl() { try { return document.getElementById('tlCrown'); } catch (e) { return null; } }
+  /* 量出一段文字在徽标数值样式（14px / 800 / 等宽数字）下的像素宽，
+     把徽标宽度锁死到「较长格式（xx 年 xx 个月 xx 天）」的显示宽度，
+     这样在「xx 天 / xx 年 xx 月 xx 天」之间切换时徽标不会忽宽忽窄。
+     结果按文本缓存，避免逐帧重复测量。 */
+  const _crownMeasCache = {};
+  function measureVal(txt) {
+    if (_crownMeasCache[txt] != null) return _crownMeasCache[txt];
+    let w = 0;
+    try {
+      const s = document.createElement('span');
+      s.style.cssText = 'position:absolute;left:-9999px;top:0;visibility:hidden;white-space:nowrap;' +
+        'font:800 14px "Segoe UI",system-ui,-apple-system,sans-serif;letter-spacing:-.2px;font-variant-numeric:tabular-nums';
+      s.textContent = txt;
+      document.body.appendChild(s);
+      w = s.offsetWidth || 0;
+      document.body.removeChild(s);
+    } catch (e) { w = (txt.length || 1) * 9; }
+    if (!w) w = (txt.length || 1) * 9;
+    _crownMeasCache[txt] = w;
+    return w;
+  }
   /* 由 drawTimeline 每帧调用：更新徽标文案（只有天数变化时才写 DOM）。
      2026-11-01 用户要求徽标常驻（六维筛选同一行），所以「还没算完 / 当前时刻没有榜首」时
      不再 hidden（会让整行布局跳一下），而是留在原地显示占位「—」并把状态写到 data-st，
@@ -1730,13 +1756,16 @@
     }
     if (!dv) return;
     if (since == null) { dv.textContent = '—'; return; }
+    const ymd = daysToYmd(days, Math.round(fyToDays(since)));
+    const ymdTxt = t.isEn()
+      ? ((ymd.y ? ymd.y + 'y ' : '') + (ymd.m ? ymd.m + 'mo ' : '') + ymd.d + 'd')
+      : ((ymd.y ? ymd.y + ' 年 ' : '') + (ymd.m ? ymd.m + ' 个月 ' : '') + ymd.d + ' 天');
+    /* 锁死徽标宽度 = 较长格式（xx 年 xx 个月 xx 天）的显示宽度：
+       ymd 格式在任意时长下都不会比「xx 天」短（哪怕几千天），
+       于是无论当前显示天还是年月日，徽标宽度都恒定，切换时不再伸缩。 */
+    try { dv.style.minWidth = measureVal(ymdTxt) + 'px'; } catch (e) { }
     if (fmt === 'd') dv.textContent = (U.num ? U.num(days) : String(days)) + (t.isEn() ? ' d' : ' 天');
-    else {
-      const ymd = daysToYmd(days, Math.round(fyToDays(since)));
-      dv.textContent = t.isEn()
-        ? ((ymd.y ? ymd.y + 'y ' : '') + (ymd.m ? ymd.m + 'mo ' : '') + ymd.d + 'd')
-        : ((ymd.y ? ymd.y + ' 年 ' : '') + (ymd.m ? ymd.m + ' 个月 ' : '') + ymd.d + ' 天');
-    }
+    else dv.textContent = ymdTxt;
   };
   function crownRepaint() {
     /* 构建完成后立刻按当前时间点补画一次（不等下一次 drawTimeline） */

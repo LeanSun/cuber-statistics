@@ -403,7 +403,23 @@
          真正的解法是给 Y 轴多留一格（max = n + 1）并隐藏这一格的标签：
          末名条形整体上移半格，x 轴刻度与其下方留白完全空出来，两者物理上不再重叠。 */
       grid: { left: 34, right: 86, top: 30, bottom: 34, containLabel: false },
-      xAxis: Object.assign({ type: 'value', max: function (v) { return Math.max(v.max, 1) * 1.05; } }, axisCommon()),
+      /* 顶部也加一条与底部完全一致的分数轴（让用户一眼读到「当前最高分」）。
+         两条轴共用同一 min/max，所以先把 x 轴最大值按本帧数据算成定值
+         （底部轴原来用函数式自适应，那样两条轴会对不上）。 */
+      xAxis: (function () {
+        let xm = 1;
+        data.forEach(function (d) { const x = Math.max(0, +d.value || 0); if (x > xm) xm = x; });
+        xm = xm * 1.05;
+        return [
+          Object.assign({ type: 'value', min: 0, max: xm }, axisCommon(), { splitLine: { lineStyle: { color: T.border, type: 'dashed' } } }),
+          Object.assign({ type: 'value', min: 0, max: xm, position: 'top', gridIndex: 0 }, axisCommon(), {
+            axisLabel: { color: T.text3, fontSize: 10.5 },
+            axisLine: { show: true, lineStyle: { color: T.border, width: 1 } },
+            axisTick: { show: false },
+            splitLine: { show: false }
+          })
+        ];
+      })(),
       /* 轴范围 1..n（原来是 0.5..n+0.5）：条形画在整数名次上，而刻度原来落在
          0.5/1.5/2.5… 上，两者错开半格 —— 这就是「序号与行对不齐」的根因。
          现在刻度值与名次 1:1 对应，序号与条形中心严格同一条水平线。
