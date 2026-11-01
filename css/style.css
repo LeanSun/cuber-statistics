@@ -1390,6 +1390,18 @@ button.exp-v3-wca.pid-copy:hover{color:var(--accent)}
 /* 竞速图可点击跳转 */
 .tl-chart-link{cursor:pointer}
 
+/* ---- 纪录持有图：缩放 / 平移提示条 + 抓手光标 ----
+   ctrl + 滚轮缩放、alt + 滚轮平移、空白处拖动左右查看；调节过才出现「恢复默认」。
+   光标挂在 canvas 上（ECharts 自己也会改 canvas 的 cursor，容器上的同款规则兜底）。 */
+.tl-zoom-bar{display:flex;align-items:center;justify-content:flex-end;gap:12px;margin-top:6px;min-height:30px}
+.tl-zoom-hint{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-3)}
+.tl-zoom-hint svg{width:13px;height:13px;flex:none}
+.tl-zoom-reset{padding:5px 13px!important;font-size:12.5px!important}
+/* .btn 自带 display:inline-flex，会压过 [hidden] 的 display:none —— 必须显式补一条 */
+.tl-zoom-reset[hidden]{display:none}
+#tlChart[data-view="lane"],#tlChart[data-view="lane"] canvas{cursor:grab}
+#tlChart[data-view="lane"].dragging,#tlChart[data-view="lane"].dragging canvas{cursor:grabbing}
+
 /* ============ 重大事件：浮在分数竞速图右下角的可折叠弹窗 ============ */
 .tl-stage{position:relative}
 .ms-pop{position:absolute;right:14px;bottom:14px;z-index:6;max-width:min(760px,94%);

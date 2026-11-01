@@ -136,13 +136,14 @@
      ★ jump（时间跳跃）：2026-10-31 起默认 **60 天/秒**（原 30，约 2 分钟多一点走完 23 年）；
        旧用户 localStorage 里存的是 30，若原值等于旧默认就静默升到 60（只升级没动过的人），
        手动调过速率的人保持自己的值。
-     anim（换位补间）200ms 短于大部分相邻帧的累积位移，跟得上播放速度。
-     fps（重绘间隔）此前是个没接线的滑杆 —— 播放改走 requestAnimationFrame 逐帧重绘后
-     就没人再读它，改它完全没有效果。2026-10-27 起真正生效：
-     播放时每 fps 毫秒才重绘一次图表（0 = 不节流、逐帧重绘）。
-     默认 100ms（约 10 帧/秒）兼顾流畅与性能；低端机器调大即可降负载。 */
-  const RATE_DEF = { jump: 60, anim: 200, fps: 100 };
-  const RATE_OLD_DEF_JUMP = 30;   /* 迁移标记：旧预设值 → 新预设值 */
+     ★ anim（换位补间）：2026-11-01 用户指定默认 **100ms**（原 200）；更短的补间让
+       名次更替看起来是「跟上节奏的滑动」，而不是慢半拍。
+     ★ fps（重绘间隔）：2026-11-01 用户指定默认 **20ms**（原 100）。播放走 rAF 逐帧重绘，
+       每 fps 毫秒才真正重绘一次图表（0 = 不节流、逐帧重绘）。20ms ≈ 50 帧/秒，
+       配合 100ms 补间，视觉上是连续的；低端机器调大即可降负载。 */
+  const RATE_DEF = { jump: 60, anim: 100, fps: 20 };
+  /* 迁移标记：旧预设值 → 新预设值（只升级「仍是旧默认」的人，不覆盖手调过的） */
+  const RATE_OLD_DEF = { jump: 30, anim: 200, fps: 100 };
   const RATE_META = {
     jump: { min: 1, max: 365, step: 1, unit: () => (t.isEn() ? 'days/s' : ' 天/秒') },
     anim: { min: 0, max: 2500, step: 20, unit: () => 'ms' },
@@ -160,8 +161,13 @@
       if (o) {
         const r = Object.assign({}, RATE_DEF, o);
         Object.keys(RATE_META).forEach((k) => { r[k] = clampRate(k, r[k]); });
-        /* 预设从 30 → 60 天/秒：只把「仍然停在旧预设」的人升上来，不覆盖手调过的值 */
-        if (o.jump === RATE_OLD_DEF_JUMP) { r.jump = RATE_DEF.jump; saveRate(r); }
+        /* 预设升级：只把「仍然停在旧预设」的那几项升到新预设，不覆盖手调过的值。
+           2026-10-31 jump 30→60；2026-11-01 anim 200→100、fps 100→20。 */
+        let migrated = false;
+        Object.keys(RATE_OLD_DEF).forEach((k) => {
+          if (o[k] === RATE_OLD_DEF[k]) { r[k] = RATE_DEF[k]; migrated = true; }
+        });
+        if (migrated) saveRate(r);
         return r;
       }
     } catch (e) { }
@@ -340,6 +346,14 @@
       '" data-region="' + geoRegion + '" data-country="' + geoCountry + '" data-ev="' + evsBox.join(',') +
       '" data-gender="' + (state.gender || 'all') + '" data-type="' + (state.recType || 'all') + '" data-dim="' + (state.tlDim || '') +
       '" data-y0="' + (state.y0 || '') + '" data-y1="' + (state.y1 || '') + '" data-retired="' + (state.retired ? 1 : 0) + '"></div>';
+
+    /* 纪录持有图：缩放 / 平移提示条（「恢复默认」只在调节过之后出现） */
+    if (view === 'lane') {
+      h += '<div class="tl-zoom-bar" id="tlZoomBar">' +
+        '<span class="tl-zoom-hint">' + Ic.glyph('info') + ' ' + esc(t('tl.zoom.tip')) + '</span>' +
+        '<button class="btn btn-ghost tl-zoom-reset" id="tlZoomReset" hidden>' + esc(t('tl.zoom.reset')) + '</button>' +
+        '</div>';
+    }
 
     /* 纪录持有图：按需求不再在图表下方罗列持有者清单（原 laneList /「纪录内容」），
        姓名 / 国旗 / 起止时间改为鼠标移到色块上时跟随光标显示（见 Charts.lanes 的 tooltip）。 */
@@ -546,15 +560,20 @@
       /* 播放时把过渡动画设为 0，让「名次 / 姓名 / 分数」每帧同步刷新、不再有延迟感；
          手动拖动时保留一小段过渡（按速率参数缩放），体验更顺。 */
       const animMs = tlIsPlaying() ? 0 : Math.max(0, Math.min(2500, (P.tlRate ? P.tlRate().anim : 800)));
+      /* 缩放 / 平移过程中（400ms 内有过一次交互）关掉补间，否则每滚一格都要等动画走完，拖起来发黏 */
+      const fast = (Date.now() - (box.__tlFastTs || 0)) < 400;
       if (sameStruct) {
         opt.animationDuration = 0;
-        opt.animationDurationUpdate = tlIsPlaying() ? 0 : Math.round(animMs * 0.35);
+        opt.animationDurationUpdate = (tlIsPlaying() || fast) ? 0 : Math.round(animMs * 0.35);
         opt.animationEasingUpdate = 'cubicInOut';
+      } else if (fast) {
+        opt.animationDuration = 0;
       }
       let inst = null;
       try { inst = window.Charts.render(box, opt, { notMerge: !sameStruct }); } catch (e) { inst = null; }
       box.__tlSig = sig;
       if (inst) { box.removeAttribute('data-ec-fail'); }
+      if (view === 'lane') P.tlSyncZoomBtn(box);
       return inst;
     } catch (e) {
       /* 早期这里把异常整个吞掉，结果线上只看到一块空白图表、控制台也没有线索。
@@ -568,6 +587,125 @@
       } catch (e3) { }
       return null;
     }
+  };
+
+  /* ---------- 纪录持有图：缩放 / 平移 ---------- */
+  /* 交互约定（用户 2026-11-01 指定）：
+       · ctrl + 滚轮 —— 以光标所在年份为中心缩放（1 年 ~ 满量程）；
+       · alt + 滚轮 —— 左右平移；
+       · 空白处按住拖动 —— 左右平移（缩放后才有意义，所以只有缩放状态下光标才是抓手）；
+       · 一旦调节过，图表右下角出现「恢复默认」，点一下回到满量程并隐藏按钮。
+     缩放窗口存在 box.__tlWin（{a,b} 小数年），tlOption 里夹进满量程后作为 x 轴范围；
+     满量程存在 box.__tlFull（由 tlOption 每次按当前筛选重算）。 */
+  const ZOOM_MIN_SPAN = 0.6;      /* 最小可视窗口（年）：再窄就只剩一根柱了 */
+  function zoomInst(box) {
+    try { return window.echarts ? window.echarts.getInstanceByDom(box) : null; } catch (e) { return null; }
+  }
+  function zoomFull(box) {
+    const f = box && box.__tlFull;
+    return (f && f.b > f.a) ? f : { a: 2003, b: new Date().getFullYear() + 1 };
+  }
+  function zoomCur(box) {
+    const w = box && box.__tlWin;
+    const f = zoomFull(box);
+    return (w && w.b > w.a) ? w : f;
+  }
+  function zoomYearAt(box, px) {
+    const ch = zoomInst(box);
+    if (!ch) return null;
+    try {
+      const p = ch.convertFromPixel({ gridIndex: 0 }, [px, 0]);
+      return (p && isFinite(p[0])) ? p[0] : null;
+    } catch (e) { return null; }
+  }
+  function zoomYearsPerPx(box) {
+    const ch = zoomInst(box);
+    if (!ch) return 0.02;
+    const w = ch.getWidth() || 1;
+    const a = zoomYearAt(box, 0), b = zoomYearAt(box, w);
+    if (a == null || b == null || !w) return 0.02;
+    const r = (b - a) / w;
+    return isFinite(r) && r > 0 ? r : 0.02;
+  }
+  let zoomRaf = 0;
+  function zoomApply(box, a, b) {
+    const f = zoomFull(box);
+    const fullSpan = f.b - f.a;
+    let span = Math.max(ZOOM_MIN_SPAN, Math.min(fullSpan, b - a));
+    let x = a;
+    if (x + span > f.b) x = f.b - span;
+    if (x < f.a) x = f.a;
+    if (span >= fullSpan - 1e-6) box.__tlWin = null;
+    else box.__tlWin = { a: x, b: x + span };
+    box.__tlFastTs = Date.now();
+    if (zoomRaf) return;
+    zoomRaf = (window.requestAnimationFrame || function (f2) { return setTimeout(f2, 16); })(function () {
+      zoomRaf = 0;
+      P.drawTimeline(box);
+    });
+  }
+  P.tlResetZoom = function (box) {
+    if (!box) return;
+    box.__tlWin = null;
+    box.__tlFastTs = Date.now();
+    P.drawTimeline(box);
+    P.tlSyncZoomBtn(box);
+  };
+  P.tlSyncZoomBtn = function (box) {
+    const bar = document.getElementById('tlZoomBar');
+    if (!bar || !box) return;
+    const zoomed = !!(box.__tlWin && box.__tlWin.b > box.__tlWin.a);
+    bar.classList.toggle('on', zoomed);
+    box.classList.toggle('zoomed', zoomed);
+    const btn = document.getElementById('tlZoomReset');
+    if (btn) btn.hidden = !zoomed;
+  };
+  /* 绑定一次（容器换了会重新绑定，因为 data-zoom-bound 挂在元素上） */
+  P.bindLaneZoom = function (box) {
+    if (!box || box.__zoomBound || !window.echarts) return;
+    box.__zoomBound = true;
+    const px = function (e) { const r = box.getBoundingClientRect(); return e.clientX - r.left; };
+    box.addEventListener('wheel', function (e) {
+      /* 不按 ctrl / alt 时一律放行，页面照常滚动 —— 用户可能只是想往下看页面 */
+      if (!(e.ctrlKey || e.metaKey || e.altKey)) return;
+      if (!box.__tlFull) return;
+      e.preventDefault();
+      const w0 = zoomCur(box);
+      if (e.altKey) {
+        const dy = (e.deltaY + (e.deltaX || 0)) * zoomYearsPerPx(box);
+        zoomApply(box, w0.a + dy, w0.b + dy);
+      } else {
+        const span = w0.b - w0.a;
+        const k = e.deltaY > 0 ? 1.28 : 0.78;
+        const nspan = Math.max(ZOOM_MIN_SPAN, Math.min(zoomFull(box).b - zoomFull(box).a, span * k));
+        const y = zoomYearAt(box, px(e));
+        const cx = (y == null) ? (w0.a + w0.b) / 2 : y;
+        const t = Math.max(0, Math.min(1, (cx - w0.a) / span));
+        const a = cx - t * nspan;
+        zoomApply(box, a, a + nspan);
+      }
+    }, { passive: false });
+
+    let drag = null;
+    box.addEventListener('mousedown', function (e) {
+      if (e.button !== 0) return;
+      const w0 = zoomCur(box), f = zoomFull(box);
+      if (w0.b - w0.a >= f.b - f.a - 1e-6) return;   /* 满量程时没有可平移的余量 */
+      drag = { x: e.clientX, a: w0.a, b: w0.b };
+      box.classList.add('dragging');
+      e.preventDefault();
+    });
+    window.addEventListener('mousemove', function (e) {
+      if (!drag) return;
+      const dy = (e.clientX - drag.x) * zoomYearsPerPx(box);
+      zoomApply(box, drag.a - dy, drag.b - dy);
+    });
+    window.addEventListener('mouseup', function () {
+      if (!drag) return;
+      drag = null;
+      box.classList.remove('dragging');
+    });
+    P.tlSyncZoomBtn(box);
   };
 
   function inScope(p, region, country, gender, evs) {
@@ -783,6 +921,10 @@
     return tlOption(view || 'race', mode || 'cumulative', fy == null ? P.tlEndFy() : fy, !!smooth,
       metric || 'overall', region || '', country || '', lane || 'single', evs || [], gender || 'all', rtype || 'all', null, dim || '');
   };
+  /* 暴露给冒烟测试：范围解析（大洲 / 地区 / 国家 → 纪录链 scope）与纪录类型文案 */
+  P.laneScopeOf = laneScopeOf;
+  P.recScopeLabel = recScopeLabel;
+  P.tlDaysBetweenDn = daysBetweenDn;
 
   /* 重大事件到达提示：给定「上一步 / 当前」两个日期（YYYY-MM-DD），
      返回这一步刚刚跨过的事件（可能多条）。供 app.js 在时间推进时调用。 */
@@ -836,8 +978,66 @@
     };
   }
 
+  /* ---------- 纪录链（泳道图）范围解析 ---------- */
+  /* 筛选条上的「大洲」和「地区」在本项目里是一一对应的（REGION_OF 把每个洲映射成一个地区），
+     所以两者都落到同一条「洲纪录」链上。国家优先于大洲。 */
+  function laneScopeOf(region, country) {
+    if (country) return 'N:' + String(country).toUpperCase();
+    if (region) {
+      if (M.continents && M.continents[region]) return 'C:' + region;
+      const rf = M.regionOf || {};
+      const ks = Object.keys(rf);
+      for (let i = 0; i < ks.length; i++) if (rf[ks[i]] === region) return 'C:' + ks[i];
+    }
+    return 'W';
+  }
+  function countryLabel(iso) {
+    const k = String(iso || '').toUpperCase();
+    if (t.isEn()) return (M.countries && M.countries[k]) || k;
+    return (M.countriesZh && M.countriesZh[k]) || (M.countries && M.countries[k]) || k;
+  }
+  function contLabel(code) {
+    const c = M.continents && M.continents[code];
+    if (!c) return code;
+    return t.isEn() ? c.en : c.zh;
+  }
+  /* 「女子 · 亚洲纪录」这类标签，用于图表 tooltip 抬头 */
+  const CONT_EN = { As: 'Asian', Eu: 'European', NAm: 'North American', SAm: 'South American', Oc: 'Oceanian', Af: 'African' };
+  function recScopeLabel(scope, gen) {
+    let s;
+    if (scope === 'W') s = t('tl.rec.world');
+    else if (String(scope).indexOf('C:') === 0) {
+      const code = scope.slice(2);
+      s = (t.isEn() ? (CONT_EN[code] || contLabel(code)) : contLabel(code)) + t('tl.rec.suffix');
+    } else s = countryLabel(scope.slice(2)) + t('tl.rec.suffix');
+    return (gen === 'f' ? t('tl.rec.women') : '') + s;
+  }
+  /* 日期整数（YYYYMMDD）→ 小数年，口径与 etl/build.js 的 fyOfDn 一致 */
+  function dnFy(dn) {
+    const s = String(dn || '');
+    if (s.length !== 8) return 0;
+    const y = +s.slice(0, 4), mo = +s.slice(4, 6), d = +s.slice(6, 8);
+    if (!(y > 1900) || mo < 1 || mo > 12 || d < 1 || d > 31) return y || 0;
+    const dt = Date.UTC(y, mo - 1, d), y0 = Date.UTC(y, 0, 1);
+    const leap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+    return y + (dt - y0) / 86400000 / (leap ? 366 : 365);
+  }
+  function daysBetweenDn(a, b) {
+    const p = function (v) {
+      const s = String(v || '');
+      if (s.length !== 8) return 0;
+      return Date.UTC(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8));
+    };
+    const x = p(a), y = p(b);
+    if (!x || !y) return 0;
+    return Math.max(0, Math.round((y - x) / 86400000));
+  }
+
   function tlOption(view, mode, fy, smooth, metric, region, country, lane, evs, gender, rtype, box, dim) {
-    if (window.Charts.setLaneI18n) window.Charts.setLaneI18n({ mo: (t.isEn() ? 'mo' : '个月'), y: (t.isEn() ? 'y' : '年'), day: (t.isEn() ? 'd' : '天') });
+    if (window.Charts.setLaneI18n) window.Charts.setLaneI18n({
+      mo: (t.isEn() ? 'mo' : '个月'), y: (t.isEn() ? 'y' : '年'), day: (t.isEn() ? 'd' : '天'),
+      refresh: t('tl.rec.refresh'), times: t('tl.rec.times')
+    });
     if (view === 'lane') {
       /* 泳道顺序严格按 WCA 官方项目默认顺序（正阶→单手→盲拧→最少步→异形→已停办），
          不依赖数据里 events 数组的偶然顺序，保证纪录持有图的项目排列符合用户预期。 */
@@ -856,7 +1056,23 @@
       const yTo = parseInt((box && box.getAttribute('data-y1')) || '', 10) || 0;
       const useAvg = rtype === 'avg' || (rtype !== 'single' && lane === 'avg');
       const gNeed = (gender && gender !== 'all') ? String(gender).toUpperCase() : '';
-      const personFiltered = !!(country || region || gNeed);
+      /* ★ 2026-11-01：筛选大洲 / 地区 / 国家 / 性别时，下面画的**不再是「世界纪录里这些人持有
+         的片段」**，而是对应范围的**真实纪录链**：
+             · 世界（默认）→ 世界纪录；
+             · 大洲 / 地区（本项目里两者一一对应）→ 洲纪录；
+             · 国家 → 国家纪录；
+             · 性别选女 → 对应范围的女子纪录（WCA 不维护女子纪录，ETL 自己按历史最快推进）。
+         因此「谁持有」与筛选范围一致，不会出现「筛了中国却有大段空白」这种伪缺口。 */
+      const scope = laneScopeOf(region, country);
+      const gen = gNeed === 'F' ? 'f' : '';
+      const kindKey = useAvg ? 'a' : 's';
+      const chainKey = scope + '|' + kindKey + '|' + gen;
+      /* 旧数据包（还没有 laneChains）退回「世界纪录链 + 按人筛选」的老行为，保证不白屏。 */
+      const hasChains = !!(M.laneChains && typeof M.laneChains === 'object');
+      let srcLanes;
+      if (hasChains) srcLanes = M.laneChains[chainKey] || [];
+      else srcLanes = (useAvg ? M.lanesAvg : M.lanes) || [];
+      const personFiltered = !hasChains && !!(country || region || gNeed);
       function holderOf(pid) {
         if (!pid) return null;
         if (!M.__byId) { M.__byId = {}; (M.players || []).forEach(function (p) { M.__byId[p.id] = p; }); }
@@ -878,6 +1094,23 @@
         }
         return true;
       }
+      /* 段格式归一：新数据是短键压缩格式（f/t/fd/td/h/i/o/s），旧数据是长键（from/to/…）。
+         统一成内部结构后，下面的裁剪 / 上色 / 渲染都只认一种。 */
+      function segNormalize(sg) {
+        const from = sg.f != null ? sg.f : +sg.from;
+        const to = sg.t != null ? sg.t : +sg.to;
+        const fd = sg.fd != null ? sg.fd : sg.fromDn;
+        const td = sg.td != null ? sg.td : sg.toDn;
+        const subs = sg.s || sg.subs || (fd ? [fd] : null);
+        return {
+          from: from, to: to, fromDn: fd, toDn: td,
+          holder: sg.h != null ? sg.h : sg.holder,
+          iso: sg.o != null ? sg.o : (sg.iso || ''),
+          id: sg.i != null ? sg.i : sg.id,
+          subs: subs,
+          days: sg.days != null ? sg.days : daysBetweenDn(fd, td)
+        };
+      }
       function clipSeg(sg) {
         const a = +sg.from, b = +sg.to;
         if (!isFinite(a) || !isFinite(b)) return null;
@@ -887,19 +1120,27 @@
         const e = yTo ? Math.min(b, yTo) : b;
         return e > f ? { f: f, e: e } : null;
       }
-      const anyFilter = personFiltered || !!yFrom || !!yTo;
-      const lanes = ((useAvg ? M.lanesAvg : M.lanes) || []).slice()
+      const anyFilter = !!yFrom || !!yTo;
+      const lanes = srcLanes.slice()
         .filter(function (L) { return (!evs.length || evs.indexOf(L.ev) >= 0) && (retiredIn || !L.retired); })
         .sort(function (a, b) { return orderOf(a.ev) - orderOf(b.ev); })
         .map(function (L) {
           const segs = [];
-          (L.segs || []).forEach(function (sg) {
+          (L.segs || []).forEach(function (raw) {
+            const sg = segNormalize(raw);
             if (personFiltered && !personOk(sg)) return;
             const c = clipSeg(sg);
             if (!c) return;
+            /* 段被年份区间裁过之后，段内的刷新刻度也只留区间内的那些 */
+            let subs = sg.subs;
+            if (subs && (yFrom || yTo)) {
+              const a0 = yFrom || -Infinity, a1 = yTo || Infinity;
+              subs = subs.filter(function (dn) { const fy = dnFy(dn); return fy >= a0 && fy <= a1; });
+              if (!subs.length) subs = [c.f];
+            }
             segs.push({
-              from: c.f, to: c.e, holder: sg.holder, country: sg.country, iso: sg.iso,
-              id: sg.id, days: sg.days, fromDn: sg.fromDn, toDn: sg.toDn
+              from: c.f, to: c.e, holder: sg.holder, iso: sg.iso,
+              id: sg.id, days: sg.days, fromDn: sg.fromDn, toDn: sg.toDn, subs: subs
             });
           });
           return { ev: L.ev, label: evName(M.EV[L.ev] || { zh: L.zh, en: L.en }), segs: segs };
@@ -915,9 +1156,24 @@
         });
         if (isFinite(mn)) { if (!ax0) ax0 = Math.max(2003, Math.floor(mn)); if (!ax1) ax1 = Math.ceil(mx); }
       }
+      if (!isFinite(ax0) || !ax0) ax0 = 2004;
+      if (!isFinite(ax1) || !ax1 || ax1 <= ax0) ax1 = ax0 + 1;
+      /* 交给外层做「缩放 / 平移」的满量程参考：用户 ctrl+滚轮缩放、alt+滚轮或拖动平移后，
+         box.__tlWin 里存的是当前可视窗口，这里把它夹进满量程再作为 x 轴范围。 */
+      if (box) { box.__tlFull = { a: ax0, b: ax1 }; }
+      let win = (box && box.__tlWin) ? box.__tlWin : null;
+      /* 换了筛选范围后旧窗口可能已经完全落在新数据之外，直接失效回到满量程 */
+      if (win && (win.b <= ax0 || win.a >= ax1)) { win = null; if (box) box.__tlWin = null; }
+      let v0 = ax0, v1 = ax1;
+      if (win && win.b > win.a) {
+        const w0 = Math.max(ax0, Math.min(win.a, ax1 - 0.5));
+        const w1 = Math.min(ax1, Math.max(win.b, ax0 + 0.5));
+        if (w1 - w0 > 0.5) { v0 = w0; v1 = w1; }
+      }
       const opt = window.Charts.lanes(lanes, {
-        y0: ax0 || 2004, y1: ax1 || 2026, laneH: 34,
-        empty: t('tl.laneEmpty')
+        y0: v0, y1: v1, laneH: 34,
+        empty: t(hasChains && !srcLanes.length ? 'tl.laneNoScope' : 'tl.laneEmpty'),
+        recLabel: recScopeLabel(scope, gen)
       });
       /* 纪录持有图不再画重大事件的竖向标注线（用户反馈不好看）；重大事件仅在「分数竞速图」中以弹入/淡出动效呈现 */
       return opt;

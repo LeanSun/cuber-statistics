@@ -115,7 +115,10 @@
   const state = {
     tab: 'overall', sortKey: 'score', sortDir: 'desc', page: 1,
     group: 'all', customIds: [], evSel: [], country: '', continent: '', region: '',
-    gender: 'all', y0: null, y1: null, retired: false, recType: 'all',
+    /* 停办项目默认「计入」（用户 2026-11-01 指定全局默认）：
+       早年脚拧 / 八板 / 四板 / 三阶多盲的成绩同样算数，不默认藏起来。
+       想排除时在筛选条点一下「不计入」即可。 */
+    gender: 'all', y0: null, y1: null, retired: true, recType: 'all',
     /* 总榜柱状图的堆叠方式：'' = 自动（只看单项目时按维度、其余按项目），'ev' / 'dim' = 显式选择 */
     stackMode: '',
     scope: 'country', geo: '',
@@ -528,6 +531,13 @@
       if (route === 'timeline') {
         const box = document.getElementById('tlChart');
         if (box && P.drawTimeline) P.drawTimeline(box);
+        /* 纪录持有图：缩放 / 平移（ctrl+滚轮 / alt+滚轮 / 拖动）+ 恢复默认按钮 */
+        if (box && P.bindLaneZoom) P.bindLaneZoom(box);
+        const zbtn = document.getElementById('tlZoomReset');
+        if (zbtn) zbtn.addEventListener('click', function () {
+          const b2 = document.getElementById('tlChart');
+          if (b2 && P.tlResetZoom) P.tlResetZoom(b2);
+        });
       }
       if (route === 'model' || route === 'player') typeset();
       if (keepScroll || prev === route) { window.scrollTo(0, sy); }

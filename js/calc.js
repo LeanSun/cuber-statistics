@@ -716,6 +716,9 @@
       players: players, ranked: ranked,
       weights: WEIGHTS, modKeys: MODKEYS,
       lanes: lanes, lanesAvg: lanesAvg, nations: nations,
+      /* 纪录链字典（世界 / 洲=地区 / 国家 × 全体 / 女子），键形如 `W|s|`、`N:CN|a|f`。
+         旧数据包没有这一项，前端会退回 lanes / lanesAvg（只有世界纪录）。 */
+      laneChains: cfg.laneChains || null,
       milestones: milestones, eventMilestones: eventMilestonesFn,
       boards: boards, board: function (k, key, n, e, pool) { return board(k, key, n, e, ctx, pool); },
       evStatOf: function (p, ev) { return evStatOf(p, ev); },

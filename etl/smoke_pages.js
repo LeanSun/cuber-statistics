@@ -785,6 +785,93 @@ console.log('== 纪录持有图：筛选联动 / 一人一色 / 表单归属 =='
     '筛选后没有数据时返回居中兜底文案');
 }
 
+/* == 纪录持有图：范围纪录链（世界 / 洲 / 国家 × 女子）+ 缩放平移 + 段内刷新 ==
+   用户 2026-11-01 追加：
+     ① 筛选大洲 / 地区 → 画洲纪录；筛选国家 → 画国家纪录；筛选性别 → 画对应范围的女子纪录；
+     ② ctrl+滚轮缩放、alt+滚轮 / 拖动平移，调节过才出现「恢复默认」；
+     ③ 同一人连续刷新是合并段，要能看出「刷了几次」。 */
+console.log('== 纪录持有图：范围纪录链 / 缩放平移 / 段内刷新 ==');
+{
+  const LC = M.laneChains;
+  ok(!!LC && typeof LC === 'object', '数据包带上 laneChains（范围 × 性别的纪录链）');
+  if (LC) {
+    const keys = Object.keys(LC);
+    ok(!!LC['W|s|'] && !!LC['W|a|'], '有世界纪录链（单次 / 平均）');
+    ok(keys.some((k) => k.indexOf('C:') === 0), '有洲（=地区）纪录链');
+    ok(keys.some((k) => k.indexOf('N:') === 0), '有国家纪录链');
+    ok(keys.some((k) => /\|f$/.test(k)), '有女子纪录链');
+    /* 压缩格式：短键 + 4 位小数年份 + 只在该段刷新过多次时才写 s */
+    const seg0 = (LC['W|s|'][0].segs || [])[0];
+    ok(!!seg0 && typeof seg0.f === 'number' && typeof seg0.t === 'number', '段用短键压缩（f/t 小数年）');
+    ok(!!seg0 && typeof seg0.fd === 'number' && typeof seg0.td === 'number', '段带起止日期整数（fd/td）');
+    ok(!!seg0 && !!seg0.h && !!seg0.i, '段带姓名与选手 id');
+    ok(!!seg0 && seg0.o !== undefined, '段带 ISO2（前端据此画国旗）');
+    const many = Object.keys(LC).some((k) => LC[k].some((L) => (L.segs || []).some((s) => s.s && s.s.length > 1)));
+    ok(many, '有人连续刷新多条的段（s 记录每次刷新日期）');
+  }
+  /* 范围解析：大洲 / 地区 → C:，国家优先 → N:，都没有 → W */
+  ok(P.laneScopeOf('', '') === 'W', '不筛选时用世界纪录');
+  ok(P.laneScopeOf('As', '') === 'C:As', '大洲筛选 → 洲纪录');
+  ok(P.laneScopeOf('AsR', '') === 'C:As', '地区筛选 → 对应洲纪录（地区与洲一一对应）');
+  ok(P.laneScopeOf('As', 'CN') === 'N:CN', '同时有大洲与国家时，国家优先');
+  ok(/纪录$/.test(P.recScopeLabel('W', '')) && /女子/.test(P.recScopeLabel('W', 'f')),
+    '纪录类型文案：世界纪录 / 女子纪录（实得 ' + P.recScopeLabel('W', 'f') + '）');
+  /* 国家筛选后，图上每一段都必须是该国选手 */
+  const oCN = P.tlOption('lane', 'cumulative', 2025, false, 'overall', '', 'CN', 'single', [], 'all', 'all');
+  const segsCN = [];
+  ((oCN && oCN.series && oCN.series[0] && oCN.series[0].data) || []).forEach((d) => segsCN.push(d.value[5]));
+  ok(segsCN.length > 0 && segsCN.every((x) => String(x).toUpperCase() === 'CN'),
+    '筛选中国 → 画的是中国纪录（' + segsCN.length + ' 段全部 CN）');
+  /* 女子口径：所有持有者都必须是女子 */
+  const oF = P.tlOption('lane', 'cumulative', 2025, false, 'overall', '', '', 'single', [], 'F', 'all');
+  const byId = {}; M.ranked.forEach((p) => { byId[p.id] = p; });
+  let badG = 0, chkG = 0;
+  (((oF && oF.series && oF.series[0] && oF.series[0].data) || [])).forEach((d) => {
+    const p = byId[d.pid]; if (!p) return;
+    chkG++;
+    if (String(p.gender || '').charAt(0).toUpperCase() !== 'F') badG++;
+  });
+  ok(chkG > 0 && badG === 0, '筛选女子 → 全都是女子纪录（违规 ' + badG + ' / 可核对 ' + chkG + '）');
+  /* 段内刷新：同一段里的 s 必须首尾包住段首尾，且严格递增 */
+  let okSubs = true, withSubs = 0;
+  Object.keys(M.laneChains || {}).forEach((k) => {
+    (M.laneChains[k] || []).forEach((L) => (L.segs || []).forEach((s) => {
+      if (!s.s || !s.s.length) return;
+      withSubs++;
+      if (s.s[0] !== s.fd) okSubs = false;
+      for (let i = 1; i < s.s.length; i++) if (!(s.s[i] > s.s[i - 1])) okSubs = false;
+    }));
+  });
+  ok(withSubs > 0 && okSubs, '段内刷新日期严格递增且从段首开始（核对 ' + withSubs + ' 段）');
+}
+
+console.log('== 纪录持有图：缩放 / 平移交互 ==');
+{
+  const hL = tryRender('纪录持有图（缩放提示条）', () => P.timeline(Object.assign({}, base, { tlView: 'lane', tlLane: 'single' })));
+  ok(hL.indexOf('tlZoomBar') >= 0, '图下方有缩放 / 平移提示条');
+  ok(/id="tlZoomReset"[^>]*hidden/.test(hL), '「恢复默认」默认隐藏（调节过才出现）');
+  ok(hL.indexOf('tl-zoom-hint') >= 0, '提示条写明 ctrl / alt / 拖动的用法');
+  ok(typeof P.bindLaneZoom === 'function' && typeof P.tlResetZoom === 'function', '提供缩放绑定与复位接口');
+  const srcPE = fs.readFileSync(path.join(ROOT, 'js/pages-extra.js'), 'utf8');
+  ok(/e\.ctrlKey \|\| e\.metaKey \|\| e\.altKey/.test(srcPE) && /passive: false/.test(srcPE),
+    '滚轮只在按住 ctrl / alt 时接管（不干扰页面滚动）');
+  ok(/box\.__tlWin/.test(srcPE) && /box\.__tlFull/.test(srcPE), '缩放窗口以满量程为界夹取');
+  ok(/classList\.toggle\('zoomed'/.test(srcPE) && /'dragging'/.test(srcPE), '抓手 / 抓取中的光标状态有切换');
+  const cs = fs.readFileSync(path.join(ROOT, 'css/style.css'), 'utf8');
+  ok(/cursor:grab/.test(cs) && /cursor:grabbing/.test(cs), 'CSS 里空白处是抓手、拖动时是抓取中');
+  ok(/\.tl-zoom-bar/.test(cs) && /\.tl-zoom-reset/.test(cs), '提示条与复位按钮有样式');
+}
+
+console.log('== 默认值：停办项目计入 / 竞速图速率 ==');
+{
+  ok(/retired: true/.test(fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8')),
+    '停办项目默认「计入」');
+  const r = P.tlRate();
+  ok(r.anim === 100, '竞速图动画时长默认 100ms（实得 ' + r.anim + '）');
+  ok(r.fps === 20, '竞速图重绘间隔默认 20ms（实得 ' + r.fps + '）');
+  ok(r.jump === 60, '时间跳跃仍为 60 天/秒（实得 ' + r.jump + '）');
+}
+
 /* 需求：删除「3 期滑动平滑」开关 */
 {
   const hR = tryRender('图表可视化（分数竞速图）', () => P.timeline(Object.assign({}, base, { tlView: 'race' })));

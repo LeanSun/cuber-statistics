@@ -562,6 +562,107 @@ const wrSingleG = {};               // event -> [{date,name,country}]
 const wrAvgG = {};                  // event -> [{date,name,country}]
 const msGlobal = {};                // event -> {threshold: earliestYear}
 
+/* ---------------- 纪录链（泳道图）收集 ----------------
+   2026-11-01 起，纪录持有图不再只有「世界纪录」一条链：筛选大洲 / 地区 / 国家 / 性别时，
+   下方要显示对应的洲纪录 / 国家纪录 / 女子纪录。数据在这里一次收齐，前端按 scope 取用。
+
+   范围（scope）：
+     W          世界纪录
+     C:<洲码>   洲纪录（本项目的「大洲」与「地区」是一一对应的，所以两者共用这一档）
+     N:<ISO2>   国家纪录
+   性别（gen）：'' 全体、'f' 女子。
+
+   ★ 全体口径直接用 WCA 在 regional_single_record / regional_average_record 里给的标记
+     （它只写**最高那一级**：既是世界纪录又是国家纪录的成绩只标 WR）。因此：
+       WR → 该选手所属洲 / 国家的纪录也同时前进；CR → 洲与国家同时前进；NR → 只推国家。
+     这正是「洲纪录必然是本国纪录」的常识，不需要额外判断成绩大小。
+   ★ 女子口径 WCA 没有官方标记，只能自己算：按时间顺序维护每个（范围,项目）的女子最好成绩，
+     一旦被刷新就记一次。麻烦在于 results.tsv 是按比赛 id（= 年份前缀）排序的，
+     年内顺序不可靠 —— 所以先在「当年」缓冲，跨年时按日期排序重放，保证链条严格按时间前进。
+     缓冲只装「比已知最好还快」的行，量级等于当年破纪录次数，很小。 */
+const recChain = new Map();         // `${scope}|${eid}|${kind}|${gen}` -> [{dn, fy, pid, name, iso, country}]
+const femBest = new Map();          // `${scope}|${eid}|${kind}` -> 已确认的女子最好成绩（越小越强）
+const femPend = new Map();          // 同上 -> 当年待定记录（跨年时排序重放）
+let chainYear = 0;
+
+/* 多盲（333mbf/333mbo）的原始值是编码值，不能直接比大小。
+   新制 0DDTTTTTMM：DD = 99 − (成 − 错)，TTTTT = 秒；旧制 1SSAATTTTT。
+   统一换算成「越大越好」的对数值：分数优先，时间次之。 */
+function multiGood(v) {
+  if (!(v > 0)) return null;
+  if (v < 1e9) {
+    const s = String(v).padStart(9, '0');
+    return (99 - parseInt(s.slice(0, 2), 10)) * 100000 - parseInt(s.slice(2, 7), 10);
+  }
+  const s = String(v).padStart(10, '0');
+  const solved = parseInt(s.slice(1, 3), 10), att = parseInt(s.slice(3, 5), 10);
+  return (2 * solved - att) * 100000 - parseInt(s.slice(5, 10), 10);
+}
+/* 统一成「越小越强」的代价，多盲取负号转过来；无效成绩返回 null */
+function chainCost(eid, v) {
+  const x = toInt(v);
+  if (!(x > 0)) return null;
+  if (eid === '333mbf' || eid === '333mbo') {
+    const g = multiGood(x);
+    return g == null ? null : -g;
+  }
+  return x;
+}
+function pushChain(scope, eid, kind, gen, dn, fy, p, iso, cont) {
+  if (!scope) return;
+  const key = scope + '\u0001' + eid + '\u0001' + kind + '\u0001' + gen;
+  let arr = recChain.get(key);
+  if (!arr) { arr = []; recChain.set(key, arr); }
+  arr.push({ dn: dn, fy: fy, pid: p.wcaId, name: p.name, iso: iso, country: p.country, cont: cont });
+}
+/* 官方标记推进（全体口径） */
+function feedRec(eid, kind, level, p, dn, fy, iso, cont) {
+  if (level === 'WR') {
+    pushChain('W', eid, kind, '', dn, fy, p, iso, cont);
+    if (cont) pushChain('C:' + cont, eid, kind, '', dn, fy, p, iso, cont);
+    if (iso) pushChain('N:' + iso, eid, kind, '', dn, fy, p, iso, cont);
+  } else if (level === 'CR') {
+    if (cont) pushChain('C:' + cont, eid, kind, '', dn, fy, p, iso, cont);
+    if (iso) pushChain('N:' + iso, eid, kind, '', dn, fy, p, iso, cont);
+  } else if (level === 'NR') {
+    if (iso) pushChain('N:' + iso, eid, kind, '', dn, fy, p, iso, cont);
+  }
+}
+/* 女子口径：只缓存「比已确认最好还快」的行，跨年时排序重放 */
+function offerFem(eid, kind, cost, p, dn, fy, iso, cont) {
+  if (cost == null) return;
+  const scopes = ['W'];
+  if (cont) scopes.push('C:' + cont);
+  if (iso) scopes.push('N:' + iso);
+  for (let i = 0; i < scopes.length; i++) {
+    const key = scopes[i] + '\u0001' + eid + '\u0001' + kind;
+    const confirmed = femBest.has(key) ? femBest.get(key) : Infinity;
+    if (!(cost < confirmed)) continue;
+    let arr = femPend.get(key);
+    if (!arr) { arr = []; femPend.set(key, arr); }
+    arr.push({ dn: dn, fy: fy, cost: cost, pid: p.wcaId, name: p.name, iso: iso, country: p.country, cont: cont });
+  }
+}
+function flushFem() {
+  if (!femPend.size) return;
+  femPend.forEach(function (arr, key) {
+    arr.sort(function (a, b) { return a.dn - b.dn || a.cost - b.cost; });
+    const parts = key.split('\u0001');
+    let best = femBest.has(key) ? femBest.get(key) : Infinity;
+    for (let i = 0; i < arr.length; i++) {
+      const it = arr[i];
+      if (!(it.cost < best)) continue;
+      best = it.cost;
+      const k2 = parts[0] + '\u0001' + parts[1] + '\u0001' + parts[2] + '\u0001f';
+      let out = recChain.get(k2);
+      if (!out) { out = []; recChain.set(k2, out); }
+      out.push({ dn: it.dn, fy: it.fy, pid: it.pid, name: it.name, iso: it.iso, country: it.country, cont: it.cont });
+    }
+    femBest.set(key, best);
+  });
+  femPend.clear();
+}
+
 function getPlayer(id) {
   let p = players.get(id);
   if (!p) {
@@ -831,6 +932,25 @@ async function processResults() {
     if (rsr === 'WR') (wrSingleG[eid] = wrSingleG[eid] || []).push({ dn: wrDn, fy: wrFy, name: p.name, country: p.country, pid: pid, iso: Calc.isoNorm(p.country) });
     if (rar === 'WR') (wrAvgG[eid] = wrAvgG[eid] || []).push({ dn: wrDn, fy: wrFy, name: p.name, country: p.country, pid: pid, iso: Calc.isoNorm(p.country) });
 
+    /* 纪录链（泳道图）：
+       · 全体口径 —— 用官方标记，同时推进所属洲 / 所属国家的链（WR ⊃ CR ⊃ NR）；
+       · 女子口径 —— 自己维护「历史最快女子成绩」，跨年时排序重放（见 flushFem）。 */
+    {
+      const piso = Calc.isoNorm(p.country) || '';
+      const pcont = continentShort[piso] || continentShort[p.country] || '';
+      if (rsr) feedRec(eid, 'single', rsr, p, wrDn, wrFy, piso, pcont);
+      if (rar) feedRec(eid, 'avg', rar, p, wrDn, wrFy, piso, pcont);
+      const isF = String(p.gender || '').charAt(0).toLowerCase() === 'f';
+      if (isF) {
+        /* results.tsv 按比赛 id 排序（= 年份前缀），跨年就 flush 一次；
+           万一遇到年份回退（不同版本导出偶发），也立刻 flush，避免历史顺序被打乱。 */
+        if (chainYear && year !== chainYear) flushFem();
+        chainYear = year;
+        offerFem(eid, 'single', chainCost(eid, r.best), p, wrDn, wrFy, piso, pcont);
+        offerFem(eid, 'avg', chainCost(eid, r.average), p, wrDn, wrFy, piso, pcont);
+      }
+    }
+
     /* 传比赛日期（YYYYMMDD），让「首次突破」精确到日 */
     trackMilestone(eid, r.best, year, wrDn);
 
@@ -853,7 +973,11 @@ async function processResults() {
       if (rar) p.yearlyA[year] = (p.yearlyA[year] || 0) + 1;
     }
   });
-  log('results rows:', rows, 'players:', players.size);
+  flushFem();   /* 收尾：把最后一个年份的女子待定纪录重放进去 */
+  let chainKeys = 0, chainSegs = 0;
+  recChain.forEach(function (a) { chainKeys++; chainSegs += a.length; });
+  log('results rows:', rows, 'players:', players.size,
+    '| 纪录链: ' + chainKeys + ' 条（' + chainSegs + ' 次刷新）');
 }
 
 /* ---------------- 模块计算 ---------------- */
@@ -1162,6 +1286,75 @@ function computeHeld(list, asOf) {
   log('纪录保持天数已计算:', n, '条');
 }
 
+/* ---------------- 纪录链泳道（世界 / 洲 / 国家 × 全体 / 女子） ----------------
+   与 buildLanes 的区别：
+     · 数据源是上面收集的 recChain（同一结构，但按 scope 分开）；
+     · 合并同一人的连续刷新时，把每一次的日期记进 seg.subs —— 前端据此在色块里
+       画「刻度线」并在 tooltip 里列出刷新次数（用户 2026-11-01 要求「合并的段要
+       能看出单人刷了几次」）；
+     · 输出是扁平字典，键为 `scope|s|gen` / `scope|a|gen`，值为该范围下的泳道数组。 */
+function buildChainLanes(asOf) {
+  const endDn = dateNum(asOf) || dateNum(new Date().toISOString().slice(0, 10));
+  const endFy = fyOfDn(endDn);
+  const out = {};
+  recChain.forEach(function (arr, key) {
+    const parts = String(key).split('\u0001');
+    const scope = parts[0], eid = parts[1], kind = parts[2], gen = parts[3];
+    if (!arr || !arr.length) return;
+    arr.sort(function (a, b) { return a.dn - b.dn || String(a.pid).localeCompare(String(b.pid)); });
+    const retired = !!(Calc.EV[eid] || {}).retired;
+    const stopDn = retired ? (dateNum(String(eventLastYear[eid] || endDn) + '-12-31') || endDn) : endDn;
+    const stopFy = retired ? fyOfDn(stopDn) : endFy;
+    const segs = [];
+    let cur = null;
+    for (let i = 0; i < arr.length; i++) {
+      const e = arr[i];
+      if (!cur || cur.id !== (e.pid || null) || cur.holder !== e.name) {
+        if (cur) { cur.to = e.fy; cur.toDn = e.dn; cur.days = daysBetween(cur.fromDn, e.dn); }
+        cur = {
+          from: e.fy, to: stopFy, fromDn: e.dn, toDn: stopDn, holder: e.name,
+          country: e.country, iso: e.iso || '', id: e.pid || null, days: 0, subs: [e.dn]
+        };
+        segs.push(cur);
+      } else {
+        cur.subs.push(e.dn);
+      }
+    }
+    if (cur) { cur.to = stopFy; cur.toDn = stopDn; cur.days = daysBetween(cur.fromDn, stopDn); }
+    const ok2 = scope + '|' + (kind === 'avg' ? 'a' : 's') + '|' + gen;
+    if (!out[ok2]) out[ok2] = [];
+    out[ok2].push({
+      ev: eid, retired: retired,
+      zh: (Calc.EV[eid] || { zh: eid }).zh, en: (Calc.EV[eid] || { en: eid }).en,
+      segs: segs.map(packSeg)
+    });
+  });
+  return out;
+}
+
+/* 泳道段压缩：一个国家一条链、上百个国家加起来是几万段，字段名占的体积不可忽视
+   （实测 4 万段里键名就吃掉 2.4MB）。这里改成短键 + 4 位小数的年份：
+     f/t 起止小数年（4 位 = 约 53 分钟精度，够画图）· fd/td 起止日期整数（YYYYMMDD）
+     h 姓名 · i 选手 WCA ID · o ISO2（前端只用 ISO2 取国旗，国名全称不再下发）
+     s 段内每次刷新的日期（只有 1 次的段省略，前端按 1 次处理）
+   持有天数 = fd 到 td 的天数，前端按同样口径算，不必存。 */
+function packSeg(sg) {
+  const o = {
+    f: Math.round(sg.from * 10000) / 10000,
+    t: Math.round(sg.to * 10000) / 10000,
+    fd: sg.fromDn, td: sg.toDn,
+    h: sg.holder, i: sg.id, o: sg.iso || ''
+  };
+  if (sg.subs && sg.subs.length > 1) {
+    /* 同一天刷两次（同一场比赛的两轮）只留一个：图上刻度位置一样，tooltip 里列两遍
+       同一天反而像 bug，「刷新 N 次」按不同日期计数更符合直觉。 */
+    const uniq = [];
+    for (let i = 0; i < sg.subs.length; i++) if (sg.subs[i] !== uniq[uniq.length - 1]) uniq.push(sg.subs[i]);
+    if (uniq.length > 1) o.s = uniq;
+  }
+  return o;
+}
+
 /* ---------------- WR 泳道 ---------------- */
 function buildLanes(store, asOf) {
   const endDn = dateNum(asOf) || dateNum(new Date().toISOString().slice(0, 10));
@@ -1183,9 +1376,13 @@ function buildLanes(store, asOf) {
         if (cur) { cur.to = e.fy; cur.toDn = e.dn; cur.days = daysBetween(cur.fromDn, e.dn); }
         cur = {
           from: e.fy, to: stopFy, fromDn: e.dn, toDn: stopDn, holder: e.name, country: e.country,
-          id: e.pid || null, iso: e.iso || '', days: 0, color: 'hsl(' + Calc.U.hue(e.name) + ',58%,52%)'
+          id: e.pid || null, iso: e.iso || '', days: 0, subs: [e.dn],
+          color: 'hsl(' + Calc.U.hue(e.name) + ',58%,52%)'
         };
         segs.push(cur);
+      } else {
+        /* 同一人连续刷新：合并成一段，但把每一次的日期留下来（图上画刻度、tooltip 列次数） */
+        cur.subs.push(e.dn);
       }
     });
     if (cur) { cur.to = stopFy; cur.toDn = stopDn; cur.days = daysBetween(cur.fromDn, stopDn); }
@@ -1461,6 +1658,8 @@ function buildEventMilestones() {
     years: (function () { const a = []; for (let y = 2003; y <= new Date().getFullYear(); y++) a.push(y); return a; })(),
     milestones: Calc.MILESTONES, eventMilestonesMap: buildEventMilestones(),
     lanes: buildLanes(wrSingleG, AS_OF), lanesAvg: buildLanes(wrAvgG, AS_OF),
+    /* 纪录链：世界 / 洲（=地区）/ 国家 × 全体 / 女子，键为 `scope|s|gen`、`scope|a|gen` */
+    laneChains: buildChainLanes(AS_OF),
     eventBoards: EVENT_BOARDS
   };
 

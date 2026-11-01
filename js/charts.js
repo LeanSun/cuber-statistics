@@ -356,7 +356,12 @@
           const d = p.data || {};
           if (!d || !d.id || !d.name) return '';
           const v = (d.value && d.value[0]) || 0;
-          return '<b>' + esc(d.name) + '</b><br/>' + esc(d.iso || '') + ' · ' + f2(v);
+          /* 姓名前加一面国旗（用户 2026-11-01 要求）：条内已经有小国旗，
+             但条被裁短时国旗可能落在条外，tooltip 里始终带上更稳。 */
+          const fu = flagUri(d.iso);
+          const ft = fu ? '<img src="' + fu + '" style="width:15px;height:11px;vertical-align:-1px;margin-right:5px" alt="">' : '';
+          return '<div style="display:flex;align-items:center;gap:2px">' + ft + '<b>' + esc(d.name) + '</b></div>' +
+            '<div style="margin-top:2px;font-size:11.5px;opacity:.85">' + esc(d.iso || '') + ' · ' + f2(v) + '</div>';
         }
       }, base().tooltip),
       series: [{
@@ -649,6 +654,18 @@
     });
   }
 
+  /* 日期整数（YYYYMMDD）→ 小数年，口径与 etl/build.js 的 fyOfDn 完全一致
+     （按当年实际天数 365/366 折算），保证段内刻度与段首尾落在同一条坐标上。 */
+  function dnFy(dn) {
+    const s = String(dn || '');
+    if (s.length !== 8) return 0;
+    const y = +s.slice(0, 4), mo = +s.slice(4, 6), d = +s.slice(6, 8);
+    if (!(y > 1900) || mo < 1 || mo > 12 || d < 1 || d > 31) return y || 0;
+    const dt = Date.UTC(y, mo - 1, d), y0 = Date.UTC(y, 0, 1);
+    const leap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+    return y + (dt - y0) / 86400000 / (leap ? 366 : 365);
+  }
+
   function lanes(laneData, opts) {
     opts = opts || {};
     const T = pal();
@@ -674,7 +691,15 @@
     laneData.forEach(function (L, li) {
       L.segs.forEach(function (sg, si) {
         const laneColor = (colorRows[li] && colorRows[li][si]) || (sg.color || '#888');
-        data.push({ value: [sg.from, li, sg.to, li, sg.holder, sg.country, sg.days, sg.fromDn || 0, sg.toDn || 0], itemStyle: { color: laneColor } });
+        data.push({
+          /* value[5] 是国旗用的国码：新数据直接给 ISO2；旧数据只有国名全称，退回旧字段 */
+          value: [sg.from, li, sg.to, li, sg.holder, sg.iso || sg.country, sg.days, sg.fromDn || 0, sg.toDn || 0],
+          pid: sg.id,
+          /* 合并段内每一次刷新的日期（同一个人连续破纪录时合并成一段，这里保留明细） */
+          subs: sg.subs || null,
+          scopes: sg.scopes || null,
+          itemStyle: { color: laneColor }
+        });
       });
     });
     function renderItem(params, api) {
@@ -692,13 +717,36 @@
         style: { fill: api.visual('color'), stroke: T.elev, lineWidth: 1 }
       }];
       const w = rect.width;
+      const segCol = api.visual('color') || '#888';
+      const onDark = colorLum(segCol) < 0.34;
+      /* 段内刻度：同一个人连续刷新多次时，段是合并的，色块上看不出「破了几次」。
+         在每次刷新的位置画一根 1px 竖线（低透明度，不抢主体），一眼能数出次数。
+         太密（每根不足 3px）就不画，否则会连成一片反而更乱。 */
+      const subs = (data[params.dataIndex] || {}).subs;
+      if (subs && subs.length > 1 && w > 16) {
+        const xs = [];
+        for (let i = 1; i < subs.length; i++) {
+          const px = api.coord([dnFy(subs[i]), catIdx])[0];
+          if (px > rect.x + 2 && px < rect.x + w - 2) xs.push(px);
+        }
+        if (xs.length && w / xs.length >= 3) {
+          let d = '';
+          for (let i = 0; i < xs.length; i++) {
+            const px = Math.round(xs[i]) + 0.5;
+            d += 'M' + px + ' ' + rect.y + 'L' + px + ' ' + (rect.y + h);
+          }
+          kids.push({
+            type: 'path', silent: true,
+            shape: { path: d },
+            style: { stroke: onDark ? 'rgba(255,255,255,.34)' : 'rgba(0,0,0,.18)', lineWidth: 1, fill: 'none' }
+          });
+        }
+      }
       if (w > 40 && h >= 16) {
         const iso = api.value(5);
         const name = String(api.value(4) || '');
         /* 姓名/国旗的字色跟着色块明暗走：
            一人一色之后调色板里既有深红深蓝也有浅黄浅青，全用白字的话浅色块上会看不清。 */
-        const segCol = api.visual('color') || '#888';
-        const onDark = colorLum(segCol) < 0.34;
         const txtFill = onDark ? '#fff' : '#16202c';
         let x = rect.x + 7;
         const uri = flagUri(iso);
@@ -739,10 +787,27 @@
       if (uri) rich['ic' + li] = { height: 20, width: 20, padding: [0, 4, 0, 0], backgroundColor: { image: uri } };
     });
 
+    /* x 轴刻度：缩放后 min/max 是小数年（例如 2004.6473），直接拿去做刻度会得到
+       「2004.6473257698542」这种无法阅读的标签。这里先把窗口按跨度对齐到 1 / 0.5 / 0.25 年的格子，
+       再挑一个「约 8~10 格」的间隔，刻度就总是 2004 / 2006 / … 或 2010.5 / 2011 / … 这类整齐的值。 */
+    const span = Math.max(0.2, y1 - y0);
+    const snap = span >= 6 ? 1 : (span >= 2 ? 0.5 : 0.25);
+    const axMin = Math.floor(y0 / snap + 1e-9) * snap;
+    const axMax = Math.ceil(y1 / snap - 1e-9) * snap;
+    const axSpan = axMax - axMin;
+    const STEPS = (snap >= 1) ? [1, 2, 3, 5, 10, 20, 25, 50] : [0.25, 0.5, 1, 2, 5, 10];
+    let axStep = STEPS[STEPS.length - 1];
+    for (let i = 0; i < STEPS.length; i++) { if (axSpan / STEPS[i] <= 10) { axStep = STEPS[i]; break; } }
+    function fmtYear(v) {
+      const r = Math.round(v);
+      if (Math.abs(v - r) < 1e-6) return String(r);
+      return String(Math.round(v * 10) / 10);
+    }
+
     return Object.assign(base({ stagger: 8 }), {
       grid: { left: 6, right: 16, top: 22, bottom: 6, containLabel: true },
-      xAxis: Object.assign({ type: 'value', min: y0, max: y1, interval: Math.max(1, Math.ceil((y1 - y0) / 11)) }, axisCommon(), {
-        axisLabel: { color: T.text3, fontSize: 10.5, formatter: function (v) { return v; } },
+      xAxis: Object.assign({ type: 'value', min: axMin, max: axMax, interval: axStep }, axisCommon(), {
+        axisLabel: { color: T.text3, fontSize: 10.5, formatter: fmtYear },
         splitLine: { show: false }
       }),
       yAxis: Object.assign({ type: 'category', data: cats, inverse: true }, axisCommon(), {
@@ -768,17 +833,31 @@
           return [x, y];
         },
         /* 跟随鼠标：把姓名 + 国旗 + 起止时间 + 持有天数直接显示在光标旁，
-           取代原先图表下方那份冗长的持有者清单 */
-        extraCssText: 'box-shadow:0 6px 20px rgba(0,0,0,.14);border-radius:10px;',
+           取代原先图表下方那份冗长的持有者清单。
+           2026-11-01 起再补两段：
+             · 纪录类型（世界 / 亚洲 / 中国 …，由调用方传 opts.recLabel）；
+             · 段内刷新明细 —— 同一个人连续破纪录时色块是合并的，这里把每一次的日期列出来。 */
+        extraCssText: 'box-shadow:0 6px 20px rgba(0,0,0,.14);border-radius:10px;max-width:280px;',
         formatter: function (p) {
           const v = p.data.value;
           const days = v[6] || 0;
           const iso = String(v[5] || '').toUpperCase();
           function fd(dn) { const s = String(dn || ''); return s.length === 8 ? s.slice(0, 4) + '-' + s.slice(4, 6) + '-' + s.slice(6, 8) : (LANE_I18N.now || '至今'); }
           const flagTag = iso ? '<img src="' + flagUri(iso) + '" style="width:15px;height:11px;vertical-align:-1px;margin-right:4px" alt="">' : '';
-          return '<div style="display:flex;align-items:center;gap:2px">' + flagTag + '<b>' + v[4] + '</b></div>' +
+          const recTag = opts.recLabel
+            ? '<div style="font-size:11px;opacity:.7;margin-bottom:2px">' + esc(opts.recLabel) + '</div>' : '';
+          let h = recTag + '<div style="display:flex;align-items:center;gap:2px">' + flagTag + '<b>' + esc(v[4]) + '</b></div>' +
             '<div style="margin-top:3px;font-size:11.5px;opacity:.85">' + fd(v[7]) + ' → ' + fd(v[8]) + '</div>' +
             '<div style="margin-top:2px;font-size:11.5px"><b>' + days + '</b> ' + (LANE_I18N.day || '天') + '</div>';
+          const subs = p.data.subs;
+          if (subs && subs.length > 1) {
+            const shown = subs.slice(0, 8).map(fd).join(' · ');
+            const more = subs.length > 8 ? ' … +' + (subs.length - 8) : '';
+            h += '<div style="margin-top:5px;padding-top:5px;border-top:1px solid rgba(128,128,128,.22);font-size:11px">' +
+              '<b>' + (LANE_I18N.refresh || '刷新') + ' ' + subs.length + ' ' + (LANE_I18N.times || '次') + '</b>' +
+              '<div style="opacity:.8;margin-top:2px;line-height:1.5">' + shown + more + '</div></div>';
+          }
+          return h;
         }
       },
       series: [{
