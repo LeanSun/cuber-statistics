@@ -1420,13 +1420,31 @@
             const k2 = (sg.fromDn || 0) + '|' + (sg.id || '');
             const isW = !!(wSetA && wSetA[L.ev] && wSetA[L.ev][k2]);
             const isC = !isW && !!(cSetA && cSetA[L.ev] && cSetA[L.ev][k2]);
+            const segLv = isW ? wBadgeA : (isC ? cBadgeA : baseBadge);
+            /* 段内每一次刷新**各自的**级别（2026-11-02 用户指出）：
+               同一个人连续刷纪录时色块是合并的，但这一串刷新并不必然都是抬头那个级别 ——
+               典型的是一段以 WR 开场、中途 WR 被别人拿走，之后他再推进的只是洲纪录。
+               抬头只能写一个级别，所以逐条算：这个 (刷新日期, 选手) 是否也出现在
+               更高级别的链里（判定与段首完全同源），交给 tooltip 标在日期旁边。
+               subs 与 slv 一一对应，null 表示没有明细（单次刷新的段）。 */
+            let slv = null;
+            if (subs && subs.length) {
+              slv = subs.map(function (dn) {
+                const kk = dn + '|' + (sg.id || '');
+                if (wSetA && wSetA[L.ev] && wSetA[L.ev][kk]) return wBadgeA;
+                if (cSetA && cSetA[L.ev] && cSetA[L.ev][kk]) return cBadgeA;
+                return baseBadge;
+              });
+            }
             segs.push({
               from: c.f, to: c.e, holder: sg.holder, iso: sg.iso,
               id: sg.id, days: sg.days, fromDn: sg.fromDn, toDn: sg.toDn, subs: subs,
               /* 抬头文字（世界纪录 / 亚洲纪录 / 中国纪录 …） */
               lab: isW ? wLabA : (isC ? cLabA : baseLab),
               /* 抬头胶囊（WR / AsR / OcR / NR …，含配色档 cls 与全称 name） */
-              lv: isW ? wBadgeA : (isC ? cBadgeA : baseBadge)
+              lv: segLv,
+              /* 段内每次刷新的胶囊，与 subs 同序（tooltip 只给「与抬头不同级」的日期挂小标签） */
+              slv: slv
             });
           });
           return { ev: L.ev, label: evName(M.EV[L.ev] || { zh: L.zh, en: L.en }), segs: segs };

@@ -938,6 +938,40 @@ console.log('== 纪录持有图：范围纪录链 / 缩放平移 / 段内刷新 
     const tipPill = oCN.tooltip.formatter({ data: dCN2[0] });
     ok(/class="rec-chip lv-(WR|CR|NR)"/.test(tipPill), 'tooltip 第一行渲染成 rec-chip 胶囊');
   }
+  /* ★ 2026-11-02 用户追问：合并段里逐次刷新并不必然同级 ——「以 WR 开场 → WR 被别人拿走 →
+     他之后推进的只是洲纪录」，抬头只能写一个级别，所以每一条刷新必须带自己的级别，
+     且 tooltip 只给「与抬头不同级」的日期挂小胶囊（同级的留空＝就是抬头那个级别）。 */
+  {
+    const oAs2 = P.tlOption('lane', 'cumulative', 2025, false, 'overall', 'AsR', '', 'single', [], 'all', 'all');
+    const dAs2 = (oAs2 && oAs2.series && oAs2.series[0] && oAs2.series[0].data) || [];
+    let slvLenOk = true, mixedSeg = 0, tagOk = 0, sample = '';
+    dAs2.forEach((d) => {
+      if (!d.subs || d.subs.length < 2) return;
+      if (!d.slv || d.slv.length !== d.subs.length) slvLenOk = false;
+      const diffs = (d.slv || []).filter((b) => b && d.lv && b.code !== d.lv.code);
+      if (!diffs.length) return;
+      mixedSeg++;
+      const tip = oAs2.tooltip.formatter({ data: d });
+      const tags = (tip.match(/class="tl-tip-lv lv-(WR|CR|NR)"/g) || []).length;
+      if (tags === diffs.length && /class="tl-tip-chips has-lv"/.test(tip)) tagOk++;
+      if (!sample) {
+        sample = d.value[4] + ' / ' + d.ev + '，抬头 ' + d.lv.code + '，明细 ' +
+          d.slv.map((b) => b.code).join(',');
+      }
+    });
+    ok(slvLenOk, '每一次刷新都带自己的级别胶囊（slv 与 subs 等长）');
+    ok(mixedSeg > 0, '亚洲链里确有混级段（实得 ' + mixedSeg + ' 段）');
+    ok(mixedSeg > 0 && tagOk === mixedSeg, '混级段的 tooltip 逐条标出不同级的刷新（' + tagOk + '/' + mixedSeg + '）');
+    if (sample) console.log('  --   （示例：' + sample + '）');
+    /* WR 链上每一次刷新都是 WR，不可能混级 → 不该出现任何小标签 */
+    const oW2 = P.tlOption('lane', 'cumulative', 2025, false, 'overall', '', '', 'single', [], 'all', 'all');
+    let wTag = 0;
+    ((oW2 && oW2.series && oW2.series[0] && oW2.series[0].data) || []).forEach((d) => {
+      if (!d.subs || d.subs.length < 2) return;
+      if (/class="tl-tip-lv/.test(oW2.tooltip.formatter({ data: d }))) wTag++;
+    });
+    ok(wTag === 0, '世界纪录链的 tooltip 不出现混级小标签（实得 ' + wTag + ' 段）');
+  }
   /* 女子口径：所有持有者都必须是女子 */
   const oF = P.tlOption('lane', 'cumulative', 2025, false, 'overall', '', '', 'single', [], 'F', 'all');
   const byId = {}; M.ranked.forEach((p) => { byId[p.id] = p; });

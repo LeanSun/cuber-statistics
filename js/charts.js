@@ -832,6 +832,8 @@
           ev: L.ev,
           /* 合并段内每一次刷新的日期（同一个人连续破纪录时合并成一段，这里保留明细） */
           subs: sg.subs || null,
+          /* 与 subs 同序：每一次刷新自己的纪录级别胶囊 {code,cls,name}（缺省 null） */
+          slv: sg.slv || null,
           scopes: sg.scopes || null,
           /* 该段自己的纪录级别抬头（世界纪录 / 亚洲纪录 / 中国纪录 …），由调用方按
              「这一段是否也出现在更高级别的链里」反推；缺省时退回整体口径 opts.recLabel */
@@ -1042,12 +1044,24 @@
             '<div style="margin-top:3px;font-size:11.5px;opacity:.85">' + fd(v[7]) + ' → ' + fd(v[8]) + '</div>' +
             '<div style="margin-top:2px;font-size:11.5px"><b>' + days + '</b> ' + (LANE_I18N.day || '天') + '</div>';
           const subs = p.data.subs;
+          const slv = p.data.slv;
           if (subs && subs.length > 1) {
-            let chips = '';
-            for (let i = 0; i < subs.length; i++) chips += '<i>' + fd(subs[i]) + '</i>';
+            /* 逐条标「与抬头不同级」的刷新（2026-11-02 用户要求）：
+               合并段以 WR 开场、后来 WR 被别人拿走，他之后推进的只是洲纪录 —— 抬头写 WR，
+               这一串日期里却混着 AsR。这里给级别不等于抬头的日期挂一枚小胶囊（WR/AsR/NR…），
+               与抬头同级的日期保持原样（留空＝就是抬头那个级别），干扰最小、信息最全。
+               出现小胶囊时栅格从 3 列降为 2 列，保证「日期 + 胶囊」不被裁掉。 */
+            let chips = '', tagged = 0;
+            for (let i = 0; i < subs.length; i++) {
+              const b = slv && slv[i];
+              const diff = !!(b && lv && b.code !== lv.code);
+              if (diff) tagged++;
+              chips += '<i>' + fd(subs[i]) +
+                (diff ? '<em class="tl-tip-lv lv-' + (b.cls || '') + '">' + esc(b.code) + '</em>' : '') + '</i>';
+            }
             h += '<div class="tl-tip-sub">' +
               '<div class="tl-tip-sub-h">' + (LANE_I18N.refresh || '刷新') + ' ' + subs.length + ' ' + (LANE_I18N.times || '次') + '</div>' +
-              '<div class="tl-tip-chips">' + chips + '</div></div>';
+              '<div class="tl-tip-chips' + (tagged ? ' has-lv' : '') + '">' + chips + '</div></div>';
           }
           /* 点击色块可跳转选手主页 —— 在弹窗底部提示一句，避免只能靠猜 */
           if (LANE_I18N.click) {

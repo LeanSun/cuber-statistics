@@ -1434,6 +1434,19 @@ button.exp-v3-wca.pid-copy:hover{color:var(--accent)}
 .tl-tip-chips i{font-style:normal;font-size:10.5px;line-height:1.6;padding:0 4px;border-radius:999px;
   background:rgba(128,128,128,.16);font-variant-numeric:tabular-nums;white-space:nowrap;
   text-align:center;overflow:hidden}
+/* 段内混级（2026-11-02）：合并段里有的刷新并不是抬头那个级别 —— 给这些日期挂一枚小胶囊。
+   出现胶囊时栅格从 3 列降为 2 列，每格改成「日期左 · 胶囊右」，避免 99px 的窄格里被裁掉。 */
+.tl-tip-chips.has-lv{grid-template-columns:repeat(2,minmax(0,1fr))}
+.tl-tip-chips.has-lv i{display:flex;align-items:center;justify-content:space-between;gap:5px;
+  padding:0 5px;text-align:left}
+.tl-tip-lv{font-style:normal;font-size:9px;font-weight:700;line-height:1.45;letter-spacing:.02em;
+  padding:0 3.5px;border-radius:999px;border:1px solid currentColor;flex:0 0 auto}
+.tl-tip-lv.lv-WR{color:#cf0d3d;border-color:#ff2056;background:color-mix(in srgb,#ff2056 12%,transparent)}
+.tl-tip-lv.lv-CR{color:#8f6200;border-color:#ffb900;background:color-mix(in srgb,#ffb900 18%,transparent)}
+.tl-tip-lv.lv-NR{color:#00744d;border-color:#00bc7d;background:color-mix(in srgb,#00bc7d 14%,transparent)}
+[data-theme="dark"] .tl-tip-lv.lv-WR{color:#ff8fa9}
+[data-theme="dark"] .tl-tip-lv.lv-CR{color:#ffd166}
+[data-theme="dark"] .tl-tip-lv.lv-NR{color:#3fdfad}
 
 /* ---- 分数竞速图：登顶时长徽标 ----
    2026-11-01 用户要求：常驻显示、样式精致；第五轮再要求**放到整行最右侧**。
