@@ -365,7 +365,7 @@
     return h;
   }
 
-  function recBody(r) {
+  function recBody(r, p) {
     let h = '<div class="chain-latex">' +
       tex('R = B_{R}\\;\\cdot\\;w_{e\\,' + U.fmt(r.factors.we, 2) + '}\\;\\cdot\\;S_{e}(t)_{' + U.fmt(r.factors.S, 2) + '}\\;\\cdot\\;T_{\\tau\\,' + U.fmt(r.factors.T, 2) + '}\\;\\cdot\\;K_{e\\,' + U.fmt(r.factors.K, 2) + '}\\;\\cdot\\;G_{g\\,' + U.fmt(r.factors.G, 2) + '}\\;\\cdot\\;A_{' + U.fmt(r.factors.A, 2) + '}\\;\\cdot\\;O_{' + U.fmt(r.factors.O, 2) + '}\\;\\cdot\\;(1+k_{r}z)_{' + U.fmt(1 + 0.15 * r.factors.z, 2) + '}\\;=\\;\\mathbf{' + U.fmt(r.R, 1) + '}', true) +
       '</div>';
@@ -379,6 +379,16 @@
     h += '<div class="rec-meta"><span class="tiny muted">' + esc(t('rec.date')) + ' ' + esc(r.date) + ' · ' + esc(r.comp) + '</span>' +
       '<span class="tiny muted">' + esc(t('rec.held')) + ' ' + esc(P.util.heldText(r.held)) + '</span>' +
       (r.current ? '<span class="tag acc">' + (t.isEn() ? 'still held' : '仍持有') + '</span>' : '') + '</div>';
+    /* ★ 2026-11-02：换籍选手的纪录按「发生当时的代表国」归属（build.js 写入 r.cty，
+       只有与当前国籍不同时才有值）。这里明确标出来，避免读者以为国籍登记错乱。 */
+    if (r.cty) {
+      const iso = (window.Calc && window.Calc.isoNorm) ? window.Calc.isoNorm(r.cty) : r.cty;
+      const nowIso = p ? p.country : '';
+      if (iso && iso !== nowIso) {
+        h += '<div class="rec-meta"><span class="tag">' + flag(iso) +
+          ' ' + esc(t('rec.repAt')) + ' ' + esc(countryName(iso)) + '</span></div>';
+      }
+    }
     /* NR 记分按「该国该项目参赛人数」加权：人数少的国家 NR 更贬值，避免靠刷 NR 堆分 */
     if (r.level === 'NR' && r.factors && r.factors.NRS != null) {
       h += '<div class="rec-meta"><span class="tiny muted">' +
@@ -769,7 +779,7 @@
     M.ensureDetail(p);
     if (kind === 'rec') {
       const r = p.records[idx];
-      return r ? recBody(r) : '';
+      return r ? recBody(r, p) : '';
     }
     const r2 = p.podiums[idx];
     return r2 ? podBody(r2) : '';

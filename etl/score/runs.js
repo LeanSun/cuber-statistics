@@ -236,6 +236,9 @@ function buildLadder(subs, meta, opt) {
       value: s.value,
       level: s.level || '',
       held: s.held || 0,
+      /* 该条纪录发生时的代表国 / 所属洲（跨籍选手用，缺省由调用方兜底） */
+      cty: s.cty || '',
+      cont: s.cont || '',
       cost: p.cost,
       tie: p.tie,
       score: p.score,
@@ -271,12 +274,13 @@ function buildLadder(subs, meta, opt) {
   const runs = [];
   for (const s of kept) {
     const last = runs[runs.length - 1];
-    const same = last && last.pid === s.pid && (mode === 'level' || last.level === s.level);
+    const same = last && last.pid === s.pid && (last.cty || '') === (s.cty || '')
+      && (mode === 'level' || last.level === s.level);
     if (same) {
       last.subs.push(s);
       last.vOut = s;
     } else {
-      runs.push({ pid: s.pid, name: s.name, level: s.level, tStart: s.day, vIn: s, vOut: s, subs: [s] });
+      runs.push({ pid: s.pid, name: s.name, level: s.level, cty: s.cty || '', cont: s.cont || '', tStart: s.day, vIn: s, vOut: s, subs: [s] });
     }
   }
   let prevOut = null;

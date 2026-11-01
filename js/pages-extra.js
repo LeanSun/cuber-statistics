@@ -2138,7 +2138,9 @@
         ['每一次刷新记 1 份基础分：同一选手在同一条纪录线（项目×轨道×级别×属地）上第 n 次刷新按 λ<sup>n−1</sup> 递减（λ = 0.9），所以「反复刷同一条线」的边际收益越来越低。V<sub>L</sub> 是层级价值（WR 1.0 / CR 0.4 / NR 0.15），ρ<sub>s</sub> 是属地竞争密度，f<sub>L</sub> 是时代折算。',
           'Each improvement scores one base unit: the n-th refresh on the same record line (event x track x level x territory) is discounted by λ^(n-1) with λ = 0.9, so farming one line gives diminishing returns. V_L is the tier value (WR 1.0 / CR 0.4 / NR 0.15), rho_s the territorial field density, f_L the era factor.'],
         ['守得久只作乘子：守满 30 年把这一段放大到 1.5 倍（κ = 0.5），时长是加分项而非主轴；「领先幅度」仍归 M6。防刷分：一条小国 NR 的基础分约 0.15 × ρ（小国 ρ 约 0.001~0.02），即使把一条线刷到底，整个生涯的 NR 合计也压在 1 条 WR 之下 —— 实测全站纯 NR 得分最高者仅约 0.31 分，而 1 条 WR 约 0.8~1.5 分。',
-          'Holding is only a multiplier: 30 years caps the segment at 1.5x (kappa = 0.5), so duration is a bonus, not the axis; the margin still belongs to M6. Anti-farming: a small-country NR is worth roughly 0.15 x rho (rho about 0.001-0.02), so even a full career of NRs stays below one WR - the highest pure-NR score on the site is about 0.31, while one WR is about 0.8-1.5.']
+          'Holding is only a multiplier: 30 years caps the segment at 1.5x (kappa = 0.5), so duration is a bonus, not the axis; the margin still belongs to M6. Anti-farming: a small-country NR is worth roughly 0.15 x rho (rho about 0.001-0.02), so even a full career of NRs stays below one WR - the highest pure-NR score on the site is about 0.31, while one WR is about 0.8-1.5.'],
+        ['纪录按「刷新当时所代表的国家」归属（取 WCA 成绩表里的登记国，而不是选手今天的国籍）。换过代表国的选手，早年的 NR 仍记在原国家名下 —— 例如喻韬（2012YUTA01）现籍中国，他的 19 条爱尔兰国家纪录全部保留在爱尔兰。选手页会在纪录明细里标注「当时代表」。',
+          'Records belong to the country the competitor represented at the time (taken from the registered country on each WCA result, not the nationality shown on the profile today). For competitors who switched, earlier NRs stay with the original country - Tao Yu (2012YUTA01) now represents China, yet all his 19 Irish national records remain Irish. The player page tags such rows with "Represented".']
       ]
     },
     {

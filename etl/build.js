@@ -608,28 +608,28 @@ function chainCost(eid, v) {
   }
   return x;
 }
-function pushChain(scope, eid, kind, gen, dn, fy, p, iso, cont) {
+function pushChain(scope, eid, kind, gen, dn, fy, p, iso, cont, cty) {
   if (!scope) return;
   const key = scope + '\u0001' + eid + '\u0001' + kind + '\u0001' + gen;
   let arr = recChain.get(key);
   if (!arr) { arr = []; recChain.set(key, arr); }
-  arr.push({ dn: dn, fy: fy, pid: p.wcaId, name: p.name, iso: iso, country: p.country, cont: cont });
+  arr.push({ dn: dn, fy: fy, pid: p.wcaId, name: p.name, iso: iso, country: cty || p.country, cont: cont });
 }
 /* 官方标记推进（全体口径） */
-function feedRec(eid, kind, level, p, dn, fy, iso, cont) {
+function feedRec(eid, kind, level, p, dn, fy, iso, cont, cty) {
   if (level === 'WR') {
-    pushChain('W', eid, kind, '', dn, fy, p, iso, cont);
-    if (cont) pushChain('C:' + cont, eid, kind, '', dn, fy, p, iso, cont);
-    if (iso) pushChain('N:' + iso, eid, kind, '', dn, fy, p, iso, cont);
+    pushChain('W', eid, kind, '', dn, fy, p, iso, cont, cty);
+    if (cont) pushChain('C:' + cont, eid, kind, '', dn, fy, p, iso, cont, cty);
+    if (iso) pushChain('N:' + iso, eid, kind, '', dn, fy, p, iso, cont, cty);
   } else if (level === 'CR') {
-    if (cont) pushChain('C:' + cont, eid, kind, '', dn, fy, p, iso, cont);
-    if (iso) pushChain('N:' + iso, eid, kind, '', dn, fy, p, iso, cont);
+    if (cont) pushChain('C:' + cont, eid, kind, '', dn, fy, p, iso, cont, cty);
+    if (iso) pushChain('N:' + iso, eid, kind, '', dn, fy, p, iso, cont, cty);
   } else if (level === 'NR') {
-    if (iso) pushChain('N:' + iso, eid, kind, '', dn, fy, p, iso, cont);
+    if (iso) pushChain('N:' + iso, eid, kind, '', dn, fy, p, iso, cont, cty);
   }
 }
 /* 女子口径：只缓存「比已确认最好还快」的行，跨年时排序重放 */
-function offerFem(eid, kind, cost, p, dn, fy, iso, cont) {
+function offerFem(eid, kind, cost, p, dn, fy, iso, cont, cty) {
   if (cost == null) return;
   const scopes = ['W'];
   if (cont) scopes.push('C:' + cont);
@@ -640,7 +640,7 @@ function offerFem(eid, kind, cost, p, dn, fy, iso, cont) {
     if (!(cost < confirmed)) continue;
     let arr = femPend.get(key);
     if (!arr) { arr = []; femPend.set(key, arr); }
-    arr.push({ dn: dn, fy: fy, cost: cost, pid: p.wcaId, name: p.name, iso: iso, country: p.country, cont: cont });
+    arr.push({ dn: dn, fy: fy, cost: cost, pid: p.wcaId, name: p.name, iso: iso, country: cty || p.country, cont: cont });
   }
 }
 function flushFem() {
@@ -804,7 +804,13 @@ function recordLevel(v) {
 }
 const eventLastYear = {};   // event -> 有成绩的最近年份（停办项目泳道截止用）
 
-function addRecord(p, eid, type, level, value, comp, year, rr) {
+/* ★ 2026-11-02 修：纪录必须按「发生当时所代表的国家」归属。
+   WCA 导出 results.tsv 第 13 列 person_country_id 就是那场比赛登记的代表国；
+   persons.tsv 里的 country_id 只是**当前**国籍（换籍后会被改写）。
+   换籍选手（如 2012YUTA01 喻韬：爱尔兰 → 中国，或反向）的 NR 若按现国籍归属，
+   会把一整条 NR 链接到错误的国家上，连带污染 nrScale、国家纪录链与泳道图国旗。 */
+function addRecord(p, eid, type, level, value, comp, year, rr, cty) {
+  const cty0 = cty || p.country;      // 纪录发生时的代表国
   const isS = type !== 'avg';
   if (level === 'WR') { p.wr++; if (isS) p.wrS++; else p.wrA++; }
   else if (level === 'CR') { p.cr++; if (isS) p.crS++; else p.crA++; }
@@ -816,7 +822,7 @@ function addRecord(p, eid, type, level, value, comp, year, rr) {
     eb.recPerYear[year] = (eb.recPerYear[year] || 0) + 1;
   }
   /* NR 按「该国该项目参赛人数」加权：参赛人数越少的国家，拿到 NR 越容易，记分越低 */
-  const ciso = Calc.isoNorm(p.country);
+  const ciso = Calc.isoNorm(cty0);
   const ns = level === 'NR' ? nrScaleOf(eid, ciso) : 1;
   if (isS) p.nrWS += ns; else p.nrWA += ns;
   p.nrW += ns;
@@ -829,7 +835,7 @@ function addRecord(p, eid, type, level, value, comp, year, rr) {
   const O = 1.2;
   const R = Math.round(100 * ev.w * S * T * K * G * A * O * 10) / 10;
   const dn = dateNum(comp ? comp.date : (year + '-01-01')) || (year * 10000 + 101);
-  const k = recKey(eid, type, level, p.country);
+  const k = recKey(eid, type, level, cty0);
   /* ⚠ 纪录链登记（2026-10-30 修）：
      WCA 导出在 regional_*_record 里只写**最高的那一级** —— 一条既是 WR 又是 NR 的成绩
      只标 "WR"，绝不会同时标 "NR"。旧版只把日期写进「本条自己的层级链」，于是某国的 NR
@@ -839,8 +845,8 @@ function addRecord(p, eid, type, level, value, comp, year, rr) {
      正确做法：一条纪录隐含它下面所有层级，要同时登记到这些链上。 */
   if (recSeqCount < REC_SEQ_MAX) {
     const chain = [k];
-    if (level === 'WR') chain.push(recKey(eid, type, 'CR', p.country), recKey(eid, type, 'NR', p.country));
-    else if (level === 'CR') chain.push(recKey(eid, type, 'NR', p.country));
+    if (level === 'WR') chain.push(recKey(eid, type, 'CR', cty0), recKey(eid, type, 'NR', cty0));
+    else if (level === 'CR') chain.push(recKey(eid, type, 'NR', cty0));
     chain.forEach((ck) => {
       if (recSeqCount >= REC_SEQ_MAX) return;
       if (!recSeq[ck]) recSeq[ck] = [];
@@ -853,6 +859,7 @@ function addRecord(p, eid, type, level, value, comp, year, rr) {
     date: comp ? comp.date : (year + '-01-01'),
     value: fmtResult(eid, value, type),
     comp: comp ? comp.name : '', held: 0, current: false, dn: dn, k: k,
+    cty: cty0 === p.country ? undefined : cty0,   /* 仅当与当前国籍不同时才写（省体积）；M1 用 `x.cty || p.country` 兜底 */
     factors: { we: Math.round(ev.w * 100) / 100, S: Math.round(S * 100) / 100, T: T, K: K, G: Math.round(G * 1000) / 1000, A: Math.round(A * 100) / 100, O: O, z: 0, NRS: Math.round(ns * 100) / 100, natN: natEventSize[eid + '|' + ciso] || 0 },
     R: R
   });
@@ -870,6 +877,9 @@ async function processResults() {
     const year = comp ? comp.year : 2003;
     if (year > (eventLastYear[eid] || 0)) eventLastYear[eid] = year;
     const p = getPlayer(pid);
+    /* ★ 该场成绩登记的代表国（results.person_country_id）。换籍选手的每条成绩
+       都带自己当时的国家，不能拿 persons.tsv 的当前国籍一刀切。 */
+    const pcty = r.person_country_id || p.country;
     p.eventsSet.add(eid);
     if (compId) p.compsSet.add(compId);
     if (year < p.start) p.start = year;
@@ -922,32 +932,32 @@ async function processResults() {
     }
 
     const rsr = recordLevel(r.regional_single_record), rar = recordLevel(r.regional_average_record);
-    if (rsr) addRecord(p, eid, 'single', rsr, r.best, comp, year, r.regional_single_record);
-    if (rar) addRecord(p, eid, 'avg', rar, r.average, comp, year, r.regional_average_record);
+    if (rsr) addRecord(p, eid, 'single', rsr, r.best, comp, year, r.regional_single_record, pcty);
+    if (rar) addRecord(p, eid, 'avg', rar, r.average, comp, year, r.regional_average_record, pcty);
 
     /* 纪录持有者：带上 pid 与 ISO2 国码，前端才能在泳道图上做
        「列表悬停 → 高亮该选手的色块 + 显示国旗姓名」的联动。 */
     const wrDn = dateNum(comp ? comp.date : year + '-01-01');
     const wrFy = fyOfDn(wrDn);
-    if (rsr === 'WR') (wrSingleG[eid] = wrSingleG[eid] || []).push({ dn: wrDn, fy: wrFy, name: p.name, country: p.country, pid: pid, iso: Calc.isoNorm(p.country) });
-    if (rar === 'WR') (wrAvgG[eid] = wrAvgG[eid] || []).push({ dn: wrDn, fy: wrFy, name: p.name, country: p.country, pid: pid, iso: Calc.isoNorm(p.country) });
+    if (rsr === 'WR') (wrSingleG[eid] = wrSingleG[eid] || []).push({ dn: wrDn, fy: wrFy, name: p.name, country: pcty, pid: pid, iso: Calc.isoNorm(pcty) });
+    if (rar === 'WR') (wrAvgG[eid] = wrAvgG[eid] || []).push({ dn: wrDn, fy: wrFy, name: p.name, country: pcty, pid: pid, iso: Calc.isoNorm(pcty) });
 
     /* 纪录链（泳道图）：
        · 全体口径 —— 用官方标记，同时推进所属洲 / 所属国家的链（WR ⊃ CR ⊃ NR）；
        · 女子口径 —— 自己维护「历史最快女子成绩」，跨年时排序重放（见 flushFem）。 */
     {
-      const piso = Calc.isoNorm(p.country) || '';
-      const pcont = continentShort[piso] || continentShort[p.country] || '';
-      if (rsr) feedRec(eid, 'single', rsr, p, wrDn, wrFy, piso, pcont);
-      if (rar) feedRec(eid, 'avg', rar, p, wrDn, wrFy, piso, pcont);
+      const piso = Calc.isoNorm(pcty) || Calc.isoNorm(p.country) || '';
+      const pcont = continentShort[piso] || continentShort[pcty] || continentShort[p.country] || '';
+      if (rsr) feedRec(eid, 'single', rsr, p, wrDn, wrFy, piso, pcont, pcty);
+      if (rar) feedRec(eid, 'avg', rar, p, wrDn, wrFy, piso, pcont, pcty);
       const isF = String(p.gender || '').charAt(0).toLowerCase() === 'f';
       if (isF) {
         /* results.tsv 按比赛 id 排序（= 年份前缀），跨年就 flush 一次；
            万一遇到年份回退（不同版本导出偶发），也立刻 flush，避免历史顺序被打乱。 */
         if (chainYear && year !== chainYear) flushFem();
         chainYear = year;
-        offerFem(eid, 'single', chainCost(eid, r.best), p, wrDn, wrFy, piso, pcont);
-        offerFem(eid, 'avg', chainCost(eid, r.average), p, wrDn, wrFy, piso, pcont);
+        offerFem(eid, 'single', chainCost(eid, r.best), p, wrDn, wrFy, piso, pcont, pcty);
+        offerFem(eid, 'avg', chainCost(eid, r.average), p, wrDn, wrFy, piso, pcont, pcty);
       }
     }
 
@@ -1309,7 +1319,8 @@ function buildChainLanes(asOf) {
     let cur = null;
     for (let i = 0; i < arr.length; i++) {
       const e = arr[i];
-      if (!cur || cur.id !== (e.pid || null) || cur.holder !== e.name) {
+      /* 换籍也切段（2026-11-02）：理由同上，WR 链上换代表国要另起一段。 */
+      if (!cur || cur.id !== (e.pid || null) || cur.holder !== e.name || cur.country !== e.country) {
         if (cur) { cur.to = e.fy; cur.toDn = e.dn; cur.days = daysBetween(cur.fromDn, e.dn); }
         cur = {
           from: e.fy, to: stopFy, fromDn: e.dn, toDn: stopDn, holder: e.name,
@@ -1372,7 +1383,9 @@ function buildLanes(store, asOf) {
          ⚠ 2026-11-01 修：这里原先读的是 `cur.pid`，而段对象上的字段叫 `id` ——
          `undefined !== pid` 恒真，于是**每一条世界纪录刷新都被切成了独立一段**，
          同一个人连着刷新纪录时图上会出现一串同色的窄条（实测 624 个相邻对里 221 对是同一人）。 */
-      if (!cur || cur.id !== (e.pid || null) || cur.holder !== e.name) {
+      /* 换籍也切段（2026-11-02）：同一人在同一条链上改了代表国，段内国旗不能停在旧国。
+         NR/CR 链本身按国家分 key，只有 WR 链会碰到这种情况。 */
+      if (!cur || cur.id !== (e.pid || null) || cur.holder !== e.name || cur.country !== e.country) {
         if (cur) { cur.to = e.fy; cur.toDn = e.dn; cur.days = daysBetween(cur.fromDn, e.dn); }
         cur = {
           from: e.fy, to: stopFy, fromDn: e.dn, toDn: stopDn, holder: e.name, country: e.country,

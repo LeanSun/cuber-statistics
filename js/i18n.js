@@ -196,7 +196,7 @@
     'rec.level.WR': '世界纪录', 'rec.level.CR': '洲际纪录', 'rec.level.NR': '国家纪录',
     'rec.single': '单次', 'rec.average': '平均',
     'rec.date': '创于', 'rec.value': '成绩', 'rec.score': '得分', 'rec.nrScale': '国家规模系数', 'rec.natN': '该国该项目参赛人数',
-    'rec.held': '保持', 'rec.current': '保持中', 'rec.heldLongest': '最长纪录保持',
+    'rec.held': '保持', 'rec.current': '保持中', 'rec.heldLongest': '最长纪录保持', 'rec.repAt': '当时代表',
     'rec.factorNote': '乘子含义：w<sub>e</sub> 项目权重 · S<sub>e</sub>(t) 时代折减 · T<sub>τ</sub> 单次/平均权重 · K<sub>e</sub> 纪录线数补偿 · G<sub>g</sub> 层级系数 · A 破纪录幅度 · O 场合加成 · z 领先度',
 
     'pod.event': '项目', 'pod.comp': '赛事', 'pod.place': '名次', 'pod.level': '赛级',
@@ -541,7 +541,7 @@
 
     'rec.level.WR': 'World record', 'rec.level.CR': 'Continental record', 'rec.level.NR': 'National record',
     'rec.single': 'Single', 'rec.average': 'Average',
-    'rec.date': 'Set', 'rec.value': 'Result', 'rec.score': 'Score', 'rec.nrScale': 'Country-size factor', 'rec.natN': 'Competitors from that country in this event', 'rec.held': 'Held', 'rec.current': 'Holding', 'rec.heldLongest': 'Longest record held',
+    'rec.date': 'Set', 'rec.value': 'Result', 'rec.score': 'Score', 'rec.nrScale': 'Country-size factor', 'rec.natN': 'Competitors from that country in this event', 'rec.held': 'Held', 'rec.current': 'Holding', 'rec.heldLongest': 'Longest record held', 'rec.repAt': 'Represented',
     'rec.factorNote': 'Factors: w<sub>e</sub> event weight · S<sub>e</sub>(t) era discount · T<sub>τ</sub> single/average weight · K<sub>e</sub> line-count compensation · G<sub>g</sub> tier · A improvement margin · O occasion bonus · z dominance',
 
     'pod.event': 'Event', 'pod.comp': 'Competition', 'pod.place': 'Place', 'pod.level': 'Tier',

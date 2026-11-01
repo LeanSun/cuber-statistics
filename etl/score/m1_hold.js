@@ -49,16 +49,22 @@ for (const ln of R.rows.split('\n')) {
   if (!ln) continue;
   const f = ln.split('~');
   if (f.length < 4) continue;
-  nc[f[2]] = (nc[f[2]] || 0) + 1;
-  const c = CL.contOfIso(f[2]) || '??';
+  /* ★ 2026-11-02 键空间统一：roster 里是 ISO2（"IE"），data.js 里是国家全名（"Ireland"），
+     两边混用会让 ρ/f 的分子只命中一部分人。全部归一成 ISO2 后再建池，
+     与 bucket scope、who.nat 三处对齐 —— 否则「原本不在明细里的国家」（如爱尔兰）
+     会查到 0 人、ρ=0，整条 NR 链直接归零。 */
+  const isoR = CL.isoNorm(f[2]) || f[2];
+  nc[isoR] = (nc[isoR] || 0) + 1;
+  const c = CL.contOfIso(isoR) || '??';
   cc[c] = (cc[c] || 0) + 1;
-  if (+f[5]) people.push({ y: +f[5], cont: c, nat: f[2] });
+  if (+f[5]) people.push({ y: +f[5], cont: c, nat: isoR });
 }
 for (const p of P) {
-  nc[p.country] = (nc[p.country] || 0) + 1;
-  const c = CL.contOfIso(p.country) || '??';
+  const iso = CL.isoNorm(p.country) || p.country;
+  nc[iso] = (nc[iso] || 0) + 1;
+  const c = CL.contOfIso(iso) || '??';
   cc[c] = (cc[c] || 0) + 1;
-  if (p.start) people.push({ y: p.start, cont: c, nat: p.country });
+  if (p.start) people.push({ y: p.start, cont: c, nat: iso });
 }
 const ctx = M1.makeContext({ contCount: cc, natCount: nc, total: R.total });
 const pool = M1.makeScopePool(people);
@@ -162,15 +168,22 @@ for (const p of P) for (const x of p.records || []) {
 /* ── 1. 分桶 ── */
 const buckets = {};
 let totalRec = 0;
+let nCrossNat = 0;      // 纪录归属国 ≠ 当前国籍的记录条数（诊断用）
 for (const p of P) {
-  const cont = CL.contOfIso(p.country) || '??';
+  const natNow = CL.isoNorm(p.country) || p.country;
+  const contNow = CL.contOfIso(natNow) || '??';
   for (const x of p.records || []) {
     if (!x.date || !x.ev || !x.type || !x.level) continue;
     totalRec++;
-    const scope = x.level === 'WR' ? 'WW' : (x.level === 'CR' ? cont : p.country);
+    /* 该条纪录发生时的代表国（build.js 从 results.person_country_id 写入）；
+       老数据没有 cty 字段时退回当前国籍。 */
+    const cty = CL.isoNorm(x.cty || p.country) || p.country;   // 统一 ISO2，与池子键空间一致
+    if (cty !== natNow) nCrossNat++;
+    const cont = x.cty ? (CL.contOfIso(cty) || contNow) : contNow;
+    const scope = x.level === 'WR' ? 'WW' : (x.level === 'CR' ? cont : cty);
     const k = x.ev + '|' + x.type + '|' + x.level + '|' + scope;
     (buckets[k] = buckets[k] || { ev: x.ev, type: x.type, level: x.level, scope, subs: [] })
-      .subs.push({ pid: p.id, name: p.name, day: RN.dayOf(x.date), date: x.date, value: x.value, held: x.held || 0 });
+      .subs.push({ pid: p.id, name: p.name, day: RN.dayOf(x.date), date: x.date, value: x.value, held: x.held || 0, cty, cont });
   }
 }
 
@@ -207,6 +220,22 @@ const SEL0 = GRID.findIndex((g) => Math.abs(g.kap - KAPPA) < 1e-9 && Math.abs(g.
 const SEL = SEL0 < 0 ? 4 : SEL0;   // 不在网格里就退回 (0.50, 0.90)
 const byWho = new Map();
 const whoOf = new Map();
+/* ★ 2026-11-02 修：纪录按「发生当时代表国」归属。
+   records[].cty 由 build.js 从 results.person_country_id 写入，是那场比赛的登记国家；
+   p.country 只是当前国籍。换籍选手（如 2012YUTA01 喻韬 爱尔兰↔中国）的 NR/CR
+   必须挂到当时的国家阶梯上，否则一条 NR 链会整体漂移到另一个国家。 */
+const whoCty = new Map();      // pid|cty → who（按国家分身的时代折算身份）
+function whoAt(pid, cty) {
+  const base = whoOf.get(pid);
+  if (!cty || (base && cty === base.country)) return base;
+  const k = pid + '|' + cty;
+  let w = whoCty.get(k);
+  if (!w) {
+    w = { id: pid, name: base ? base.name : pid, country: cty, cont: CL.contOfIso(cty) || '??' };
+    whoCty.set(k, w);
+  }
+  return w;
+}
 for (const p of P) {
   if (!(p.records || []).length) continue;
   whoOf.set(p.id, { id: p.id, name: p.name, country: p.country, cont: CL.contOfIso(p.country) || '??' });
@@ -226,7 +255,7 @@ for (const k of Object.keys(LAD)) {
   const w = RN.EV_WEIGHT_V2[b.ev] == null ? 1 : RN.EV_WEIGHT_V2[b.ev];
   const gL = M1.G[b.level] == null ? 1 : M1.G[b.level];
   for (const r of b.runs) {
-    const who = whoOf.get(r.pid);
+    const who = whoAt(r.pid, r.cty);
     const acc = byWho.get(r.pid);
     if (!who || !acc) continue;
     const c = RN.runCredit(r, { capDays: RN.CAP_DAYS_V2, snapshotDay: RN.SNAPSHOT_DAY });
