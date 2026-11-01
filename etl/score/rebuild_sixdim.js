@@ -12,6 +12,9 @@
  *
  * 前置：各维度的事实表已是最新（M1_facts / M2_facts / M3_facts / M4_facts / M5_facts / M6_by_record）。
  *       本脚本只重建「六维合成 → 站点交付表 → 前端包」，不重算任何维度。
+ *       ⚠ 换籍时间线 nat_seg.tsv 也属于前置：WCA 导出换了一版就要先跑
+ *         `node etl/score/nat_seg.js`（约 10 秒，扫一遍 results.tsv），否则国家总分
+ *         会把新出现的换籍选手按今天的国籍全额计入（本脚本不会替你重扫）。
  *
  * 用法：
  *   node --max-old-space-size=8192 etl/score/rebuild_sixdim.js

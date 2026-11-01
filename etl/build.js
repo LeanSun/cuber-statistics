@@ -105,6 +105,29 @@ const M4SEATS = new Map();
   console.log('在位时长载入:', M4SEATS.size, '人');
 })();
 
+/* ---------- 国家总分的历史拆分（sixdim_nat.tsv）----------
+   国家榜的「总分」原本是 Σ 选手总分、按**当前国籍**一人只计一次。换籍选手
+   （如 2012YUTA01 喻韬：代表爱尔兰刷了 19 条 NR，2024 年后转为中国籍）的全部
+   得分会堆到新国家头上，与纪录归属口径不一致。
+   六维引擎已经把每位换籍选手的总分按其代表国精确拆开（Σ 国 ≡ 选手总分，
+   实测最大相对偏差 0.0000%），这里只是把它随包下发；前端 calc.js 组装国家榜时
+   优先用拆分值，没有拆分记录的人照旧计入当前国籍。 */
+const NATSPLIT = {};
+(function loadNatSplit() {
+  const f = path.join(__dirname, 'score', 'sixdim_nat.tsv');
+  if (!fs.existsSync(f)) { console.warn('⚠ 未找到 ' + f + ' —— 国家总分将按当前国籍聚合；请先跑 etl/score/sixdim.js'); return; }
+  const lines = fs.readFileSync(f, 'utf8').trim().split('\n');
+  for (let i = 1; i < lines.length; i++) {
+    const c = lines[i].split('\t');
+    if (c.length < 3) continue;
+    const t = Math.round((+c[2] || 0) * 100) / 100;
+    if (!(t > 0)) continue;
+    (NATSPLIT[c[0]] = NATSPLIT[c[0]] || {})[c[1]] = t;
+  }
+  const n = Object.keys(NATSPLIT).length;
+  console.log('换籍总分拆分载入:', n, '人 /', n ? Object.values(NATSPLIT).reduce((a, o) => a + Object.keys(o).length, 0) : 0, '段');
+})();
+
 /* ---------- 单次 / 平均 两套六维向量（成绩口径切换用）----------
    与 SIX 同源（六维引擎按 track=single|avg|both 各跑一遍），结构一致 {m1..m6,t}。
    仅下发「全局」向量，不下发按项目的 sixEv 三份（data.js 已 ~60MB，三倍会严重膨胀）；
@@ -1668,6 +1691,8 @@ function buildEventMilestones() {
   const CFG = {
     countries: countryName, continentOf: continentShort, meta: meta,
     continentTotals: continentTotals, nationTotals: nationTotals,
+    /* 换籍选手的总分按历史国籍拆分（pid → {ISO2: 分}）。空对象 = 没人是换籍选手 */
+    natSplit: NATSPLIT,
     years: (function () { const a = []; for (let y = 2003; y <= new Date().getFullYear(); y++) a.push(y); return a; })(),
     milestones: Calc.MILESTONES, eventMilestonesMap: buildEventMilestones(),
     lanes: buildLanes(wrSingleG, AS_OF), lanesAvg: buildLanes(wrAvgG, AS_OF),

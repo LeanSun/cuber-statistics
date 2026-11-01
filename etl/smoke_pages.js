@@ -421,6 +421,34 @@ ok(poolCN.length <= M.ranked.length, '地区筛选后候选池不增：' + poolC
 const boardCN = M.board('rec', 'wrCount', 12, '', poolCN);
 ok(boardCN.every(r => poolCN.some(x => x.id === r.p.id)), '榜单选手全部来自筛选后的池');
 
+console.log('== 国家实力榜：总分按历史国籍拆分 ==');
+const hN = tryRender('国家实力榜', () => P.topics(Object.assign({}, base, { topicTab: 'other', otherTab: 'nation' })));
+ok(hN.indexOf('data-nation=') >= 0, '国家榜渲染 + 指标切换（总分/人均/最强）');
+const splitNote = t('top.nation.split') || '';
+ok(splitNote.length > 12 && hN.indexOf(splitNote.slice(0, 12)) >= 0, '国家榜有「按历史国籍拆分」的说明');
+/* 不变量：各国总分之和 ≡ 全站选手总分之和。
+   拆分是按选手把分**分给**若干国家（拆分值再按 p.overall 缩放），所以既不能丢分也不能造分；
+   一旦有人被漏计或重复计，这个等式立刻破。允许每国 round(…,0) 的累积误差。 */
+const sumNat = M.nations.reduce((a, n) => a + n.total, 0);
+const sumP = M.ranked.reduce((a, p) => a + p.overall, 0);
+const gap = Math.abs(sumNat - sumP) / Math.max(1, sumP);
+ok(gap < 0.001, '各国总分之和 ≡ 选手总分之和（' + Math.round(sumNat) + ' vs ' + Math.round(sumP) +
+  '，相对差 ' + (gap * 100).toFixed(3) + '%）');
+const splitIds = Object.keys(M.natSplit || {});
+if (splitIds.length) {
+  const pid = splitIds.filter((id) => (M.natSplit[id], Object.keys(M.natSplit[id]).length > 1))[0] || splitIds[0];
+  const parts = M.natSplit[pid];
+  console.log('   换籍样例：', pid, Object.keys(parts).map((k) => k + '=' + parts[k]).join(' / '));
+  ok(Object.keys(parts).every((k) => M.nations.some((n) => n.iso === k)),
+    '换籍选手的每个代表国都出现在国家榜里');
+  const sumParts = Object.keys(parts).reduce((a, k) => a + parts[k], 0);
+  const pl = M.ranked.filter((p) => p.id === pid)[0];
+  ok(!pl || Math.abs(sumParts - pl.overall) < 0.05,
+    '拆分之和 = 该选手总分（' + sumParts.toFixed(2) + ' vs ' + (pl ? pl.overall : '—') + '）');
+} else {
+  ok(true, '样本数据无换籍选手，跳过拆分校验');
+}
+
 console.log('== 评分原理 ==');
 const hB = tryRender('评分原理', () => P.model(Object.assign({}, base, { mdSection: 'overview' })));
 ok(hB.indexOf('data-cmod') >= 0, '模块配色自定义控件存在');

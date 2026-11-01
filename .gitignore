@@ -38,6 +38,13 @@ WCA_export*
 # 例外：在位时长表（m4_dominance.js 产物，约 1.5k 行 / 220KB；build.js 用它填「在位月数」，
 # 不入库的话 GitHub Actions 重建 js/data.js 时拿不到，选手页该字段又会全变 0）
 !etl/score/M4_seats.tsv
+
+# 例外：换籍时间线（nat_seg.js 产出，几百行）与「国家总分按历史国籍拆分」表
+# （sixdim.js 产出，几百行）。两张都是六维交付链的输入：前者决定每条得分算哪个国家，
+# 后者被 build.js 读进 cfg.natSplit 给前端组国家榜。不入库的话国家榜会静默退回
+# 「按当前国籍一人只计一次」，换籍选手的分数全部堆到新国家身上。
+!etl/score/nat_seg.tsv
+!etl/score/sixdim_nat.tsv
 !etl/score/*.md
 
 # Python

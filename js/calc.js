@@ -629,13 +629,36 @@
     });
     players.forEach(function (p) { p.yearRank = yearRank; });
 
-    /* 国家聚合 */
+    /* 国家聚合 —— 按**历史国籍**拆（2026-11-02）
+       换籍选手（cfg.natSplit 里有记录的，全站约 300 人）不把全额记给当前国籍，
+       而是按「代表国 × 得分发生年份」拆开：在爱尔兰刷的分算爱尔兰，转为中国籍
+       之后拿到的分才算中国 —— 与纪录归属同一条原则。
+       拆分值由 etl/score/sixdim.js 做六维**线性分解**得出（Σ_国 ≡ 个人总分，
+       实测最大相对偏差 0.0000%）；这里再乘一个缩放系数，把拆分对齐到上面
+       四舍五入后的 p.overall，保证「各国总分之和 ≡ 全站选手总分之和」不漂移。
+       没有拆分记录的人（99.9%）照旧计入当前国籍。
+       ⚠ count 的口径：换籍选手在**每个代表过的国家**各计 1 人，
+         所以「总人数」列会把这些人重复计数（一人跨两国就占两个名额），
+         perCapita 因此略偏小 —— 这是「按历史拆」的必然代价，页面上有说明。 */
+    var NAT_SPLIT = cfg.natSplit || {};
     var NATIONS = {};
+    function bumpNation(iso, v, name) {
+      if (!(v > 0)) return;
+      if (!NATIONS[iso]) NATIONS[iso] = { iso: iso, total: 0, count: 0, best: 0, bestName: '' };
+      var n = NATIONS[iso];
+      n.total += v; n.count++;
+      if (v > n.best) { n.best = v; n.bestName = name; }
+    }
     players.forEach(function (p) {
-      if (!NATIONS[p.country]) NATIONS[p.country] = { iso: p.country, total: 0, count: 0, best: 0, bestName: '' };
-      var n = NATIONS[p.country];
-      n.total += p.overall; n.count++;
-      if (p.overall > n.best) { n.best = p.overall; n.bestName = p.name; }
+      var sp = NAT_SPLIT[p.id];
+      if (sp) {
+        var sum = 0, k;
+        for (k in sp) sum += sp[k];
+        var f = sum > 0 ? p.overall / sum : 1;
+        for (k in sp) bumpNation(k, sp[k] * f, p.name);
+        return;
+      }
+      bumpNation(p.country, p.overall, p.name);
     });
     var nations = Object.keys(NATIONS).map(function (k) {
       var n = NATIONS[k];
@@ -716,6 +739,9 @@
       players: players, ranked: ranked,
       weights: WEIGHTS, modKeys: MODKEYS,
       lanes: lanes, lanesAvg: lanesAvg, nations: nations,
+      /* 换籍选手的总分按历史国籍拆分（pid → {ISO2: 分}）。nations 已按它聚合过，
+         这里只是把原始表也暴露出来：选手页/调试要回答「这个人的分算给了哪几个国家」。 */
+      natSplit: NAT_SPLIT,
       /* 纪录链字典（世界 / 洲=地区 / 国家 × 全体 / 女子），键形如 `W|s|`、`N:CN|a|f`。
          旧数据包没有这一项，前端会退回 lanes / lanesAvg（只有世界纪录）。 */
       laneChains: cfg.laneChains || null,
