@@ -13,7 +13,7 @@ on:
       slim_max:
         description: 'Players emitted into js/data.js (the rest go to the lazy roster file)'
         required: false
-        default: '60000'
+        default: '20000'
   # 数据管道代码变更时自动重建（不含 js/data.js 本身，避免机器人提交触发循环）
   push:
     branches: [main]
