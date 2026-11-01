@@ -1464,6 +1464,55 @@
       }
       return { id: id, name: '', iso: '', cname: '', flag: '', color: '#cfcfcf', value: 0, rank: TOP + 1, no: TOP + 1 };
     });
+    /* ★ 2026-11-01 第七轮修复「姓名/国旗比条形先到位、两者不同步」：
+       ECharts 自定义系列的补间只作用于 rect 的 shape（y/宽/高），
+       而姓名、国旗、分数这些 text 元素的 style.y **不参与补间** ——
+       实测（逐帧采样 #tlChart 的 zrender 元素）：名次一变，
+       姓名 y 立刻跳到新槽位（315→286.5），条形中心还在 315，再用约 60ms 缓动追上去。
+       单纯加大动画时长只会让「条追人」的错位更久，治不了根。
+       改法：不再依赖 ECharts 的元素补间，而是**自己插值「显示名次/显示分数」**——
+       每帧把上一帧的显示值往目标值靠一点，条形和姓名都用同一个插值结果绘制，
+       于是二者从定义上就不可能不同步。播放时 drawTimeline 本就逐帧调用，
+       所以每帧只走一小步，观感是连续平移；非播放状态（拖时间轴 / 切筛选）
+       由下面那段 rAF 抖动自己补几帧，补到收敛为止。 */
+    if (box) {
+      const prev = (box.__raceDisp && box.__raceDisp.sig === raceSig) ? box.__raceDisp.v : null;
+      const next = {};
+      let moving = false;
+      rows.forEach(function (r) {
+        if (!r.id) return;
+        const p = prev && prev[r.id];
+        if (!p) { next[r.id] = { r: r.rank, v: +r.value || 0 }; return; }   /* 首次出现：直接就位 */
+        /* 0.58：约 5~6 帧收敛（60fps 下 ≈ 90ms），与原来 60~100ms 的观感相当 */
+        const k = 0.58;
+        let nr = p.r + (r.rank - p.r) * k;
+        let nv = p.v + ((+r.value || 0) - p.v) * k;
+        const doneR = Math.abs(nr - r.rank) < 0.004;
+        const doneV = Math.abs(nv - (+r.value || 0)) < 0.05;
+        if (!doneR || !doneV) moving = true;
+        if (doneR) nr = r.rank;
+        if (doneV) nv = +r.value || 0;
+        next[r.id] = { r: nr, v: nv };
+      });
+      rows.forEach(function (r) {
+        const d = next[r.id];
+        if (!d) return;
+        /* no 保留真实名次（tooltip「第 N 名」照旧），只把「画在哪一行」换成插值后的 rank */
+        r.rank = d.r;
+        r.value = d.v;
+      });
+      box.__raceDisp = { sig: raceSig, v: next };
+      /* 非播放状态：自己补帧，把插值走到收敛（播放时由主循环逐帧驱动，不必再补） */
+      if (moving && !tlIsPlaying() && !box.__raceEaseRaf) {
+        const step = function () {
+          box.__raceEaseRaf = 0;
+          /* 页面重渲染后旧容器已脱离文档：直接收手，不往幽灵节点里画 */
+          if (box.isConnected === false) return;
+          try { P.drawTimeline(box); } catch (e) { /* 容器已消失就安静退出 */ }
+        };
+        box.__raceEaseRaf = (window.requestAnimationFrame ? window.requestAnimationFrame(step) : setTimeout(step, 16));
+      }
+    }
     /* 登顶时长徽标：记住本帧的榜首（画到条形上的第 1 名），并确保「榜首时间线」已经算过。
        徽标本身由 drawTimeline 在渲染后调用 P.tlCrownPaint 更新，这里只负责把数据挂到容器上。 */
     if (box) {

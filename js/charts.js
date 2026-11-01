@@ -393,6 +393,11 @@
       if (x > lead1) { lead2 = lead1; lead1 = x; } else if (x > lead2) { lead2 = x; }
     });
     return Object.assign(base({ stagger: 0, duration: dur }), {
+      /* ★ 关掉 ECharts 自己的补间：名次与分数的平滑由调用方（pages-extra）逐帧插值提供，
+         条形 / 姓名 / 国旗 / 分数都按同一个插值值绘制，所以天然同步。
+         若保留这里的元素补间，rect 的 shape 会被 ECharts 再缓动一次（text 却不会），
+         「姓名先跳、条形再追」的错位会重新出现。 */
+      animation: false,
       /* 上下留白 30：Y 轴范围 1..n 时，第 1 名 / 第 n 名的条形中心正好贴在
          网格上下边界，条形高约 24px，留白不够上半条 / 下半条会被切掉。
          同时 series.clip 关掉（见下），双保险：就算有极端行高也不会被裁。 */
@@ -410,26 +415,38 @@
         let xm = 1;
         data.forEach(function (d) { const x = Math.max(0, +d.value || 0); if (x > xm) xm = x; });
         xm = xm * 1.05;
+        /* 刻度文字：千分位、取整；**最右端那个「最大值」刻度不画**（用户 2026-11-01 要求）——
+           它是 最大值×1.05 的裸值（如 3,791.4343393500008），既不是整刻度也没人看，
+           贴在右上角还会压着条形。用 v 与 xm 的差判等，避免浮点误差漏判。 */
+        function fmtTick(v) {
+          if (Math.abs(v - xm) < Math.max(1e-6, xm * 1e-9)) return '';
+          const r = Math.round(v);
+          return String(r).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        }
         return [
-          Object.assign({ type: 'value', min: 0, max: xm }, axisCommon(), { splitLine: { lineStyle: { color: T.border, type: 'dashed' } } }),
+          Object.assign({ type: 'value', min: 0, max: xm }, axisCommon(), {
+            axisLabel: { color: T.text3, fontSize: 11, formatter: fmtTick },
+            splitLine: { lineStyle: { color: T.border, type: 'dashed' } }
+          }),
           Object.assign({ type: 'value', min: 0, max: xm, position: 'top', gridIndex: 0 }, axisCommon(), {
-            axisLabel: { color: T.text3, fontSize: 10.5 },
+            axisLabel: { color: T.text3, fontSize: 10.5, formatter: fmtTick },
             axisLine: { show: true, lineStyle: { color: T.border, width: 1 } },
             axisTick: { show: false },
             splitLine: { show: false }
           })
         ];
       })(),
-      /* 轴范围 1..n（原来是 0.5..n+0.5）：条形画在整数名次上，而刻度原来落在
-         0.5/1.5/2.5… 上，两者错开半格 —— 这就是「序号与行对不齐」的根因。
-         现在刻度值与名次 1:1 对应，序号与条形中心严格同一条水平线。
-         序号文字去掉 '#'（用户要求 1、2、3）。 */
+      /* Y 轴范围 0..n+1：刻度落在整数名次上（条形中心与刻度严格同线）。
+         2026-11-01 用户反馈「顶部分数轴被第 1 名的条压住」——
+         原来 min=1，第 1 名条形中心正好贴着网格顶边，上半条探进顶部刻度的位置。
+         现在上方多留一个空格（min=0，v=0 不画标签），第 1 名整体下移约一格，
+         顶部分数轴与条形彻底分开；下方仍保留 n+1 的缓冲格给 x 轴刻度。 */
       yAxis: Object.assign(axisCommon(), {
-        type: 'value', inverse: true, min: 1, max: n + 1, interval: 1,
+        type: 'value', inverse: true, min: 0, max: n + 1, interval: 1,
         axisLabel: {
           color: T.text3, fontSize: 11,
-          /* 第 n+1 格只是留给末名的「缓冲行」，不画序号 */
-          formatter: function (v) { return v > n ? '' : String(Math.round(v)); }
+          /* 0 与 n+1 两格只是上下缓冲，不画序号 */
+          formatter: function (v) { return (v < 1 || v > n) ? '' : String(Math.round(v)); }
         },
         axisLine: { lineStyle: { color: T.border }, show: false },
         axisTick: { show: false },
