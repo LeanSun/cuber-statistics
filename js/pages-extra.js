@@ -338,7 +338,8 @@
     h += '<div class="chart-box tl-chart-link" id="tlChart" style="height:' + chH + 'px" data-view="' + view + '" data-mode="' + mode +
       '" data-fy="' + fy + '" data-metric="' + metric + '" data-lane="' + state.tlLane + '" data-smooth="' + (state.tlSmooth ? 1 : 0) +
       '" data-region="' + geoRegion + '" data-country="' + geoCountry + '" data-ev="' + evsBox.join(',') +
-      '" data-gender="' + (state.gender || 'all') + '" data-type="' + (state.recType || 'all') + '" data-dim="' + (state.tlDim || '') + '"></div>';
+      '" data-gender="' + (state.gender || 'all') + '" data-type="' + (state.recType || 'all') + '" data-dim="' + (state.tlDim || '') +
+      '" data-y0="' + (state.y0 || '') + '" data-y1="' + (state.y1 || '') + '" data-retired="' + (state.retired ? 1 : 0) + '"></div>';
 
     /* 纪录持有图：按需求不再在图表下方罗列持有者清单（原 laneList /「纪录内容」），
        姓名 / 国旗 / 起止时间改为鼠标移到色块上时跟随光标显示（见 Charts.lanes 的 tooltip）。 */
@@ -398,23 +399,27 @@
     h += '</div>';
     }
 
-    /* 自定义重大事件：三个输入框（项目 / 时间 / 事件内容） */
-    h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('tl.msEdit')) + '</h2></div>';
-    h += '<p class="tiny muted" style="margin-bottom:8px">' + esc(t('tl.msGuide')) + '</p>';
-    h += '<div class="ms-form">';
-    h += '<label class="ms-field"><span>' + esc(t('tl.msEv')) + '</span><select id="msEv">' +
-      '<option value="">' + esc(t('tl.msEvAll')) + '</option>' +
-      M.events.map(function (e) { return '<option value="' + e.id + '">' + esc(evName(e)) + '</option>'; }).join('') +
-      '</select></label>';
-    h += '<label class="ms-field"><span>' + esc(t('tl.msTime')) + '</span><input type="text" id="msYear" inputmode="numeric" placeholder="2019" maxlength="10"></label>';
-    h += '<label class="ms-field ms-grow"><span>' + esc(t('tl.msText')) + '</span><input type="text" id="msText" placeholder="' + esc(t('tl.msText')) + '" maxlength="120"></label>';
-    h += '<button class="btn btn-primary" data-msimport id="msImportBtn">' + esc(t('tl.msAdd')) + '</button>';
-    h += '</div>';
-    h += '<input type="hidden" id="msEditKey">';
-    h += '<div class="row" style="margin-top:8px;gap:8px;flex-wrap:wrap">';
-    h += '<span class="tiny muted" id="msEditHint"></span>';
-    h += '<button class="btn" data-msreset>' + esc(t('tl.msReset')) + '</button>';
-    h += '</div></div>';
+    /* 自定义重大事件：三个输入框（项目 / 时间 / 事件内容）
+       ⚠ 2026-11-01 用户要求：这块**只在分数竞速图出现**，纪录持有图下方不再显示
+       （纪录持有图与重大事件无关，表单留在那里只是噪声）。 */
+    if (view !== 'lane') {
+      h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('tl.msEdit')) + '</h2></div>';
+      h += '<p class="tiny muted" style="margin-bottom:8px">' + esc(t('tl.msGuide')) + '</p>';
+      h += '<div class="ms-form">';
+      h += '<label class="ms-field"><span>' + esc(t('tl.msEv')) + '</span><select id="msEv">' +
+        '<option value="">' + esc(t('tl.msEvAll')) + '</option>' +
+        M.events.map(function (e) { return '<option value="' + e.id + '">' + esc(evName(e)) + '</option>'; }).join('') +
+        '</select></label>';
+      h += '<label class="ms-field"><span>' + esc(t('tl.msTime')) + '</span><input type="text" id="msYear" inputmode="numeric" placeholder="2019" maxlength="10"></label>';
+      h += '<label class="ms-field ms-grow"><span>' + esc(t('tl.msText')) + '</span><input type="text" id="msText" placeholder="' + esc(t('tl.msText')) + '" maxlength="120"></label>';
+      h += '<button class="btn btn-primary" data-msimport id="msImportBtn">' + esc(t('tl.msAdd')) + '</button>';
+      h += '</div>';
+      h += '<input type="hidden" id="msEditKey">';
+      h += '<div class="row" style="margin-top:8px;gap:8px;flex-wrap:wrap">';
+      h += '<span class="tiny muted" id="msEditHint"></span>';
+      h += '<button class="btn" data-msreset>' + esc(t('tl.msReset')) + '</button>';
+      h += '</div></div>';
+    }
     return h;
   };
 
@@ -533,7 +538,8 @@
       opt.backgroundColor = 'transparent';
       window.Charts.resolveDeep ? window.Charts.resolveDeep(opt) : (function () { })(opt);
       /* 结构（视图 / 模式 / 维度 / 单均 / 项目 / 性别）不变时做增量合并，名次与分数丝滑过渡 */
-      const sig = view + '|' + mode + '|' + metric + '|' + lane + '|' + evs.join('+') + '|' + gender + '|' + rtype + '|' + region + '|' + country + '|' + (smooth ? 1 : 0) + '|' + dim;
+      const sig = view + '|' + mode + '|' + metric + '|' + lane + '|' + evs.join('+') + '|' + gender + '|' + rtype + '|' + region + '|' + country + '|' + (smooth ? 1 : 0) + '|' + dim +
+        '|' + (box.getAttribute('data-y0') || '') + '|' + (box.getAttribute('data-y1') || '') + '|' + (box.getAttribute('data-retired') || '0');
       const sameStruct = box.__tlSig === sig;
       /* 播放时每帧都在重画，换位过渡必须短于帧间隔的几倍，否则名次变化会「追不上」
          当前帧、看起来一顿一顿。动画时长滑杆直接决定这段补间的快慢。 */
@@ -837,12 +843,82 @@
          不依赖数据里 events 数组的偶然顺序，保证纪录持有图的项目排列符合用户预期。 */
       const WCA_ORDER = ['333', '222', '444', '555', '666', '777', '333oh', '333bf', '444bf', '555bf', '333mbf', '333fm', 'clock', 'minx', 'pyram', 'skewb', 'sq1', '333ft', 'magic', 'mmagic', '333mbo'];
       function orderOf(ev) { const i = WCA_ORDER.indexOf(ev); return i < 0 ? 999 : i; }
-      const lanes = ((lane === 'avg' ? M.lanesAvg : M.lanes) || []).slice()
+      /* ★ 筛选联动（2026-11-01 用户反馈「上方的筛选对纪录持有图无效」）：
+         之前这里直接拿 M.lanes / M.lanesAvg 全量画，项目、国家、性别、年份区间、
+         停办项目、成绩口径六项一律无效。现在逐项接上：
+           · 成绩口径：单次 / 平均各有一条世界纪录链（总计对「世界纪录」无意义，退回单次）；
+           · 项目：只保留所选项目（多选 / 预设分组 / 单个项目都会落到 evs）；
+           · 停办项目：按筛选条的「不计入 / 包含」开关决定是否出现 magic 等已停办项目；
+           · 年份区间：段与区间相交才画，并把首尾裁到区间边界；
+           · 国家 / 大洲 / 性别：只保留这些选手持有的段（其余留白即「无人持有」）。 */
+      const retiredIn = !!(box && box.getAttribute('data-retired') === '1');
+      const yFrom = parseInt((box && box.getAttribute('data-y0')) || '', 10) || 0;
+      const yTo = parseInt((box && box.getAttribute('data-y1')) || '', 10) || 0;
+      const useAvg = rtype === 'avg' || (rtype !== 'single' && lane === 'avg');
+      const gNeed = (gender && gender !== 'all') ? String(gender).toUpperCase() : '';
+      const personFiltered = !!(country || region || gNeed);
+      function holderOf(pid) {
+        if (!pid) return null;
+        if (!M.__byId) { M.__byId = {}; (M.players || []).forEach(function (p) { M.__byId[p.id] = p; }); }
+        return M.__byId[pid] || null;
+      }
+      function personOk(sg) {
+        /* 段的 country 是 WCA 原始国名（"Sweden"），而筛选条与 M.continentOf 用的都是 ISO2，
+           所以统一用段里的 iso 字段比对。 */
+        const iso = String(sg.iso || '').toUpperCase();
+        if (country && iso !== String(country).toUpperCase()) return false;
+        if (region) {
+          const c = M.continentOf[iso];
+          if (M.continents[region]) { if (c !== region) return false; }
+          else if (M.regionOf[c] !== region) return false;
+        }
+        if (gNeed) {
+          const p = holderOf(sg.id);
+          if (!p || String(p.gender || '').charAt(0).toUpperCase() !== gNeed) return false;
+        }
+        return true;
+      }
+      function clipSeg(sg) {
+        const a = +sg.from, b = +sg.to;
+        if (!isFinite(a) || !isFinite(b)) return null;
+        if (yFrom && b < yFrom) return null;
+        if (yTo && a > yTo) return null;
+        const f = yFrom ? Math.max(a, yFrom) : a;
+        const e = yTo ? Math.min(b, yTo) : b;
+        return e > f ? { f: f, e: e } : null;
+      }
+      const anyFilter = personFiltered || !!yFrom || !!yTo;
+      const lanes = ((useAvg ? M.lanesAvg : M.lanes) || []).slice()
+        .filter(function (L) { return (!evs.length || evs.indexOf(L.ev) >= 0) && (retiredIn || !L.retired); })
         .sort(function (a, b) { return orderOf(a.ev) - orderOf(b.ev); })
         .map(function (L) {
-          return { ev: L.ev, label: evName(M.EV[L.ev] || { zh: L.zh, en: L.en }), segs: L.segs };
+          const segs = [];
+          (L.segs || []).forEach(function (sg) {
+            if (personFiltered && !personOk(sg)) return;
+            const c = clipSeg(sg);
+            if (!c) return;
+            segs.push({
+              from: c.f, to: c.e, holder: sg.holder, country: sg.country, iso: sg.iso,
+              id: sg.id, days: sg.days, fromDn: sg.fromDn, toDn: sg.toDn
+            });
+          });
+          return { ev: L.ev, label: evName(M.EV[L.ev] || { zh: L.zh, en: L.en }), segs: segs };
+        })
+        .filter(function (L) { return L.segs.length > 0 || !anyFilter; });
+      /* x 轴范围：有年份筛选就贴合筛选，否则用数据真实跨度（原来写死 2004–2026，
+         会把 2003 年起的头几段截在画布外）。 */
+      let ax0 = yFrom || 0, ax1 = yTo || 0;
+      if (!ax0 || !ax1) {
+        let mn = Infinity, mx = -Infinity;
+        lanes.forEach(function (L) {
+          L.segs.forEach(function (sg) { if (sg.from < mn) mn = sg.from; if (sg.to > mx) mx = sg.to; });
         });
-      const opt = window.Charts.lanes(lanes, { y0: 2004, y1: 2026, laneH: 34 });
+        if (isFinite(mn)) { if (!ax0) ax0 = Math.max(2003, Math.floor(mn)); if (!ax1) ax1 = Math.ceil(mx); }
+      }
+      const opt = window.Charts.lanes(lanes, {
+        y0: ax0 || 2004, y1: ax1 || 2026, laneH: 34,
+        empty: t('tl.laneEmpty')
+      });
       /* 纪录持有图不再画重大事件的竖向标注线（用户反馈不好看）；重大事件仅在「分数竞速图」中以弹入/淡出动效呈现 */
       return opt;
     }

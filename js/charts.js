@@ -536,17 +536,144 @@
     return _evUri[ck];
   }
 
+  /* ---------- 泳道持有者配色：一人一色 + 相邻不同 ---------- */
+  /* 以前泳道颜色取「持有者国籍色」，同国的两名选手前后接力时两段同色，
+     视觉上像是一个人一直持有（用户 2026-11-01 明确要求改掉）。
+     现在：
+       · 基色 = 按 pid 稳定散列落到 60 档调色板（黄金角 137.508° 排色相 × 3 档明度），
+         同一名选手在任何泳道、任何筛选下都是同一个颜色；
+       · 再逐泳道按时间顺序走一遍，若本段与上一段（或下一段）撞同一档，
+         就地换到下一个未占用的档位并写回色表，保证相邻两段永不撞色；
+       · 色表每次调用重建，输入顺序固定（泳道序 + 时间序），结果可复现。 */
+  const LANE_PAL_N = 60;
+  let _lanePal = null;
+  function hslHex(h, s, l) {
+    const c = (1 - Math.abs(2 * l - 1)) * s;
+    const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+    const m = l - c / 2;
+    let r = 0, g = 0, b = 0;
+    if (h < 60) { r = c; g = x; }
+    else if (h < 120) { r = x; g = c; }
+    else if (h < 180) { g = c; b = x; }
+    else if (h < 240) { g = x; b = c; }
+    else if (h < 300) { r = x; b = c; }
+    else { r = c; b = x; }
+    const f = function (v) {
+      const n = Math.round((v + m) * 255);
+      return ('0' + Math.max(0, Math.min(255, n)).toString(16)).slice(-2);
+    };
+    return '#' + f(r) + f(g) + f(b);
+  }
+  function lanePalette() {
+    if (_lanePal) return _lanePal;
+    const out = [];
+    for (let k = 0; k < LANE_PAL_N; k++) {
+      out.push(hslHex((k * 137.508) % 360, 0.62, [0.56, 0.48, 0.61][k % 3]));
+    }
+    _lanePal = out;
+    return out;
+  }
+  /* 相对亮度（sRGB 线性化后按 Rec.709 加权）：用来决定这段色块上的姓名用白字还是深色字。
+     只按颜色明暗选字色，就不必为了白字可读而把所有色块都压暗。 */
+  function colorLum(hex) {
+    let s = String(hex || '').replace('#', '');
+    if (s.length === 3) s = s[0] + s[0] + s[1] + s[1] + s[2] + s[2];
+    if (s.length !== 6) return 0.5;
+    const ch = function (i) {
+      const v = parseInt(s.substr(i, 2), 16) / 255;
+      return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    };
+    return 0.2126 * ch(0) + 0.7152 * ch(2) + 0.0722 * ch(4);
+  }
+  /* FNV-1a：同一 pid 永远落到同一档，跟筛选 / 泳道顺序无关 */
+  function holderHash(key) {
+    let h = 2166136261;
+    const s = String(key || '');
+    for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return h >>> 0;
+  }
+  /* 两档颜色是否「看起来太像」：同色算像；同一明度档且色相相差 < 40° 也算像
+     （不同明度档已经靠深浅拉开了，一定分得清）。 */
+  function palClash(a, b) {
+    if (a === b) return true;
+    if (a % 3 !== b % 3) return false;
+    const ha = (a * 137.508) % 360, hb = (b * 137.508) % 360;
+    let d = Math.abs(ha - hb);
+    if (d > 180) d = 360 - d;
+    return d < 40;
+  }
+  /* 一人一色的求解：先按 pid 散列给每个选手一个基色，再在「相邻关系图」上做两轮贪心改色，
+     把「和邻居撞色 / 太像」的选手挪到最近的空闲档位。这样同时满足两个约束：
+       · 同一名选手在所有泳道里都是同一个颜色（色表按选手键保存，不是按段）；
+       · 同一泳道内相邻两段（不同选手）颜色明显不同（最多 60 档，每人邻居数 ≤ 2，一定解得开）。
+     输入顺序固定（泳道序 + 时间序），同样数据每次渲染结果完全一致。 */
+  function laneSegColors(laneData) {
+    const PAL = lanePalette();
+    const keyOf = function (sg) { return String(sg.id || sg.holder || ''); };
+    const idxOf = {};        /* 选手键 → 调色板档位 */
+    const order = [];        /* 首次出现顺序（决定改色优先级，保证可复现） */
+    const adj = {};          /* 选手键 → { 邻居键: 1 } */
+    laneData.forEach(function (L) {
+      for (let i = 0; i < L.segs.length; i++) {
+        const k = keyOf(L.segs[i]);
+        if (idxOf[k] == null) { idxOf[k] = holderHash(k) % PAL.length; order.push(k); }
+        if (i > 0) {
+          const a = keyOf(L.segs[i - 1]);
+          if (a !== k) {
+            (adj[a] = adj[a] || {})[k] = 1;
+            (adj[k] = adj[k] || {})[a] = 1;
+          }
+        }
+      }
+    });
+    for (let pass = 0; pass < 3; pass++) {
+      let changed = 0;
+      order.forEach(function (k) {
+        const nb = adj[k];
+        if (!nb) return;
+        let clash = false;
+        for (const n in nb) { if (palClash(idxOf[n], idxOf[k])) { clash = true; break; } }
+        if (!clash) return;
+        const from = idxOf[k];
+        for (let d = 1; d < PAL.length; d++) {
+          const cand = (from + d) % PAL.length;
+          let ok = true;
+          for (const n in nb) { if (palClash(idxOf[n], cand)) { ok = false; break; } }
+          if (ok) { idxOf[k] = cand; changed++; return; }
+        }
+      });
+      if (!changed) break;
+    }
+    return laneData.map(function (L) {
+      return L.segs.map(function (sg) { return PAL[idxOf[keyOf(sg)] % PAL.length]; });
+    });
+  }
+
   function lanes(laneData, opts) {
     opts = opts || {};
     const T = pal();
     const y0 = opts.y0 || 2004, y1 = opts.y1 || 2026;
     const laneH = opts.laneH || 34;          /* 每条泳道的色块高度（可调大以容纳名字与国旗） */
+    /* 筛选后一条泳道都不剩（例如「中国 + 平均」再叠一个没人拿过纪录的项目）时，
+       不能返回一张空白画布 —— 直接给一句居中的兜底文案。 */
+    if (!laneData.length) {
+      return {
+        backgroundColor: 'transparent',
+        graphic: [{
+          type: 'text', left: 'center', top: 'middle', silent: true,
+          style: {
+            text: opts.empty || '',
+            fill: T.text3, font: '13px "Segoe UI",system-ui,sans-serif', textAlign: 'center'
+          }
+        }]
+      };
+    }
     const cats = laneData.map(function (L) { return L.label; });
     const data = [];
+    const colorRows = laneSegColors(laneData);
     laneData.forEach(function (L, li) {
-      L.segs.forEach(function (sg) {
-        /* 泳道颜色 = 该段持有者国籍色（与竞速图一致），不再用 build.js 预置的 sg.color */
-        const laneColor = (window.P && window.P.countryColor) ? window.P.countryColor(sg.country) : (sg.color || '#888');
+      L.segs.forEach(function (sg, si) {
+        const laneColor = (colorRows[li] && colorRows[li][si]) || (sg.color || '#888');
         data.push({ value: [sg.from, li, sg.to, li, sg.holder, sg.country, sg.days, sg.fromDn || 0, sg.toDn || 0], itemStyle: { color: laneColor } });
       });
     });
@@ -568,12 +695,18 @@
       if (w > 40 && h >= 16) {
         const iso = api.value(5);
         const name = String(api.value(4) || '');
+        /* 姓名/国旗的字色跟着色块明暗走：
+           一人一色之后调色板里既有深红深蓝也有浅黄浅青，全用白字的话浅色块上会看不清。 */
+        const segCol = api.visual('color') || '#888';
+        const onDark = colorLum(segCol) < 0.34;
+        const txtFill = onDark ? '#fff' : '#16202c';
         let x = rect.x + 7;
         const uri = flagUri(iso);
         if (uri) {
           kids.push({
             type: 'image', style: {
-              image: uri, x: x, y: rect.y + h / 2 - 5, width: 14, height: 10
+              image: uri, x: x, y: rect.y + h / 2 - 5, width: 14, height: 10,
+              shadowBlur: onDark ? 1.2 : 0, shadowColor: 'rgba(0,0,0,0.7)', shadowOffsetY: 1
             }
           });
           x += 18;
@@ -586,10 +719,10 @@
         if (txt) {
           kids.push({
             type: 'text', style: {
-              text: txt, x: x, y: rect.y + h / 2, fill: '#fff',
+              text: txt, x: x, y: rect.y + h / 2, fill: txtFill,
               font: '600 11.5px "Segoe UI",system-ui,sans-serif',
               textVerticalAlign: 'middle', textBaseline: 'middle',
-              shadowBlur: 2, shadowColor: 'rgba(0,0,0,0.55)', shadowOffsetX: 0, shadowOffsetY: 1
+              shadowBlur: onDark ? 2 : 0, shadowColor: 'rgba(0,0,0,0.55)', shadowOffsetX: 0, shadowOffsetY: 1
             }
           });
         }
@@ -608,7 +741,7 @@
 
     return Object.assign(base({ stagger: 8 }), {
       grid: { left: 6, right: 16, top: 22, bottom: 6, containLabel: true },
-      xAxis: Object.assign({ type: 'value', min: y0, max: y1, interval: 2 }, axisCommon(), {
+      xAxis: Object.assign({ type: 'value', min: y0, max: y1, interval: Math.max(1, Math.ceil((y1 - y0) / 11)) }, axisCommon(), {
         axisLabel: { color: T.text3, fontSize: 10.5, formatter: function (v) { return v; } },
         splitLine: { show: false }
       }),

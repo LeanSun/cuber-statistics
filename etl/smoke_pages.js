@@ -690,6 +690,16 @@ if (lane.length) {
   const withDays = allSegs.filter((s) => typeof s.days === 'number' && s.days > 0).length;
   ok(allSegs.length > 0 && withDays > 0, '泳道段带真实天数（含 ' + withDays + '/' + allSegs.length + ' 段 >0 天）');
   ok(!!seg.id && !!seg.iso, '泳道段带选手 id 与 ISO 国码（供图上悬停显示姓名国旗）');
+  /* 同一人「连着」刷新纪录应合并成一段：以前 buildLanes 读 cur.pid（字段其实叫 id），
+     判断恒真 → 每次刷新都切成新段，图上是一串同色窄条。 */
+  let dupNext = 0, pairs = 0;
+  lane.forEach((L) => {
+    for (let i = 1; i < L.segs.length; i++) {
+      pairs++;
+      if (L.segs[i].id && L.segs[i].id === L.segs[i - 1].id) dupNext++;
+    }
+  });
+  ok(pairs > 0 ? dupNext === 0 : true, '相邻两段不会是同一个人（合并判断生效，实得 ' + dupNext + '/' + pairs + '）');
 }
 
 console.log('== 纪录持有图：悬停提示 / 项目图标 / 去掉虚线与下方罗列 ==');
@@ -737,6 +747,42 @@ console.log('== 纪录持有图：悬停提示 / 项目图标 / 去掉虚线与�
     if (b < a) { ordered = false; break; }
   }
   ok(true, '泳道数据源按 WCA 项目顺序取用（前端已排序）');
+}
+
+/* == 纪录持有图：筛选联动 / 一人一色 / 去掉自定义事件表单 ==
+   用户 2026-11-01 反馈三件事：① 顶部筛选对这张图完全无效；② 同国选手前后接力时两段同色，
+   看不出换了人；③ 图下方的「自定义重大事件」表单不该出现在这里。 */
+console.log('== 纪录持有图：筛选联动 / 一人一色 / 表单归属 ==');
+{
+  const hL = tryRender('纪录持有图（筛选联动）', () => P.timeline(Object.assign({}, base, { tlView: 'lane', tlLane: 'single' })));
+  const hR2 = tryRender('分数竞速图（表单归属）', () => P.timeline(Object.assign({}, base, { tlView: 'race' })));
+  ok(hL.indexOf('msImportBtn') < 0 && hL.indexOf('data-msreset') < 0, '纪录持有图下方不再有「自定义重大事件」表单');
+  ok(hR2.indexOf('msImportBtn') >= 0, '分数竞速图仍然保留自定义重大事件表单');
+  ok(/data-y0="/.test(hL) && /data-y1="/.test(hL) && /data-retired="/.test(hL),
+    '纪录持有图容器带上年份区间 / 停办项目的筛选参数');
+
+  const C = win.Charts;
+  /* 三段全部来自同一个国家（China）—— 旧实现按国籍上色时这三段一模一样 */
+  const fake = [
+    { ev: '333', label: '333', segs: [
+      { from: 2004, to: 2008, holder: 'A', country: 'China', id: 'A1', iso: 'CN', days: 100 },
+      { from: 2008, to: 2012, holder: 'B', country: 'China', id: 'B1', iso: 'CN', days: 100 },
+      { from: 2012, to: 2015, holder: 'C', country: 'China', id: 'C1', iso: 'CN', days: 100 }
+    ] },
+    { ev: '222', label: '222', segs: [
+      { from: 2005, to: 2010, holder: 'A', country: 'China', id: 'A1', iso: 'CN', days: 100 }
+    ] }
+  ];
+  const ol = C.lanes(fake, { y0: 2004, y1: 2015 });
+  const cols = ((ol.series && ol.series[0] && ol.series[0].data) || []).map(function (d) { return d.itemStyle.color; });
+  ok(cols.length === 4, '四段色块都已生成（实得 ' + cols.length + '）');
+  ok(cols[0] !== cols[1] && cols[1] !== cols[2], '同国两名选手前后接力，相邻两段颜色不同（' + cols.slice(0, 3).join(' / ') + '）');
+  ok(cols[0] === cols[3], '同一名选手跨泳道仍是同一个颜色');
+  ok(cols[0] !== cols[1] && cols[0] !== cols[2] && cols[1] !== cols[2], '三人三色，不会撞色');
+  /* 筛选后一条泳道都不剩时，要给兜底文案而不是一张空白画布 */
+  const oe = C.lanes([], { empty: 'EMPTY' });
+  ok(!!(oe && oe.graphic && oe.graphic[0] && oe.graphic[0].style && oe.graphic[0].style.text === 'EMPTY'),
+    '筛选后没有数据时返回居中兜底文案');
 }
 
 /* 需求：删除「3 期滑动平滑」开关 */

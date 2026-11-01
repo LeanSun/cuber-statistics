@@ -1175,8 +1175,11 @@ function buildLanes(store, asOf) {
     const stopFy = retired ? fyOfDn(stopDn) : endFy;
     let cur = null;
     arr.forEach((e) => {
-      /* 同一人连续持有则合并成一段；换人时才切段（用 pid 判定，避开同名不同人） */
-      if (!cur || cur.pid !== e.pid || cur.holder !== e.name) {
+      /* 同一人连续持有则合并成一段；换人时才切段（用 pid 判定，避开同名不同人）。
+         ⚠ 2026-11-01 修：这里原先读的是 `cur.pid`，而段对象上的字段叫 `id` ——
+         `undefined !== pid` 恒真，于是**每一条世界纪录刷新都被切成了独立一段**，
+         同一个人连着刷新纪录时图上会出现一串同色的窄条（实测 624 个相邻对里 221 对是同一人）。 */
+      if (!cur || cur.id !== (e.pid || null) || cur.holder !== e.name) {
         if (cur) { cur.to = e.fy; cur.toDn = e.dn; cur.days = daysBetween(cur.fromDn, e.dn); }
         cur = {
           from: e.fy, to: stopFy, fromDn: e.dn, toDn: stopDn, holder: e.name, country: e.country,
