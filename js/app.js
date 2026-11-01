@@ -374,7 +374,7 @@
         /* 项目名称浮层：原生 title 有 1 秒延迟且位置由系统决定，
            这里改用 body 级浮层，并指定出现在**鼠标上方**（data-tip-pos="top"）。 */
         const tip = off ? (nm + (t.isEn() ? ' · retired (enable “retired events” above)' : ' · 停办（需先开启「含停办项目」）')) : nm;
-        return '<button class="ev-tab' + (on ? ' on' : '') + (off ? ' retired' : '') + '" data-evtab="' + e.id + '"' +
+        return '<button class="ev-tab' + (on ? ' on' : '') + (e.retired ? ' retired' : '') + '" data-evtab="' + e.id + '"' +
           ' data-tip="' + esc(tip) + '" data-tip-pos="top" aria-label="' + esc(nm) + '">' + window.Icons.event(e.id) + '</button>';
       };
       activeEv.forEach(function (e) { h += evBtn(e); });

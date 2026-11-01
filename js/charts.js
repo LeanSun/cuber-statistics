@@ -438,13 +438,15 @@
           const num = function (x) {
             return '<b style="font-variant-numeric:tabular-nums">' + f2(x) + '</b>' + ptTxt;
           };
+          /* 分隔点：两侧各留 7px，让「第 N 名 · 分数」读起来清清楚楚（用户 2026-11-01 要求拉开间距）。 */
+          const dot = '<span style="display:inline-block;min-width:6px;padding:0 7px;opacity:.55;font-weight:400">·</span>';
           /* 版式（2026-11-01 第五轮，用户指定）：
                国旗 姓名
-               第 N 名 · 1553.94分          ← 名次 + 自己的分数
-               领先第二名 75.3%·2146.25分    ← 与参照选手的相对关系 + 参照选手的分数
+               第 N 名   ·   1553.94分       ← 名次 + 自己的分数
+               领先第二名 75.3%   ·   2146.25分   ← 与参照选手的相对关系 + 参照选手的分数
              第 1 名的参照是第二名，其余名次的参照是榜首。 */
           let h = '<div style="display:flex;align-items:center;gap:2px">' + ft + '<b>' + esc(d.name) + '</b></div>';
-          const rankTxt = no ? esc(fillTpl(LANE_I18N.raceRank || '第 {n} 名', { n: no })) + ' · ' : '';
+          const rankTxt = no ? esc(fillTpl(LANE_I18N.raceRank || '第 {n} 名', { n: no })) + dot : '';
           h += '<div style="margin-top:3px;font-size:11.5px;opacity:.85">' + rankTxt + num(v) + '</div>';
           let rel = '';
           let ref = 0;
@@ -457,7 +459,7 @@
           }
           if (rel) {
             h += '<div style="margin-top:2px;font-size:11.5px;opacity:.85">' + esc(rel) +
-              (ref > 0 ? '·' + num(ref) : '') + '</div>';
+              (ref > 0 ? dot + num(ref) : '') + '</div>';
           }
           return h;
         }
@@ -939,11 +941,22 @@
     }
 
     return Object.assign(base({ stagger: 8 }), {
-      grid: { left: 6, right: 16, top: 22, bottom: 6, containLabel: true },
-      xAxis: Object.assign({ type: 'value', min: axMin, max: axMax, interval: axStep }, axisCommon(), {
-        axisLabel: { color: T.text3, fontSize: 10.5, formatter: fmtYear },
-        splitLine: { show: false }
-      }),
+      grid: { left: 6, right: 16, top: 30, bottom: 6, containLabel: true },
+      /* 两条口径完全相同的 xAxis 共用同一 grid：index 0 在底部（数据轴，泳道色块按它定位），
+         index 1 在顶部（position:'top'），仅作镜像显示，让上方也有一条与下方一致的时间刻度。
+         系列默认用 xAxisIndex 0，顶部轴纯展示，不影响色块坐标。 */
+      xAxis: [
+        Object.assign({ type: 'value', min: axMin, max: axMax, interval: axStep }, axisCommon(), {
+          axisLabel: { color: T.text3, fontSize: 10.5, formatter: fmtYear },
+          splitLine: { show: false }
+        }),
+        Object.assign({ type: 'value', min: axMin, max: axMax, interval: axStep, position: 'top', gridIndex: 0 }, axisCommon(), {
+          axisLabel: { color: T.text3, fontSize: 10.5, formatter: fmtYear },
+          axisLine: { show: true, lineStyle: { color: T.border, width: 1 } },
+          axisTick: { show: false },
+          splitLine: { show: false }
+        })
+      ],
       yAxis: Object.assign({ type: 'category', data: cats, inverse: true }, axisCommon(), {
         splitLine: { show: false },
         axisLabel: {

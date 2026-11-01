@@ -260,7 +260,7 @@
 
     h += '<div class="card reveal">';
     h += '<div class="row tl-top">';
-    h += '<div class="fgroup"><span class="flabel">' + esc(t('tl.viewTip')) + '</span><div class="seg" id="tlViewSeg">';
+    h += '<div class="fgroup"><div class="seg" id="tlViewSeg">';
     VIEWS.forEach(function (v) {
       h += '<button data-tlview="' + v[0] + '" class="' + (view === v[0] ? 'on' : '') + '">' + Ic.glyph(v[2]) + ' ' + esc(t(v[1])) + '</button>';
     });

@@ -721,7 +721,8 @@ console.log('== 纪录持有图：悬停提示 / 项目图标 / 去掉虚线与�
     ok(/v\[4\]/.test(fm), 'tooltip 输出持有者姓名');
     ok(/flagUri|v\[5\]/.test(fm), 'tooltip 输出国旗（iso）');
     ok(/v\[7\]/.test(fm) && /v\[8\]/.test(fm), 'tooltip 同时输出开始与结束日期');
-    ok(opt.xAxis && opt.xAxis.splitLine && opt.xAxis.splitLine.show === false, '已去掉竖向虚线');
+    const xa = Array.isArray(opt.xAxis) ? opt.xAxis[0] : opt.xAxis;
+    ok(xa && xa.splitLine && xa.splitLine.show === false, '已去掉竖向虚线');
     const al = opt.yAxis && opt.yAxis.axisLabel;
     ok(!!(al && al.rich), 'y 轴用 rich 渲染项目图标');
     ok(/\{ic/.test(String(al && al.formatter ? al.formatter : '')), 'y 轴标签模板里预留了图标位');
@@ -811,8 +812,10 @@ console.log('== 纪录持有图：筛选联动 / 一人一色 / 表单归属 =='
     ok(/第 1 名|#1/.test(tip1) && /第 2 名|#2/.test(tip2), 'tooltip 显示当前名次');
     /* 「第 1 名 · 100.00分」：名次与分数同一行，分数后面紧接单位 */
     const stripT = (s) => String(s).replace(/<[^>]*>/g, '');
-    ok(/第 1 名 · /.test(stripT(tip1)) || /#1 · /.test(stripT(tip1)),
-      '第二行是「第 N 名 · 分数」（实得 ' + stripT(tip1) + '）');
+    /* 分隔点现在是「带 padding 的 <span>·</span>」：视觉留白来自 CSS 而非文本空格，
+       所以纯文本比对找不到「第 1 名 · 」；断言改为确认该带留白分隔点存在于名次与分数之间。 */
+    ok(/第 1 名<span[^>]*padding[^>]*>·<\/span>/.test(tip1) || /#1<span[^>]*padding[^>]*>·<\/span>/.test(tip1),
+      '第二行用带留白的分隔点连起「第 N 名 · 分数」（实得 ' + stripT(tip1) + '）');
     ok(/100\.00<\/b>分|100\.00<\/b> pts/.test(tip1), '分数后紧跟单位（分 / pts）');
     ok(/领先第二名|ahead of #2/.test(tip1), '第 1 名给出「领先第二名多少」');
     ok(/榜首的|of #1/.test(tip2), '其余名次给出「是榜首的百分之几」');
