@@ -1095,15 +1095,24 @@
       ? ((evPool && evPool.length) ? p.records.filter(function (r) { return evPool.indexOf(r.ev) >= 0; }) : p.records)
       : [];
     if (recs.length) {
-      const byLv = { WR: 0, CR: 0, NR: 0 };
+      /* 按「颜色档 + 具体缩写」归并：洲纪录不再笼统写 CR，而是落到具体洲
+         （数据里 r.rr 存的就是 WCA 的细分代码 AsR / OcR / ER / NAR / SAR / AfR；
+         同一名选手的 CR 只会落在同一个洲，所以不会出现一堆洲混排的碎片）。
+         颜色档 cls 仍是 WR / CR / NR 三档，套 .rec-chip.lv-* —— 与时间轴 tooltip 共用。 */
+      const byCode = {};
+      const codes = [];
       let longest = null;
       recs.forEach(function (r) {
-        if (byLv[r.level] != null) byLv[r.level] = (byLv[r.level] || 0) + 1;
+        const cls = r.level;
+        const code = (cls === 'CR' && r.rr && r.rr !== 'CR') ? r.rr : cls;
+        if (!byCode[code]) { byCode[code] = { cls: cls, n: 0 }; codes.push(code); }
+        byCode[code].n++;
         if (!longest || r.held > longest.held) longest = r;
       });
-      ['WR', 'CR', 'NR'].forEach(function (lv) {
-        if (!byLv[lv]) return;
-        h += '<span class="rec-chip lv-' + lv + '">' + lv + ' ×' + byLv[lv] + '</span>';
+      const tierOf = function (c) { const x = byCode[c].cls; return x === 'WR' ? 0 : (x === 'CR' ? 1 : 2); };
+      codes.sort(function (a, b) { return tierOf(a) - tierOf(b) || byCode[b].n - byCode[a].n; });
+      codes.forEach(function (code) {
+        h += '<span class="rec-chip lv-' + byCode[code].cls + '">' + esc(code) + ' ×' + byCode[code].n + '</span>';
       });
       if (longest) {
         const lt = longest;

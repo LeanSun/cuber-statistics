@@ -1117,6 +1117,7 @@
   /* 暴露给冒烟测试：范围解析（大洲 / 地区 / 国家 → 纪录链 scope）与纪录类型文案 */
   P.laneScopeOf = laneScopeOf;
   P.recScopeLabel = recScopeLabel;
+  P.recScopeBadge = recScopeBadge;
   P.tlDaysBetweenDn = daysBetweenDn;
   /* 供冒烟测试：竞速快照（topK=0 → 全量排序）与登顶时长的内部工具 */
   P._snap = snapshot;
@@ -1216,6 +1217,28 @@
     } else s = countryLabel(scope.slice(2)) + t('tl.rec.suffix');
     return (gen === 'f' ? t('tl.rec.women') : '') + s;
   }
+  /* 纪录级别「胶囊徽标」（2026-11-02 用户要求：与历史地位排名页的 WR / CR / NR 胶囊同一套外观）
+     · 缩写走 WCA 官方口径：WR / AsR / ER / NAR / SAR / AfR / OcR / NR
+       —— 洲纪录不写笼统的「CR」，而是落实到具体是哪一洲；
+     · cls 只取 WR / CR / NR 三档，用来套 css 里 .rec-chip.lv-* 的配色
+       （WR 红 / 洲纪录橙 / NR 绿，与历史地位排名页完全共用，改一处两处同步）；
+     · name 是全称（世界纪录 / 大洋洲纪录 / 中国纪录 …），跟在缩写后面显示，
+       中英文自动切换；女子纪录把「女子」并进全称。 */
+  const CONT_ABBR = { Af: 'AfR', Eu: 'ER', Oc: 'OcR', NAm: 'NAR', As: 'AsR', SAm: 'SAR' };
+  function recScopeBadge(scope, gen) {
+    let code, cls, name;
+    if (scope === 'W') {
+      code = 'WR'; cls = 'WR'; name = t('tl.rec.world');
+    } else if (String(scope).indexOf('C:') === 0) {
+      const c = scope.slice(2);
+      code = CONT_ABBR[c] || 'CR'; cls = 'CR';
+      name = (t.isEn() ? (CONT_EN[c] || contLabel(c)) : contLabel(c)) + t('tl.rec.suffix');
+    } else {
+      code = 'NR'; cls = 'NR';
+      name = countryLabel(String(scope).slice(2)) + t('tl.rec.suffix');
+    }
+    return { code: code, cls: cls, name: (gen === 'f' ? t('tl.rec.women') : '') + name };
+  }
   /* 日期整数（YYYYMMDD）→ 小数年，口径与 etl/build.js 的 fyOfDn 一致 */
   function dnFy(dn) {
     const s = String(dn || '');
@@ -1305,13 +1328,19 @@
       const chainKey = scope + '|' + kindKey + '|' + gen;
       /* 段级抬头：先备好「世界链 / 洲链」的索引，tooltip 抬头跟着每一段自己的级别走 */
       const baseLab = recScopeLabel(scope, gen);
-      let wSetA = null, cSetA = null, wLabA = '', cLabA = '';
+      const baseBadge = recScopeBadge(scope, gen);
+      let wSetA = null, cSetA = null, wLabA = '', cLabA = '', wBadgeA = null, cBadgeA = null;
       if (scope !== 'W') {
         wSetA = chainSegSet(kindKey, gen, 'W');
         wLabA = recScopeLabel('W', gen);
+        wBadgeA = recScopeBadge('W', gen);
         if (scope.indexOf('N:') === 0) {
           const contA = M.continentOf ? M.continentOf[String(scope.slice(2)).toUpperCase()] : '';
-          if (contA) { cSetA = chainSegSet(kindKey, gen, 'C:' + contA); cLabA = recScopeLabel('C:' + contA, gen); }
+          if (contA) {
+            cSetA = chainSegSet(kindKey, gen, 'C:' + contA);
+            cLabA = recScopeLabel('C:' + contA, gen);
+            cBadgeA = recScopeBadge('C:' + contA, gen);
+          }
         }
       }
       /* 旧数据包（还没有 laneChains）退回「世界纪录链 + 按人筛选」的老行为，保证不白屏。 */
@@ -1385,16 +1414,19 @@
               subs = subs.filter(function (dn) { const fy = dnFy(dn); return fy >= a0 && fy <= a1; });
               if (!subs.length) subs = [c.f];
             }
+            /* 这一段自己的纪录级别：抬头文字 + 胶囊徽标（同一套判定，只算一次）。
+               ⚠ 数据里同一份成绩会同时进 WR / 洲 / 国家三条链，必须按「是否也出现在
+               更高级别的链里」反推真实级别，不能按当前筛选范围写死。 */
+            const k2 = (sg.fromDn || 0) + '|' + (sg.id || '');
+            const isW = !!(wSetA && wSetA[L.ev] && wSetA[L.ev][k2]);
+            const isC = !isW && !!(cSetA && cSetA[L.ev] && cSetA[L.ev][k2]);
             segs.push({
               from: c.f, to: c.e, holder: sg.holder, iso: sg.iso,
               id: sg.id, days: sg.days, fromDn: sg.fromDn, toDn: sg.toDn, subs: subs,
-              /* 这一段自己的纪录级别抬头（世界纪录 / 亚洲纪录 / 中国纪录 …） */
-              lab: (function () {
-                const k2 = (sg.fromDn || 0) + '|' + (sg.id || '');
-                if (wSetA && wSetA[L.ev] && wSetA[L.ev][k2]) return wLabA;
-                if (cSetA && cSetA[L.ev] && cSetA[L.ev][k2]) return cLabA;
-                return baseLab;
-              })()
+              /* 抬头文字（世界纪录 / 亚洲纪录 / 中国纪录 …） */
+              lab: isW ? wLabA : (isC ? cLabA : baseLab),
+              /* 抬头胶囊（WR / AsR / OcR / NR …，含配色档 cls 与全称 name） */
+              lv: isW ? wBadgeA : (isC ? cBadgeA : baseBadge)
             });
           });
           return { ev: L.ev, label: evName(M.EV[L.ev] || { zh: L.zh, en: L.en }), segs: segs };

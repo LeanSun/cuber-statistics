@@ -836,6 +836,9 @@
           /* 该段自己的纪录级别抬头（世界纪录 / 亚洲纪录 / 中国纪录 …），由调用方按
              「这一段是否也出现在更高级别的链里」反推；缺省时退回整体口径 opts.recLabel */
           lab: sg.lab || '',
+          /* 同一级别的胶囊徽标 {code:'WR'|'AsR'|…, cls:'WR'|'CR'|'NR', name:'世界纪录'|…}
+             —— tooltip 第一行用它渲染成彩色胶囊，配色与历史地位排名页共用 css */
+          lv: sg.lv || null,
           itemStyle: { color: laneColor }
         });
       });
@@ -1024,10 +1027,17 @@
           function fd(dn) { const s = String(dn || ''); return s.length === 8 ? s.slice(0, 4) + '-' + s.slice(4, 6) + '-' + s.slice(6, 8) : (LANE_I18N.now || '至今'); }
           const flagTag = iso ? '<img src="' + flagUri(iso) + '" style="width:15px;height:11px;vertical-align:-1px;margin-right:4px" alt="">' : '';
           /* 抬头：优先用这一段自己的级别（数据里同一份成绩会同时进 WR / 洲 / 国家三条链，
-             所以「筛选亚洲」时也可能有真正的世界纪录段），没有才退回整体口径。 */
+             所以「筛选亚洲」时也可能有真正的世界纪录段），没有才退回整体口径。
+             2026-11-02 起抬头改为**胶囊徽标**（WR / AsR / OcR / NR …，加全称），
+             外观与配色跟「历史地位」排名页选手卡里的 WR / CR / NR 胶囊完全共用
+             .rec-chip.lv-* 这一套 css：WR 红 / 洲纪录橙 / NR 绿。
+             缺 lv（旧数据包 / 其他调用方）时退回原来的纯文字抬头。 */
+          const lv = (p.data && p.data.lv) || null;
           const labTxt = (p.data && p.data.lab) || opts.recLabel;
-          const recTag = labTxt
-            ? '<div style="font-size:11px;opacity:.7;margin-bottom:2px">' + esc(labTxt) + '</div>' : '';
+          const recTag = lv
+            ? '<div style="margin-bottom:3px"><span class="rec-chip lv-' + (lv.cls || '') + '">' +
+              '<b>' + esc(lv.code) + '</b><i>' + esc(lv.name) + '</i></span></div>'
+            : (labTxt ? '<div style="font-size:11px;opacity:.7;margin-bottom:2px">' + esc(labTxt) + '</div>' : '');
           let h = recTag + '<div style="display:flex;align-items:center;gap:2px">' + flagTag + '<b>' + esc(v[4]) + '</b></div>' +
             '<div style="margin-top:3px;font-size:11.5px;opacity:.85">' + fd(v[7]) + ' → ' + fd(v[8]) + '</div>' +
             '<div style="margin-top:2px;font-size:11.5px"><b>' + days + '</b> ' + (LANE_I18N.day || '天') + '</div>';

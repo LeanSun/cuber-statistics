@@ -1073,8 +1073,13 @@ td.tl:hover .fi, .region-cell:hover .fi{transform:scale(1.22)}
 .exp-v2-main{display:flex;flex-direction:column;gap:10px;min-width:0}
 .exp-v2-chips{display:flex;gap:7px;flex-wrap:wrap}
 .rec-chip{font-size:11.5px;padding:3px 9px;border-radius:999px;background:var(--bg-soft);
-  border:1px solid var(--border);color:var(--text-2)}
-.rec-chip.lv-WR{background:color-mix(in srgb,#ffd84d 20%,transparent);border-color:#ffd84d;color:#b8860b}
+  border:1px solid var(--border);color:var(--text-2);line-height:1.45;white-space:nowrap}
+/* 胶囊里的「全称」：缩写加粗在前，全称淡一档跟在后面（时间轴 tooltip 抬头用） */
+.rec-chip i{font-style:normal;font-weight:500;margin-left:5px;opacity:.86}
+/* 纪录级别配色（2026-11-02 用户指定，历史地位排名页与时间轴 tooltip 共用这一套）：
+   WR 红 rgb(255,32,86) / 洲纪录 橙 rgb(255,185,0) / NR 绿 rgb(0,188,125)。
+   文字色取同色系压暗版，保证浅底上对比够；深色主题另给一档提亮版。 */
+.rec-chip.lv-WR{background:color-mix(in srgb,#ff2056 12%,transparent);border-color:#ff2056;color:#cf0d3d}
 
 /* ============ 展开详情 v3：三层纵向布局（身份+总分／模块贡献条／成绩速览） ============ */
 .exp-inner.exp-v3{display:flex;flex-direction:column;gap:14px;padding:4px 2px}
@@ -1167,8 +1172,11 @@ td.tl:hover .fi, .region-cell:hover .fi{transform:scale(1.22)}
   .exp-v3-mod{grid-template-columns:78px minmax(50px,1fr) 58px 46px;gap:6px;font-size:11.5px}
   .exp-v3-foot .exp-actions{margin-left:0;width:100%}
 }
-.rec-chip.lv-CR{background:color-mix(in srgb,#38bdf8 18%,transparent);border-color:#38bdf8}
-.rec-chip.lv-NR{background:color-mix(in srgb,#4ade80 18%,transparent);border-color:#4ade80}
+.rec-chip.lv-CR{background:color-mix(in srgb,#ffb900 20%,transparent);border-color:#ffb900;color:#8f6200}
+.rec-chip.lv-NR{background:color-mix(in srgb,#00bc7d 16%,transparent);border-color:#00bc7d;color:#00744d}
+[data-theme="dark"] .rec-chip.lv-WR{background:color-mix(in srgb,#ff2056 24%,transparent);color:#ff8fa9}
+[data-theme="dark"] .rec-chip.lv-CR{background:color-mix(in srgb,#ffb900 24%,transparent);color:#ffd166}
+[data-theme="dark"] .rec-chip.lv-NR{background:color-mix(in srgb,#00bc7d 24%,transparent);color:#3fdfad}
 .rec-chip.rec-scope{background:var(--bg-soft-2);border-color:var(--border);color:var(--text-3);font-weight:600}
 /* 胶囊上的「最长纪录」可交互提示：原生 title 有延迟且样式不可控，改用自绘浮层 */
 .rec-chip-tip{cursor:help;border-style:dashed;border-color:color-mix(in srgb,var(--accent) 55%,var(--border))}

@@ -915,6 +915,29 @@ console.log('== 纪录持有图：范围纪录链 / 缩放平移 / 段内刷新 
       console.log('  --   （样板数据里中国链没有世界纪录段，跳过抬头反查）');
     }
   }
+  /* ★ 2026-11-02 用户要求：tooltip 第一行改成与「历史地位」排名页同款的彩色胶囊。
+     缩写走 WCA 官方口径 —— 洲纪录必须落到具体洲（AsR / OcR / ER / NAR / SAR / AfR），
+     不能只写笼统的 CR；配色档 cls 只有 WR / CR / NR 三档。 */
+  {
+    ok(P.recScopeBadge('W', '').code === 'WR', '世界纪录缩写 = WR');
+    ok(P.recScopeBadge('C:As', '').code === 'AsR', '亚洲纪录缩写 = AsR（不是笼统 CR）');
+    ok(P.recScopeBadge('C:Oc', '').code === 'OcR', '大洋洲纪录缩写 = OcR');
+    ok(P.recScopeBadge('N:CN', '').code === 'NR', '国家纪录缩写 = NR');
+    ok(P.recScopeBadge('C:As', '').cls === 'CR', '洲纪录的配色档 = CR');
+    const dCN2 = (oCN && oCN.series && oCN.series[0] && oCN.series[0].data) || [];
+    ok(dCN2.length > 0 && dCN2.every((d) => d.lv && d.lv.code && d.lv.cls),
+      '每一段都带级别胶囊（code / cls）');
+    ok(dCN2.every((d) => ['WR', 'CR', 'NR'].indexOf(d.lv.cls) >= 0), '胶囊配色档只有 WR / CR / NR');
+    const asCodes = {};
+    const oAs = P.tlOption('lane', 'cumulative', 2025, false, 'overall', 'AsR', '', 'single', [], 'all', 'all');
+    ((oAs && oAs.series && oAs.series[0] && oAs.series[0].data) || []).forEach((d) => {
+      asCodes[d.lv.code] = (asCodes[d.lv.code] || 0) + 1;
+    });
+    ok(Object.keys(asCodes).length > 0 && Object.keys(asCodes).every((k) => k === 'AsR' || k === 'WR'),
+      '亚洲范围只出 AsR / WR（实得 ' + JSON.stringify(asCodes) + '）');
+    const tipPill = oCN.tooltip.formatter({ data: dCN2[0] });
+    ok(/class="rec-chip lv-(WR|CR|NR)"/.test(tipPill), 'tooltip 第一行渲染成 rec-chip 胶囊');
+  }
   /* 女子口径：所有持有者都必须是女子 */
   const oF = P.tlOption('lane', 'cumulative', 2025, false, 'overall', '', '', 'single', [], 'F', 'all');
   const byId = {}; M.ranked.forEach((p) => { byId[p.id] = p; });
