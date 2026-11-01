@@ -251,6 +251,13 @@
        图表随之上移，直接贴着标题开始。视图自身的说明仍在图上方（.tl-desc）。 */
     let h = '<div class="page-head reveal"><h1>' + esc(t('tl.title')) + '</h1></div>';
 
+    /* 纪录范围（大洲 cont:* / 国家 ISO2 / 细分地区 reg:*）必须在拼筛选条之前算出来：
+       登顶时长徽标就在这一行里，文案要跟着范围走（世界 / 亚洲 / 中国 …）。
+       细分地区在 state.region（reg:*）里 —— 以前这里只读 state.geo，
+       于是选了「东亚」这类地区筛选时图表完全没反应。 */
+    const geoRegion = (state.geo && state.geo.indexOf('cont:') === 0) ? state.geo.slice(5) : (state.region || '');
+    const geoCountry = (state.geo && state.geo.indexOf('cont:') !== 0 && state.geo) ? state.geo : '';
+
     h += '<div class="card reveal">';
     h += '<div class="row tl-top">';
     h += '<div class="fgroup"><span class="flabel">' + esc(t('tl.viewTip')) + '</span><div class="seg" id="tlViewSeg">';
@@ -268,6 +275,21 @@
         h += '<button data-tldim="' + k + '" class="' + (dimCur === k ? 'on' : '') + '">' + esc(t('m' + k[1] + '.name')) + '</button>';
       });
       h += '</div></div>';
+      /* 登顶时长徽标（2026-11-01 用户要求）：从图表下方挪到「六维筛选」同一行的后面，常驻显示。
+         内容是「某选手登顶（当前榜单第一）已持续多久」，随筛选范围（世界 / 亚洲 / 中国 …，
+         女子再加「女子」）和播放时间实时更新；单击在「xx 天 / xx 年 xx 个月 xx 天」之间切换。
+         没算完时不再整块隐藏（那样会跳一下布局），而是显示占位「—」，由 tlCrownPaint 换成真值。 */
+      h += '<div class="tl-crown" id="tlCrown" data-st="pending">' +
+        '<button type="button" class="tl-crown-btn" id="tlCrownBtn" title="' + esc(t('tl.crown.tip')) + '">' +
+        '<span class="tl-crown-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3.2 8.4l4.6 3.4L12 4.2l4.2 7.6 4.6-3.4-1.7 9.9H4.9L3.2 8.4z"/></svg></span>' +
+        '<img class="tl-crown-flag" alt="" hidden>' +
+        '<span class="tl-crown-tx">' +
+        '<b class="tl-crown-name"></b>' +
+        '<span class="tl-crown-lab">' + esc(crownLabel(geoRegion, geoCountry, state.gender)) + '</span>' +
+        '</span>' +
+        '<b class="tl-crown-val">—</b>' +
+        '<span class="tl-crown-swap" aria-hidden="true">⇄</span>' +
+        '</button></div>';
     }
     h += '<span class="spacer"></span>';
     /* 「3 期滑动平滑」已按需求移除：它只在中间帧起作用，用户感知不到差别反而多一个开关。 */
@@ -316,11 +338,6 @@
     }
 
     const chH = view === 'race' ? 520 : Math.max(560, (M.events.length * 46 + 90));
-    /* 纪录范围：大洲（cont:*）、国家（ISO2）都来自 state.geo；
-       细分地区（reg:*）在 state.region 里 —— 以前这里只读 state.geo，
-       于是选了「东亚」这类地区筛选时图表完全没反应。 */
-    const geoRegion = (state.geo && state.geo.indexOf('cont:') === 0) ? state.geo.slice(5) : (state.region || '');
-    const geoCountry = (state.geo && state.geo.indexOf('cont:') !== 0 && state.geo) ? state.geo : '';
     /* 当前生效的项目集合（显式多选 / 预设分组 / 单个项目）——供竞速图按项目切换 */
     const evSel0 = state.evSel || [];
     let evsBox = evSel0.slice();
@@ -345,20 +362,6 @@
       })
       .sort(function (a, b) { return String(a.date || a.year).localeCompare(String(b.date || b.year)); });
     TL_MS = ms;
-    /* 登顶时长徽标（仅分数竞速图）：2026-11-01 用户要求放到**图表上方**，并且文案跟着筛选走
-       ——「登顶世界第一」/「登顶亚洲第一」/「登顶中国第一」，选了女子再补「女子」。
-       数据本身本来就按当前筛选口径重建榜首时间线（见 crownCompute），这里只是把说法对齐。 */
-    if (view !== 'lane') {
-      h += '<div class="tl-crown" id="tlCrown" hidden>' +
-        '<button type="button" class="tl-crown-btn" id="tlCrownBtn" title="' + esc(t('tl.crown.tip')) + '">' +
-        '<span class="tl-crown-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3.2 8.4l4.6 3.4L12 4.2l4.2 7.6 4.6-3.4-1.7 9.9H4.9L3.2 8.4z"/></svg></span>' +
-        '<img class="tl-crown-flag" alt="" hidden>' +
-        '<b class="tl-crown-name"></b>' +
-        '<span class="tl-crown-lab">' + esc(crownLabel(geoRegion, geoCountry, state.gender)) + '</span>' +
-        '<b class="tl-crown-val"></b>' +
-        '<span class="tl-crown-swap" aria-hidden="true">⇄</span>' +
-        '</button></div>';
-    }
     h += '<div class="tl-stage">';
     h += '<div class="chart-box tl-chart-link" id="tlChart" style="height:' + chH + 'px" data-view="' + view + '" data-mode="' + mode +
       '" data-fy="' + fy + '" data-metric="' + metric + '" data-lane="' + state.tlLane + '" data-smooth="' + (state.tlSmooth ? 1 : 0) +
@@ -1134,7 +1137,10 @@
     if (window.Charts.setLaneI18n) window.Charts.setLaneI18n({
       mo: (t.isEn() ? 'mo' : '个月'), y: (t.isEn() ? 'y' : '年'), day: (t.isEn() ? 'd' : '天'),
       refresh: t('tl.rec.refresh'), times: t('tl.rec.times'),
-      click: t('tl.laneClick')
+      click: t('tl.laneClick'),
+      /* 分数竞速图 tooltip 的措辞（原来只塞了国家两位码 + 分数，没有可读信息） */
+      raceRank: t('tl.race.rank'), raceAhead: t('tl.race.ahead'), raceOfTop: t('tl.race.ofTop'),
+      pt: t('tl.race.pt')
     });
     if (view === 'lane') {
       /* 泳道顺序严格按 WCA 官方项目默认顺序（正阶→单手→盲拧→最少步→异形→已停办），
@@ -1302,25 +1308,29 @@
     const rows = idList.map(function (id) {
       const r = byId[id];
       if (r && r.no <= TOP) {
-        return { id: r.id, name: r.name, iso: r.iso, flag: r.flag, color: r.color, value: r.value, rank: r.no, no: r.no };
+        /* cname：tooltip 里显示国家**全名**（原来塞的是 ISO 两位码「AU/AU」这种，
+           既不好读也没信息量）；no 留作「第 N 名」用。 */
+        return { id: r.id, name: r.name, iso: r.iso, cname: countryName(r.iso) || r.iso || '', flag: r.flag, color: r.color, value: r.value, rank: r.no, no: r.no };
       }
-      return { id: id, name: '', iso: '', flag: '', color: '#cfcfcf', value: 0, rank: TOP + 1, no: TOP + 1 };
+      return { id: id, name: '', iso: '', cname: '', flag: '', color: '#cfcfcf', value: 0, rank: TOP + 1, no: TOP + 1 };
     });
     /* 登顶时长徽标：记住本帧的榜首（画到条形上的第 1 名），并确保「榜首时间线」已经算过。
        徽标本身由 drawTimeline 在渲染后调用 P.tlCrownPaint 更新，这里只负责把数据挂到容器上。 */
     if (box) {
       box.__raceLeader = (all[0] && all[0].no === 1) ? all[0] : null;
-      box.__crown = CROWN_CACHE[raceSig] || null;
-      if (!box.__crown) {
+      /* 已经算好（或正在算）就直接复用：之前每次拿到新容器都无条件重算，
+         来回切筛选会把同一条榜首时间线反复构建，徽标长时间停在「—」。 */
+      let rec = CROWN_CACHE[raceSig];
+      if (!rec || (!rec.ready && !rec.busy)) {
         /* 失败也不能把整张图带崩：徽标算不出来就只是不显示 */
         try {
-          crownCompute({
+          rec = crownCompute({
             mode: mode, smooth: !!smooth, region: region || '', country: country || '',
             evs: evs || [], gender: gender || 'all', rtype: rtype || 'all', dim: dim || ''
-          }, raceSig, P.tlEndFy());
-        } catch (e) { }
-        box.__crown = CROWN_CACHE[raceSig] || null;
+          }, raceSig, P.tlEndFy()) || null;
+        } catch (e) { rec = CROWN_CACHE[raceSig] || null; }
       }
+      box.__crown = rec || CROWN_CACHE[raceSig] || null;
     }
     return window.Charts.barRace(rows, { top: TOP, duration: rate.anim });
   }
@@ -1515,27 +1525,42 @@
   P.crownLabel = crownLabel;
 
   function crownEl() { try { return document.getElementById('tlCrown'); } catch (e) { return null; } }
-  /* 由 drawTimeline 每帧调用：更新徽标文案（只有天数变化时才写 DOM） */
+  /* 由 drawTimeline 每帧调用：更新徽标文案（只有天数变化时才写 DOM）。
+     2026-11-01 用户要求徽标常驻（六维筛选同一行），所以「还没算完 / 当前时刻没有榜首」时
+     不再 hidden（会让整行布局跳一下），而是留在原地显示占位「—」并把状态写到 data-st，
+     由 CSS 做半透明 / 呼吸效果。 */
   P.tlCrownPaint = function (box, fy) {
     const el = crownEl();
     if (!el) return;
-    /* 筛选范围变了（大洲 / 国家 / 性别）→ 「登顶 xx 第一」的说法也要跟着变，
+    /* 筛选范围变了（大洲 / 国家 / 性别）→「登顶 xx 第一」的说法也要跟着变，
        否则会出现「筛选了中国，徽标还写世界第一」的错配。 */
     const lab = el.querySelector('.tl-crown-lab');
-    if (lab && box) {
-      const labTxt = crownLabel(box.getAttribute('data-tlregion') || '', box.getAttribute('data-tlcountry') || '', box.getAttribute('data-tlgender') || '');
-      if (lab.textContent !== labTxt) lab.textContent = labTxt;
-    }
+    const labTxt = box ? crownLabel(box.getAttribute('data-tlregion') || '', box.getAttribute('data-tlcountry') || '', box.getAttribute('data-tlgender') || '') : '';
+    if (lab && labTxt && lab.textContent !== labTxt) lab.textContent = labTxt;
     const lead = box && box.__raceLeader;
     const rec = box && box.__crown;
-    if (!lead || !rec || !rec.ready) { el.hidden = true; return; }
-    const since = crownSince(rec.spells, lead.id, fy);
-    if (since == null) { el.hidden = true; return; }
+    const nm0 = el.querySelector('.tl-crown-name');
+    const dv0 = el.querySelector('.tl-crown-val');
+    const fg0 = el.querySelector('.tl-crown-flag');
+    const since = (lead && rec && rec.ready) ? crownSince(rec.spells, lead.id, fy) : null;
+    if (since == null) {
+      /* 'pending' = 榜首时间线还在分片构建；'none' = 当前时刻还没人上榜 */
+      const st = (rec && !rec.ready) ? 'pending' : 'none';
+      if (el.getAttribute('data-st') !== st) {
+        el.setAttribute('data-st', st);
+        el.removeAttribute('data-k');
+      }
+      if (nm0 && nm0.textContent) nm0.textContent = '';
+      if (dv0 && dv0.textContent !== '—') dv0.textContent = '—';
+      if (fg0 && !fg0.hidden) { fg0.hidden = true; fg0.removeAttribute('src'); }
+      return;
+    }
     const days = Math.max(0, Math.round(fyToDays(fy) - fyToDays(since)));
     const fmt = box.__crownFmt === 'ymd' ? 'ymd' : 'd';
     const key = lead.id + '|' + days + '|' + fmt;
-    if (el.getAttribute('data-k') === key) return;
+    if (el.getAttribute('data-k') === key && el.getAttribute('data-st') === 'ok') return;
     el.setAttribute('data-k', key);
+    el.setAttribute('data-st', 'ok');
     const flag = el.querySelector('.tl-crown-flag');
     const nm = el.querySelector('.tl-crown-name');
     const dv = el.querySelector('.tl-crown-val');
@@ -1553,7 +1578,6 @@
           : ((ymd.y ? ymd.y + ' 年 ' : '') + (ymd.m ? ymd.m + ' 个月 ' : '') + ymd.d + ' 天');
       }
     }
-    el.hidden = false;
   };
   function crownRepaint() {
     /* 构建完成后立刻按当前时间点补画一次（不等下一次 drawTimeline） */
@@ -1571,10 +1595,12 @@
     const btn = el.querySelector('.tl-crown-btn');
     if (!btn) return;
     btn.addEventListener('click', function () {
-      box.__crownFmt = box.__crownFmt === 'ymd' ? 'd' : 'ymd';
-      try { localStorage.setItem('goat-crown-fmt', box.__crownFmt); } catch (e) { }
+      /* 点击时重新取一次容器：筛选变化会整页重渲染，闭包里那个 box 可能已经是脱离文档的旧节点 */
+      const b2 = document.getElementById('tlChart') || box;
+      b2.__crownFmt = (b2.__crownFmt || box.__crownFmt) === 'ymd' ? 'd' : 'ymd';
+      try { localStorage.setItem('goat-crown-fmt', b2.__crownFmt); } catch (e) { }
       el.removeAttribute('data-k');
-      P.tlCrownPaint(box, parseFloat(box.getAttribute('data-fy')) || P.tlEndFy());
+      P.tlCrownPaint(b2, parseFloat(b2.getAttribute('data-fy')) || P.tlEndFy());
     });
   };
 

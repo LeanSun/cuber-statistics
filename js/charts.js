@@ -40,6 +40,12 @@
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
     });
   }
+  /* 「第 {n} 名」这类模板填充：文案由 pages-extra 经 setLaneI18n 注入（中英各一套） */
+  function fillTpl(tpl, o) {
+    return String(tpl == null ? '' : tpl).replace(/\{(\w+)\}/g, function (m, k) {
+      return (o && o[k] != null) ? String(o[k]) : '';
+    });
+  }
   function theme() {
     const dark = document.documentElement.getAttribute('data-theme') === 'dark';
     return {
@@ -84,8 +90,13 @@
      ★ 坑：position(point,…) 的 point 是「相对图表容器」的坐标，而边界判断要的是视口坐标，
        混用会让它永远判成「上方放不下」、反而把弹窗盖到光标上 —— 所以先换算再算，算完换回去。 */
   function tipPos(point, params, dom, rect, size) {
-    const cw = (size && size.contentSize ? size.contentSize[0] : 200);
-    const ch = (size && size.contentSize ? size.contentSize[1] : 80);
+    /* 尺寸优先量真实 DOM：size.contentSize 没算上内边距 / 边框，小弹窗上会差十几像素，
+       于是「上方」算出来的位置其实还压着光标。 */
+    let cw = (size && size.contentSize ? size.contentSize[0] : 200);
+    let ch = (size && size.contentSize ? size.contentSize[1] : 80);
+    try {
+      if (dom && dom.offsetHeight > 0) { cw = dom.offsetWidth; ch = dom.offsetHeight; }
+    } catch (e) { }
     let ox = 0, oy = 0;
     try {
       const host = dom && dom.parentNode;
@@ -374,6 +385,13 @@
     });
     const scoreColW = textW(new Array(Math.max(3, maxIntLen) + 1).join('0') + '.00',
       '600 11.5px "Segoe UI",system-ui,sans-serif');
+    /* 榜首 / 榜眼分数：tooltip 里要给出「领先多少 / 距榜首多少」，比原来的国家两位码有用得多。
+       每帧建一次，data 长度是「选手宇宙」规模（几百），这点开销可以忽略。 */
+    let lead1 = 0, lead2 = 0;
+    data.forEach(function (d) {
+      const x = Math.max(0, +d.value || 0);
+      if (x > lead1) { lead2 = lead1; lead1 = x; } else if (x > lead2) { lead2 = x; }
+    });
     return Object.assign(base({ stagger: 0, duration: dur }), {
       /* 上下留白 30：Y 轴范围 1..n 时，第 1 名 / 第 n 名的条形中心正好贴在
          网格上下边界，条形高约 24px，留白不够上半条 / 下半条会被切掉。
@@ -411,12 +429,29 @@
           const d = p.data || {};
           if (!d || !d.id || !d.name) return '';
           const v = (d.value && d.value[0]) || 0;
+          const no = d.no || 0;
           /* 姓名前加一面国旗（用户 2026-11-01 要求）：条内已经有小国旗，
              但条被裁短时国旗可能落在条外，tooltip 里始终带上更稳。 */
           const fu = flagUri(d.iso);
           const ft = fu ? '<img src="' + fu + '" style="width:15px;height:11px;vertical-align:-1px;margin-right:5px" alt="">' : '';
-          return '<div style="display:flex;align-items:center;gap:2px">' + ft + '<b>' + esc(d.name) + '</b></div>' +
-            '<div style="margin-top:2px;font-size:11.5px;opacity:.85">' + esc(d.iso || '') + ' · ' + f2(v) + '</div>';
+          /* 第二行：名次 + 国家全名（2026-11-01 用户要求去掉国家两位码 —— 「AU」这种缩写
+             既不好读也没信息量，换成「澳大利亚」这类可读名称）。 */
+          const sub = [];
+          if (no) sub.push(fillTpl(LANE_I18N.raceRank || '第 {n} 名', { n: no }));
+          if (d.cname) sub.push(esc(d.cname));
+          let h = '<div style="display:flex;align-items:center;gap:2px">' + ft + '<b>' + esc(d.name) + '</b></div>';
+          if (sub.length) h += '<div style="margin-top:3px;font-size:11.5px;opacity:.82">' + sub.join(' · ') + '</div>';
+          /* 第三行：当前分数 + 与榜首的相对位置（第 1 名说自己领先多少，其余说自己是榜首的百分之几） */
+          let rel = '';
+          if (no === 1 && lead2 > 0 && lead1 > lead2) {
+            rel = fillTpl(LANE_I18N.raceAhead || '领先第二名 {p}%', { p: ((lead1 - lead2) / lead2 * 100).toFixed(1) });
+          } else if (no > 1 && lead1 > 0 && v > 0) {
+            rel = fillTpl(LANE_I18N.raceOfTop || '榜首的 {p}%', { p: (v / lead1 * 100).toFixed(1) });
+          }
+          h += '<div style="margin-top:2px;font-size:12px"><b style="font-variant-numeric:tabular-nums">' +
+            f2(v) + '</b> ' + esc(LANE_I18N.pt || '分') +
+            (rel ? '<span style="opacity:.7"> · ' + esc(rel) + '</span>' : '') + '</div>';
+          return h;
         }
       }),
       series: [{
@@ -494,7 +529,7 @@
         data: data.map(function (d, i) {
           return {
             value: [round(d.value || 0), d.rank != null ? d.rank : (i + 1)],
-            id: d.id, name: d.name, iso: d.iso, flag: d.flag, color: d.color,
+            id: d.id, name: d.name, iso: d.iso, cname: d.cname || '', flag: d.flag, color: d.color,
             no: d.no != null ? d.no : (d.rank != null ? d.rank : i + 1)
           };
         }),

@@ -769,7 +769,49 @@ console.log('== 纪录持有图：筛选联动 / 一人一色 / 表单归属 =='
   ok(/ data-tldimv="/.test(hL) && / data-tltype="/.test(hL) && / data-tlgender="/.test(hL),
     '筛选用 data-tl* 前缀属性挂在容器上');
 
+  /* ★ 2026-11-01（第四轮）用户要求：登顶时长徽标挪进「六维筛选」同一行、常驻显示。
+     位置断言：必须在 tlDimSeg 之后、那一行行尾的 .spacer 之前，且整体在图表（.tl-stage）之前。 */
+  {
+    const iDim = hR2.indexOf('id="tlDimSeg"');
+    const iCrown = hR2.indexOf('id="tlCrown"');
+    const iRowEnd = hR2.indexOf('<span class="spacer">', iDim);
+    const iStage = hR2.indexOf('class="tl-stage"');
+    ok(iDim >= 0 && iCrown > iDim && iRowEnd > iCrown && iCrown < iStage,
+      '登顶时长徽标排在「六维筛选」同一行的后面（dim seg 之后、行尾 spacer 之前、图表之前）');
+    ok(!/id="tlCrown"[^>]*\shidden/.test(hR2), '徽标常驻显示（不再默认 hidden，避免布局跳动）');
+    ok(/id="tlCrown"[^>]*data-st="pending"/.test(hR2), '徽标带占位状态 data-st（pending / none / ok）');
+    ok(/class="tl-crown-tx"/.test(hR2) && /class="tl-crown-val"/.test(hR2),
+      '徽标是「姓名 / 说明」两行 + 时长 的结构');
+  }
+  /* ★ 2026-11-01（第四轮）用户反馈「播放中改上方筛选，竞速图就停住了」：
+     根因是播放循环闭包攥着已被 innerHTML 换掉的旧 range / box，重渲染后没人用新 DOM 重启它。 */
+  {
+    const appSrc = fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8');
+    ok(/function startPlay\(\)/.test(appSrc), '播放循环抽成具名函数 startPlay()');
+    ok(/if \(state\.tlPlaying\) \{\s*if \(range\) startPlay\(\)/.test(appSrc),
+      '重渲染（mount）后按 state.tlPlaying 用新 DOM 从当前时刻续播');
+    ok(/cancelAnimationFrame\(tlRaf\)/.test(appSrc), '重启 / 切视图前先取消上一轮 rAF');
+  }
+
   const C = win.Charts;
+  /* == 分数竞速图 tooltip：去掉国家两位码，换名次 + 国家全名 + 分数 + 相对榜首 ==
+     用户 2026-11-01：「删除里面的国家英文简写，更换为其他更有意义的内容」。 */
+  {
+    const ro = C.barRace([
+      { id: 'a', name: 'A', iso: 'AU', cname: 'Australia', flag: '', color: '#3355cc', value: 100, rank: 1, no: 1 },
+      { id: 'b', name: 'B', iso: 'CN', cname: 'China', flag: '', color: '#cc5533', value: 80, rank: 2, no: 2 }
+    ], { top: 15 });
+    const sd = ro.series[0].data;
+    ok(sd[0].cname === 'Australia' && sd[1].cname === 'China', '竞速图数据带上国家全名 cname');
+    const tip1 = ro.tooltip.formatter({ data: sd[0] });
+    const tip2 = ro.tooltip.formatter({ data: sd[1] });
+    ok(tip1.indexOf('AU') < 0 && tip2.indexOf('CN') < 0, 'tooltip 不再出现国家两位码');
+    ok(/Australia/.test(tip1) && /China/.test(tip2), 'tooltip 显示国家全名');
+    ok(/第 1 名|#1/.test(tip1) && /第 2 名|#2/.test(tip2), 'tooltip 显示当前名次');
+    ok(/100\.00/.test(tip1) && /80\.00/.test(tip2), 'tooltip 显示当前分数');
+    ok(/领先第二名|ahead of #2/.test(tip1), '第 1 名给出「领先第二名多少」');
+    ok(/榜首的|of #1/.test(tip2), '其余名次给出「是榜首的百分之几」');
+  }
   /* 三段全部来自同一个国家（China）—— 旧实现按国籍上色时这三段一模一样 */
   const fake = [
     { ev: '333', label: '333', segs: [

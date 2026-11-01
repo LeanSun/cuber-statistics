@@ -1415,26 +1415,41 @@ button.exp-v3-wca.pid-copy:hover{color:var(--accent)}
   background:rgba(128,128,128,.16);font-variant-numeric:tabular-nums;white-space:nowrap;
   text-align:center;overflow:hidden}
 
-/* ---- 分数竞速图：登顶时长徽标（图表**上方**一行，点击切换「天 / 年月日」） ---- */
-.tl-crown{display:flex;justify-content:flex-start;margin:0 0 10px}
+/* ---- 分数竞速图：登顶时长徽标 ----
+   2026-11-01 用户要求：挪进「六维筛选」同一行（紧跟其后），常驻显示、样式做精致。
+   结构：[皇冠图标方块] [国旗] [姓名 / 登顶xx第一] [时长] [⇄]，点击切换「天 / 年 月 天」。 */
+.tl-crown{display:inline-flex;align-items:center;align-self:flex-end;margin-left:2px;flex:none}
 .tl-crown[hidden]{display:none}
-.tl-crown-btn{display:inline-flex;align-items:center;gap:7px;padding:6px 14px 6px 11px;
-  border-radius:999px;border:1px solid var(--border-2);background:var(--bg-elev);
-  color:var(--text-2);font-size:12.5px;line-height:1;cursor:pointer;
-  transition:border-color .16s,color .16s,box-shadow .16s,transform .16s}
-.tl-crown-btn:hover{border-color:color-mix(in srgb,var(--accent) 55%,var(--border-2));
-  color:var(--text);box-shadow:0 4px 14px rgba(0,0,0,.07);transform:translateY(-1px)}
-.tl-crown-ic{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;
-  border-radius:6px;background:color-mix(in srgb,var(--accent) 16%,transparent);flex:none}
-.tl-crown-ic svg{width:12px;height:12px;fill:var(--accent)}
-.tl-crown-flag{width:15px;height:11px;border-radius:2px;flex:none;
+.tl-crown-btn{display:inline-flex;align-items:center;gap:9px;padding:5px 12px 5px 7px;
+  border-radius:12px;cursor:pointer;text-align:left;
+  border:1px solid color-mix(in srgb,var(--accent) 26%,var(--border-2));
+  background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 12%,var(--bg-elev)),var(--bg-elev) 58%);
+  color:var(--text-2);font-size:12.5px;line-height:1;
+  transition:border-color .16s,box-shadow .18s,transform .16s,background .18s}
+.tl-crown-btn:hover{border-color:color-mix(in srgb,var(--accent) 60%,var(--border-2));
+  box-shadow:0 6px 18px color-mix(in srgb,var(--accent) 16%,transparent);transform:translateY(-1px)}
+.tl-crown-ic{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;flex:none;
+  border-radius:8px;
+  background:linear-gradient(140deg,var(--accent),color-mix(in srgb,var(--accent) 52%,#7a3cff));
+  box-shadow:0 2px 7px color-mix(in srgb,var(--accent) 34%,transparent)}
+.tl-crown-ic svg{width:13px;height:13px;fill:#fff}
+.tl-crown-flag{width:16px;height:12px;border-radius:2px;flex:none;
   box-shadow:0 0 0 1px rgba(0,0,0,.12)}
 .tl-crown-flag[hidden]{display:none}
-.tl-crown-name{color:var(--text);font-weight:700;max-width:200px;overflow:hidden;
-  text-overflow:ellipsis;white-space:nowrap}
-.tl-crown-lab{opacity:.72}
-.tl-crown-val{color:var(--text);font-weight:700;font-variant-numeric:tabular-nums}
-.tl-crown-swap{opacity:.4;font-size:11px;margin-left:1px}
+.tl-crown-tx{display:flex;flex-direction:column;gap:2px;min-width:0;max-width:230px}
+.tl-crown-name{font-size:12.5px;font-weight:700;color:var(--text);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.tl-crown-name:empty{display:none}
+.tl-crown-lab{font-size:10.5px;opacity:.62;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tl-crown-val{font-size:14px;font-weight:800;color:var(--accent);
+  font-variant-numeric:tabular-nums;letter-spacing:-.2px;white-space:nowrap}
+.tl-crown-swap{opacity:.35;font-size:11px;margin-left:-2px}
+/* 占位态：榜首时间线还在算（pending）或该时刻还没有人上榜（none） */
+.tl-crown[data-st="pending"] .tl-crown-val,
+.tl-crown[data-st="none"] .tl-crown-val{color:var(--text-3);opacity:.75}
+.tl-crown[data-st="pending"] .tl-crown-ic{animation:tlCrownPulse 1.5s ease-in-out infinite}
+@keyframes tlCrownPulse{0%,100%{opacity:1}50%{opacity:.5}}
+@media (max-width:720px){ .tl-crown-tx{max-width:120px} }
 
 /* ============ 重大事件：浮在分数竞速图右下角的可折叠弹窗 ============ */
 .tl-stage{position:relative}

@@ -682,15 +682,15 @@
         if (tx) tx.textContent = st === 'pause' ? t('tl.pause') : (st === 'replay' ? t('tl.replay') : t('tl.play'));
       }
       if (range) range.addEventListener('input', function () { setFyFromRange(range); setPlayBtn(); });
-      if (play) play.addEventListener('click', function () {
-        if (state.tlPlaying) { stopPlay(); return; }
+      /* ★ 播放循环抽成具名函数（2026-11-01 用户反馈「播放中改筛选，竞速图就停住了」）：
+         render() 会把整页 innerHTML 换掉，range / box / lab 全部变成新节点，而旧的
+         rAF 循环闭包里还攥着上一批**已经脱离文档**的节点 —— 它仍在跑，但画的、写的
+         都不是屏幕上那套 DOM，看起来就是「停在原地」。
+         现在每次 mount 都按 state.tlPlaying 决定是否用新 DOM 重新起循环，
+         起点取新滑块的当前值，于是页面从同一时刻、按新口径继续播下去。 */
+      function startPlay() {
         if (!range) return;
-        /* 停在结尾时按钮是「重播」：先把时间轴拨回起点再播，否则会立刻再次结束。 */
-        if (tlAtEnd()) {
-          const slog = P.tlSlider(state.tlStep, state.tlFy);
-          range.value = slog.min;
-          setFyFromRange(range);
-        }
+        if (tlRaf) { cancelAnimationFrame(tlRaf); tlRaf = 0; }   /* 先掐掉上一轮 */
         state.tlPlaying = true;
         /* 按钮内容是「图标 + 文字」两块，不能直接 textContent（会把图标抹掉） */
         setPlayBtn();
@@ -752,6 +752,17 @@
           tlRaf = requestAnimationFrame(frame);
         }
         tlRaf = requestAnimationFrame(frame);
+      }
+      if (play) play.addEventListener('click', function () {
+        if (state.tlPlaying) { stopPlay(); return; }
+        if (!range) return;
+        /* 停在结尾时按钮是「重播」：先把时间轴拨回起点再播，否则会立刻再次结束。 */
+        if (tlAtEnd()) {
+          const slog = P.tlSlider(state.tlStep, state.tlFy);
+          range.value = slog.min;
+          setFyFromRange(range);
+        }
+        startPlay();
       });
       function stopPlay() {
         state.tlPlaying = false;
@@ -760,6 +771,12 @@
         setPlayBtn();   /* 走完自动停在结尾时会变成「重播」图标 */
       }
       setPlayBtn();     /* 首次挂载时同步一次（默认停在结尾 → 显示重播） */
+      /* ★ 重渲染后接续播放：筛选一变就整页重渲染，这里用**新**的 DOM 从当前时刻重新起循环，
+         于是「播放中改筛选」不会中断，时间轴也不会被拨回起点。 */
+      if (state.tlPlaying) {
+        if (range) startPlay();
+        else state.tlPlaying = false;   /* 切到纪录持有图：没有播放控件，直接停下 */
+      } else if (tlRaf) { cancelAnimationFrame(tlRaf); tlRaf = 0; }
       /* 动画速率自定义：时间跳跃（天/秒）/ 动画时长 / 刷新间隔。
          滑杆（…Cap）与数字输入框共用同一份状态，互相同步；
          数字框失焦或按回车时按 min/max 夹紧并回写，避免出现 0 天/秒这类无效值。 */
@@ -1429,11 +1446,13 @@
     if (el.hasAttribute('data-tlmode')) { state.tlMode = el.getAttribute('data-tlmode'); render(true); return; }
     if (el.hasAttribute('data-tlview')) {
       state.tlView = el.getAttribute('data-tlview');
-      if (state.tlView === 'lane') { state.tlPlaying = false; clearInterval(tlTimer); }
+      /* 切到纪录持有图 / 换步进：没有播放控件，停掉循环（老循环不清会一直空转往旧容器里画） */
+      if (state.tlView === 'lane') { state.tlPlaying = false; clearInterval(tlTimer); if (tlRaf) { cancelAnimationFrame(tlRaf); tlRaf = 0; } }
       render(true); return;
     }
     if (el.hasAttribute('data-tlstep')) {
       state.tlStep = el.getAttribute('data-tlstep'); state.tlPlaying = false; clearInterval(tlTimer);
+      if (tlRaf) { cancelAnimationFrame(tlRaf); tlRaf = 0; }
       render(true); return;
     }
     if (el.hasAttribute('data-tlmetric')) { state.tlMetric = el.getAttribute('data-tlmetric'); render(true); return; }
@@ -1750,7 +1769,7 @@
   window.addEventListener('hashchange', function () {
     const r = parseHash();
     const route = r.seg[0] || 'home';
-    if (route !== 'timeline') { state.tlPlaying = false; clearInterval(tlTimer); }
+    if (route !== 'timeline') { state.tlPlaying = false; clearInterval(tlTimer); if (tlRaf) { cancelAnimationFrame(tlRaf); tlRaf = 0; } }
     render();
   });
   window.addEventListener('resize', function () {
