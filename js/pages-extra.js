@@ -247,7 +247,9 @@
     const sl = tlSlider(step, fy);
     const rate = loadRate();
 
-    let h = '<div class="page-head reveal"><h1>' + esc(t('tl.title')) + '</h1><p class="sub">' + esc(t('tl.sub')) + '</p></div>';
+    /* 2026-11-01 用户要求删掉页面顶部那段说明文字（「历史地位随时间的推移而演变…」），
+       图表随之上移，直接贴着标题开始。视图自身的说明仍在图上方（.tl-desc）。 */
+    let h = '<div class="page-head reveal"><h1>' + esc(t('tl.title')) + '</h1></div>';
 
     h += '<div class="card reveal">';
     h += '<div class="row tl-top">';
@@ -314,7 +316,10 @@
     }
 
     const chH = view === 'race' ? 520 : Math.max(560, (M.events.length * 46 + 90));
-    const geoRegion = (state.geo && state.geo.indexOf('cont:') === 0) ? state.geo.slice(5) : '';
+    /* 纪录范围：大洲（cont:*）、国家（ISO2）都来自 state.geo；
+       细分地区（reg:*）在 state.region 里 —— 以前这里只读 state.geo，
+       于是选了「东亚」这类地区筛选时图表完全没反应。 */
+    const geoRegion = (state.geo && state.geo.indexOf('cont:') === 0) ? state.geo.slice(5) : (state.region || '');
     const geoCountry = (state.geo && state.geo.indexOf('cont:') !== 0 && state.geo) ? state.geo : '';
     /* 当前生效的项目集合（显式多选 / 预设分组 / 单个项目）——供竞速图按项目切换 */
     const evSel0 = state.evSel || [];
@@ -340,12 +345,26 @@
       })
       .sort(function (a, b) { return String(a.date || a.year).localeCompare(String(b.date || b.year)); });
     TL_MS = ms;
+    /* 登顶时长徽标（仅分数竞速图）：2026-11-01 用户要求放到**图表上方**，并且文案跟着筛选走
+       ——「登顶世界第一」/「登顶亚洲第一」/「登顶中国第一」，选了女子再补「女子」。
+       数据本身本来就按当前筛选口径重建榜首时间线（见 crownCompute），这里只是把说法对齐。 */
+    if (view !== 'lane') {
+      h += '<div class="tl-crown" id="tlCrown" hidden>' +
+        '<button type="button" class="tl-crown-btn" id="tlCrownBtn" title="' + esc(t('tl.crown.tip')) + '">' +
+        '<span class="tl-crown-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3.2 8.4l4.6 3.4L12 4.2l4.2 7.6 4.6-3.4-1.7 9.9H4.9L3.2 8.4z"/></svg></span>' +
+        '<img class="tl-crown-flag" alt="" hidden>' +
+        '<b class="tl-crown-name"></b>' +
+        '<span class="tl-crown-lab">' + esc(crownLabel(geoRegion, geoCountry, state.gender)) + '</span>' +
+        '<b class="tl-crown-val"></b>' +
+        '<span class="tl-crown-swap" aria-hidden="true">⇄</span>' +
+        '</button></div>';
+    }
     h += '<div class="tl-stage">';
     h += '<div class="chart-box tl-chart-link" id="tlChart" style="height:' + chH + 'px" data-view="' + view + '" data-mode="' + mode +
       '" data-fy="' + fy + '" data-metric="' + metric + '" data-lane="' + state.tlLane + '" data-smooth="' + (state.tlSmooth ? 1 : 0) +
-      '" data-region="' + geoRegion + '" data-country="' + geoCountry + '" data-ev="' + evsBox.join(',') +
-      '" data-gender="' + (state.gender || 'all') + '" data-type="' + (state.recType || 'all') + '" data-dim="' + (state.tlDim || '') +
-      '" data-y0="' + (state.y0 || '') + '" data-y1="' + (state.y1 || '') + '" data-retired="' + (state.retired ? 1 : 0) + '"></div>';
+      '" data-tlregion="' + geoRegion + '" data-tlcountry="' + geoCountry + '" data-ev="' + evsBox.join(',') +
+      '" data-tlgender="' + (state.gender || 'all') + '" data-tltype="' + (state.recType || 'all') + '" data-tldimv="' + (state.tlDim || '') +
+      '" data-y0="' + (state.y0 || '') + '" data-y1="' + (state.y1 || '') + '" data-tlretired="' + (state.retired ? 1 : 0) + '"></div>';
 
     /* 纪录持有图：缩放 / 平移提示条（「恢复默认」只在调节过之后出现） */
     if (view === 'lane') {
@@ -383,22 +402,6 @@
       h += '</div></div></div>';
     }
     h += '</div>';
-
-    /* 登顶时长徽标（仅分数竞速图）：紧贴图表下方一行，不遮住任何条形。
-       「榜单第一」会随筛选口径变化，所以有地区 / 国家 / 性别筛选时文案从「世界第一」降级为「第一」。 */
-    if (view !== 'lane') {
-      const crownLab = (geoCountry || geoRegion || (state.gender && state.gender !== 'all'))
-        ? t('tl.crown.label') : t('tl.crown.labelW');
-      h += '<div class="tl-crown" id="tlCrown" hidden>' +
-        '<button type="button" class="tl-crown-btn" id="tlCrownBtn" title="' + esc(t('tl.crown.tip')) + '">' +
-        '<span class="tl-crown-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3.2 8.4l4.6 3.4L12 4.2l4.2 7.6 4.6-3.4-1.7 9.9H4.9L3.2 8.4z"/></svg></span>' +
-        '<img class="tl-crown-flag" alt="" hidden>' +
-        '<b class="tl-crown-name"></b>' +
-        '<span class="tl-crown-lab">' + esc(crownLab) + '</span>' +
-        '<b class="tl-crown-val"></b>' +
-        '<span class="tl-crown-swap" aria-hidden="true">⇄</span>' +
-        '</button></div>';
-    }
 
     /* 纪录持有图（lane 视图）下方不再罗列冗长的「重大事件」清单 —— 重大事件仅在「分数竞速图」中呈现；
        竞速图已在右下角 ms-pop 里给出事件轨道与到达提示。 */
@@ -536,12 +539,12 @@
     const metric = box.getAttribute('data-metric') || 'overall';
     const lane = box.getAttribute('data-lane') || 'single';
     const smooth = box.getAttribute('data-smooth') === '1';
-    const region = box.getAttribute('data-region') || '';
-    const country = box.getAttribute('data-country') || '';
+    const region = box.getAttribute('data-tlregion') || '';
+    const country = box.getAttribute('data-tlcountry') || '';
     const evs = (box.getAttribute('data-ev') || '').split(',').filter(Boolean);
-    const gender = box.getAttribute('data-gender') || '';
-    const rtype = box.getAttribute('data-type') || 'all';
-    const dim = box.getAttribute('data-dim') || '';
+    const gender = box.getAttribute('data-tlgender') || '';
+    const rtype = box.getAttribute('data-tltype') || 'all';
+    const dim = box.getAttribute('data-tldimv') || '';
     /* 容器尚不可见（刚切视图 / 父级尚未布局完成）时宽高为 0，此时 init 出来的画布是 0×0，
        之后即使 DOM 有了尺寸也只会显示空白。先等尺寸就绪再画，最多重试 12 帧（约 200ms），
        超过后仍画一次，保证不会因为容器一直隐藏而彻底不画。 */
@@ -568,7 +571,7 @@
       window.Charts.resolveDeep ? window.Charts.resolveDeep(opt) : (function () { })(opt);
       /* 结构（视图 / 模式 / 维度 / 单均 / 项目 / 性别）不变时做增量合并，名次与分数丝滑过渡 */
       const sig = view + '|' + mode + '|' + metric + '|' + lane + '|' + evs.join('+') + '|' + gender + '|' + rtype + '|' + region + '|' + country + '|' + (smooth ? 1 : 0) + '|' + dim +
-        '|' + (box.getAttribute('data-y0') || '') + '|' + (box.getAttribute('data-y1') || '') + '|' + (box.getAttribute('data-retired') || '0');
+        '|' + (box.getAttribute('data-y0') || '') + '|' + (box.getAttribute('data-y1') || '') + '|' + (box.getAttribute('data-tlretired') || '0');
       const sameStruct = box.__tlSig === sig;
       /* 播放时每帧都在重画，换位过渡必须短于帧间隔的几倍，否则名次变化会「追不上」
          当前帧、看起来一顿一顿。动画时长滑杆直接决定这段补间的快慢。 */
@@ -735,20 +738,33 @@
       if (e.button !== 0) return;
       const w0 = zoomCur(box), f = zoomFull(box);
       if (w0.b - w0.a >= f.b - f.a - 1e-6) return;   /* 满量程时没有可平移的余量 */
-      drag = { x: e.clientX, a: w0.a, b: w0.b };
+      drag = { x: e.clientX, a: w0.a, b: w0.b, moved: false, x0: e.clientX, y0: e.clientY };
       box.classList.add('dragging');
       e.preventDefault();
     });
     window.addEventListener('mousemove', function (e) {
       if (!drag) return;
+      if (Math.abs(e.clientX - drag.x0) > 3 || Math.abs(e.clientY - drag.y0) > 3) drag.moved = true;
       const dy = (e.clientX - drag.x) * zoomYearsPerPx(box);
       zoomApply(box, drag.a - dy, drag.b - dy);
     });
     window.addEventListener('mouseup', function () {
       if (!drag) return;
+      /* ★ 真拖动过的，浏览器仍会补发一次 click（按下/抬起都落在 canvas 上就会）。
+         若不拦掉，这次 click 会被当成「点击色块 → 跳选手主页」，刚拖完就离开页面了。
+         记下时间戳，交给下面的捕获阶段监听吞掉。 */
+      if (drag.moved) box.__tlSkipClick = Date.now();
       drag = null;
       box.classList.remove('dragging');
     });
+    /* 捕获阶段吞掉「拖动结束后的那次 click」：ECharts 的 click 监听挂在 canvas（子节点）上，
+       父级在捕获阶段 stopPropagation 就能拦在它之前。 */
+    box.addEventListener('click', function (e) {
+      if (Date.now() - (box.__tlSkipClick || 0) < 400) {
+        e.stopPropagation();
+        e.preventDefault();
+      }
+    }, true);
     P.tlSyncZoomBtn(box);
   };
 
@@ -1117,7 +1133,8 @@
   function tlOption(view, mode, fy, smooth, metric, region, country, lane, evs, gender, rtype, box, dim) {
     if (window.Charts.setLaneI18n) window.Charts.setLaneI18n({
       mo: (t.isEn() ? 'mo' : '个月'), y: (t.isEn() ? 'y' : '年'), day: (t.isEn() ? 'd' : '天'),
-      refresh: t('tl.rec.refresh'), times: t('tl.rec.times')
+      refresh: t('tl.rec.refresh'), times: t('tl.rec.times'),
+      click: t('tl.laneClick')
     });
     if (view === 'lane') {
       /* 泳道顺序严格按 WCA 官方项目默认顺序（正阶→单手→盲拧→最少步→异形→已停办），
@@ -1132,7 +1149,7 @@
            · 停办项目：按筛选条的「不计入 / 包含」开关决定是否出现 magic 等已停办项目；
            · 年份区间：段与区间相交才画，并把首尾裁到区间边界；
            · 国家 / 大洲 / 性别：只保留这些选手持有的段（其余留白即「无人持有」）。 */
-      const retiredIn = !!(box && box.getAttribute('data-retired') === '1');
+      const retiredIn = !!(box && box.getAttribute('data-tlretired') === '1');
       const yFrom = parseInt((box && box.getAttribute('data-y0')) || '', 10) || 0;
       const yTo = parseInt((box && box.getAttribute('data-y1')) || '', 10) || 0;
       const useAvg = rtype === 'avg' || (rtype !== 'single' && lane === 'avg');
@@ -1477,11 +1494,38 @@
     }
     return null;
   }
+  /* 「登顶 xx 第一」里的 xx —— 跟随上方筛选的纪录范围（世界 / 亚洲 / 欧洲 / 中国 …），
+     选了女子再补一个「女子」。数据本身由 crownCompute 按同一口径重建，这里只把说法说对。 */
+  function crownScopeName(region, country) {
+    /* 筛选值可能是国家码（CN）、大洲码（As）或地区码（如 EastAsia），一律换成可读名称；
+       之前直接把 'As' 拼进文案，页面上会出现「登顶As第一」。 */
+    if (country) return countryLabel(country);
+    if (region) {
+      if (M.continents && M.continents[region]) return contLabel(region);
+      const o = M.regions && M.regions[region];
+      if (o) return t.isEn() ? (o.en || o.zh) : (o.zh || o.en);
+      return region;
+    }
+    return t('tl.crown.world');
+  }
+  function crownLabel(region, country, gender) {
+    const fem = !!(gender && gender !== 'all' && String(gender).charAt(0).toUpperCase() === 'F');
+    return t(fem ? 'tl.crown.labelF' : 'tl.crown.labelIn', { scope: crownScopeName(region, country) });
+  }
+  P.crownLabel = crownLabel;
+
   function crownEl() { try { return document.getElementById('tlCrown'); } catch (e) { return null; } }
   /* 由 drawTimeline 每帧调用：更新徽标文案（只有天数变化时才写 DOM） */
   P.tlCrownPaint = function (box, fy) {
     const el = crownEl();
     if (!el) return;
+    /* 筛选范围变了（大洲 / 国家 / 性别）→ 「登顶 xx 第一」的说法也要跟着变，
+       否则会出现「筛选了中国，徽标还写世界第一」的错配。 */
+    const lab = el.querySelector('.tl-crown-lab');
+    if (lab && box) {
+      const labTxt = crownLabel(box.getAttribute('data-tlregion') || '', box.getAttribute('data-tlcountry') || '', box.getAttribute('data-tlgender') || '');
+      if (lab.textContent !== labTxt) lab.textContent = labTxt;
+    }
     const lead = box && box.__raceLeader;
     const rec = box && box.__crown;
     if (!lead || !rec || !rec.ready) { el.hidden = true; return; }

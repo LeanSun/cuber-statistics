@@ -78,6 +78,45 @@
     };
   }
 
+  /* ---------- 悬浮框统一「贴在光标正上方」 ---------- */
+  /* 2026-11-01 用户要求：纪录持有图与分数竞速图的 tooltip 都要浮在鼠标上方，
+     允许越出图表顶层（不再被 confine 关回图内），但**绝不允许压住鼠标**。
+     ★ 坑：position(point,…) 的 point 是「相对图表容器」的坐标，而边界判断要的是视口坐标，
+       混用会让它永远判成「上方放不下」、反而把弹窗盖到光标上 —— 所以先换算再算，算完换回去。 */
+  function tipPos(point, params, dom, rect, size) {
+    const cw = (size && size.contentSize ? size.contentSize[0] : 200);
+    const ch = (size && size.contentSize ? size.contentSize[1] : 80);
+    let ox = 0, oy = 0;
+    try {
+      const host = dom && dom.parentNode;
+      if (host && host.getBoundingClientRect) {
+        const hr = host.getBoundingClientRect();
+        ox = hr.left; oy = hr.top;
+      }
+    } catch (e) { }
+    const de = document.documentElement || {};
+    const vw = de.clientWidth || window.innerWidth || 800;
+    const vh = de.clientHeight || window.innerHeight || 600;
+    /* 顶部安全线：顶栏是 position:sticky + z-index，弹窗一旦钻到它下面就会被盖住半截。
+       允许越出图表顶层，但不能越到顶栏下面去。 */
+    let safeTop = 6;
+    try {
+      const tb = document.querySelector('.topbar');
+      if (tb) {
+        const tr = tb.getBoundingClientRect();
+        if (tr.top <= 0.5) safeTop = Math.max(6, Math.round(tr.bottom + 6));
+      }
+    } catch (e) { }
+    const px = point[0] + ox, py = point[1] + oy;
+    let x = px - cw / 2;
+    x = Math.max(6, Math.min(x, vw - cw - 6));
+    /* 先试光标上方；顶部放不下才翻到下方（并留 18px 让开鼠标） */
+    let y = py - ch - 16;
+    if (y < safeTop) y = py + 18;
+    if (y + ch > vh - 6) y = Math.max(safeTop, vh - ch - 6);
+    return [Math.round(x - ox), Math.round(y - oy)];
+  }
+
   function axisCommon() {
     const T = pal();
     return {
@@ -362,8 +401,12 @@
         axisTick: { show: false },
         splitLine: { show: false }
       }),
-      tooltip: Object.assign({
+      /* 悬浮框与纪录持有图统一：浮在光标上方、允许越出图表顶层、留 16~18px 让开鼠标
+         （见 tipPos；原来的 base().tooltip 是 confine:true，贴着图表顶部时只能压住鼠标）。 */
+      tooltip: Object.assign({}, base().tooltip, {
+        confine: false, position: tipPos,
         trigger: 'item', axisPointer: { type: 'shadow' },
+        extraCssText: 'box-shadow:0 6px 20px rgba(0,0,0,.14);border-radius:10px;padding:8px 10px;pointer-events:none;',
         formatter: function (p) {
           const d = p.data || {};
           if (!d || !d.id || !d.name) return '';
@@ -375,7 +418,7 @@
           return '<div style="display:flex;align-items:center;gap:2px">' + ft + '<b>' + esc(d.name) + '</b></div>' +
             '<div style="margin-top:2px;font-size:11.5px;opacity:.85">' + esc(d.iso || '') + ' · ' + f2(v) + '</div>';
         }
-      }, base().tooltip),
+      }),
       series: [{
         type: 'custom',
         /* clip 关掉：首末两名的条形有一半落在网格外，打开会被裁成半条。 */
@@ -732,48 +775,66 @@
       const segCol = api.visual('color') || '#888';
       const onDark = colorLum(segCol) < 0.34;
       const row = data[params.dataIndex] || {};
-      /* 段内刷新刻度：同一个人连续刷新多次时，段被合并成一块，单看色块看不出「刷了几次」。
-         在每次刷新的位置画一根竖线（半透明白 / 黑，不抢主体），一眼能数出次数；
-         段尾再挂一枚「×N」角标给出确切次数（见下）。
-         太密（每根不足 2.5px）就不画刻度，否则会连成一片反而更乱 —— 此时角标仍在。 */
+      /* 段内「刷了几次」的可视化（2026-11-01 第三轮：细竖线 + 角标用户完全看不出来）：
+         把段按「每一次刷新」切成若干小格，**奇偶格交替压一层半透明遮罩**（一亮一暗），
+         格与格之间再压一根高对比分隔线 —— 于是「这一段被刷了几次」直接数条纹就有了，
+         不依赖文字，再窄的段也看得见；段尾另有「×N」角标给出确切次数（放得下才挂）。 */
       const subs = row.subs;
       const nRef = (subs && subs.length > 1) ? subs.length : 0;
-      if (nRef && w > 16) {
-        const xs = [];
+      const bandTop = rect.y + 1.5;
+      const bandH = Math.max(4, h - 3);
+      if (nRef && w > 6) {
+        /* 每次刷新的像素位置（段首 → 各次刷新 → 段尾），只保留真正落在段内的 */
+        const xs = [rect.x];
         for (let i = 1; i < subs.length; i++) {
           const px = api.coord([dnFy(subs[i]), catIdx])[0];
-          if (px > rect.x + 2 && px < rect.x + w - 2) xs.push(px);
+          if (px > rect.x + 1.5 && px < rect.x + w - 1.5) xs.push(px);
         }
-        if (xs.length && w / xs.length >= 2.5) {
+        xs.push(rect.x + w);
+        const bandFill = onDark ? 'rgba(255,255,255,.18)' : 'rgba(0,0,0,.10)';
+        for (let i = 1; i < xs.length - 1; i += 2) {
+          const a = xs[i], b = xs[i + 1];
+          if (b - a > 1.2) {
+            kids.push({
+              type: 'rect', silent: true,
+              shape: { x: a, y: bandTop, width: b - a, height: bandH },
+              style: { fill: bandFill }
+            });
+          }
+        }
+        if (xs.length > 2) {
           let d = '';
-          for (let i = 0; i < xs.length; i++) {
+          for (let i = 1; i < xs.length - 1; i++) {
             const px = Math.round(xs[i]) + 0.5;
-            d += 'M' + px + ' ' + rect.y + 'L' + px + ' ' + (rect.y + h);
+            d += 'M' + px + ' ' + bandTop + 'L' + px + ' ' + (bandTop + bandH);
           }
           kids.push({
             type: 'path', silent: true,
             shape: { path: d },
-            style: { stroke: onDark ? 'rgba(255,255,255,.46)' : 'rgba(0,0,0,.26)', lineWidth: 1, fill: 'none' }
+            style: { stroke: onDark ? 'rgba(255,255,255,.62)' : 'rgba(0,0,0,.38)', lineWidth: 1, fill: 'none' }
           });
         }
       }
       /* 段内只画姓名（用户 2026-11-01 要求：国旗只出现在 tooltip 里，泳道图上不再画国旗）；
          连续刷新多次的段在右端挂一枚「×N」角标，直接读出刷了几次。 */
-      if (w > 26 && h >= 14) {
+      if (w > 22 && h >= 13) {
         const name = String(api.value(4) || '');
         const txtFill = onDark ? '#fff' : '#16202c';
-        /* 角标：先量宽度，再决定给姓名留多少地方（角标永远贴在段尾） */
+        /* 角标：先量宽度，再决定给姓名留多少地方（角标永远贴在段尾）。
+           ★ 门槛从 w > badgeW+34 放宽到 w >= badgeW+8 —— 默认视野下大多数段只有 40~60px 宽，
+             旧门槛导致角标几乎从不出现，这才是「怎么都看不出来」的直接原因。 */
         const badgeLabel = nRef ? '×' + nRef : '';
-        const badgeW = badgeLabel ? Math.round(textW(badgeLabel, '700 10px "Segoe UI",system-ui,sans-serif') + 9) : 0;
-        const badgeH = Math.min(15, h - 5);
-        const hasBadge = !!badgeLabel && w > badgeW + 34 && badgeH >= 11;
-        const x0t = rect.x + 7;
+        const badgeW = badgeLabel ? Math.round(textW(badgeLabel, '700 10px "Segoe UI",system-ui,sans-serif') + 10) : 0;
+        const badgeH = Math.min(16, h - 4);
+        const hasBadge = !!badgeLabel && badgeH >= 11 && w >= badgeW + 8;
+        const x0t = rect.x + 6;
         const room = rect.x + w - x0t - 5 - (hasBadge ? badgeW + 4 : 0);
         const per = 6.4;
         let txt = name;
-        const maxc = Math.max(1, Math.floor(room / per));
-        if (txt.length > maxc) txt = maxc > 1 ? txt.slice(0, maxc - 1) + '…' : txt.slice(0, maxc);
-        if (txt && room > 10) {
+        const maxc = Math.max(0, Math.floor(room / per));
+        if (txt.length > maxc) txt = maxc > 1 ? txt.slice(0, maxc - 1) + '…' : '';
+        /* 空间只够角标时（room < 22）宁可不画名字，也别画成「F…」这种没有信息量的残字 */
+        if (txt && room >= 22) {
           kids.push({
             type: 'text', style: {
               text: txt, x: x0t, y: rect.y + h / 2, fill: txtFill,
@@ -784,11 +845,12 @@
           });
         }
         if (hasBadge) {
-          const bx = rect.x + w - badgeW - 5;
+          /* 没有姓名时角标居中，视觉上像一枚「次数徽章」；有姓名时贴段尾 */
+          const bx = (room >= 22) ? (rect.x + w - badgeW - 5) : (rect.x + (w - badgeW) / 2);
           kids.push({
             type: 'rect', silent: true,
             shape: { x: bx, y: rect.y + h / 2 - badgeH / 2, width: badgeW, height: badgeH, r: badgeH / 2 },
-            style: { fill: onDark ? 'rgba(255,255,255,.26)' : 'rgba(0,0,0,.16)' }
+            style: { fill: onDark ? 'rgba(0,0,0,.34)' : 'rgba(255,255,255,.66)' }
           });
           kids.push({
             type: 'text', silent: true, style: {
@@ -845,48 +907,22 @@
       tooltip: {
         /* ★ 2026-11-01 去掉 confine：
            confine:true 会把弹窗强行关在图表矩形内，于是「贴着图表顶边的项目条」
-           弹出的框只能压在光标下面，鼠标正好挡住内容。改为不限制边界，由下面的
-           position() 自己按**视口**（而不是图表）算位置：
+           弹出的框只能压在光标下面，鼠标正好挡住内容。改为不限制边界，统一走 tipPos：
              · 默认放在光标正上方（水平居中）；
-             · 上方放不下就翻到光标下方，并且始终留出 18px 让开鼠标；
+             · 上方放不下才翻到光标下方，且始终留出 18px 让开鼠标；
              · 左右 / 底部越出视口时再收进来。 */
         confine: false, backgroundColor: T.elev, borderColor: T.border, borderWidth: 1,
         textStyle: { color: T.text, fontSize: 12 },
-        position: function (point, params, dom, rect, size) {
-          const cw = (size && size.contentSize ? size.contentSize[0] : 200);
-          const ch = (size && size.contentSize ? size.contentSize[1] : 80);
-          /* ★ point 是「相对图表容器」的坐标，而我们要判断的边界是**视口**，
-             所以先用容器的 getBoundingClientRect 把它换算到视口坐标，算完再换回去。
-             （之前直接拿 point[1] 跟 window.innerHeight 比，两个坐标系混用，
-               结果总是判成「上方放不下」，反而把弹窗盖到了鼠标上。） */
-          let ox = 0, oy = 0;
-          try {
-            const host = dom && dom.parentNode;
-            if (host && host.getBoundingClientRect) {
-              const hr = host.getBoundingClientRect();
-              ox = hr.left; oy = hr.top;
-            }
-          } catch (e) { }
-          const de = document.documentElement || {};
-          const vw = de.clientWidth || window.innerWidth || 800;
-          const vh = de.clientHeight || window.innerHeight || 600;
-          const px = point[0] + ox, py = point[1] + oy;
-          let x = px - cw / 2;
-          x = Math.max(6, Math.min(x, vw - cw - 6));
-          /* 先试「光标上方」；视口顶部放不下就翻到下方（留 18px 让开鼠标） */
-          let y = py - ch - 16;
-          if (y < 6) y = py + 18;
-          if (y + ch > vh - 6) y = Math.max(6, vh - ch - 6);
-          return [Math.round(x - ox), Math.round(y - oy)];
-        },
+        position: tipPos,
         /* 跟随鼠标：把姓名 + 国旗 + 起止时间 + 持有天数直接显示在光标旁，
            取代原先图表下方那份冗长的持有者清单。
            2026-11-01 起再补两段：
              · 纪录类型（世界 / 亚洲 / 中国 …，由调用方传 opts.recLabel）；
              · 段内刷新明细 —— 同一个人连续破纪录时色块是合并的，这里把每一次的日期列出来。
-           刷新日期改成「小胶囊 + 自动换行」的排布（原来是「A · B · C …」一串长文本，
-           刷新次数一多就会顶出弹窗边界）。 */
-        extraCssText: 'box-shadow:0 6px 20px rgba(0,0,0,.14);border-radius:10px;max-width:300px;pointer-events:none;',
+           刷新日期用「小胶囊 + 三列栅格」排布（原来是一串「A · B · C …」长文本，
+           次数一多就会顶出弹窗；后来改成最多 9 枚 + 「+N」，用户要求**全部列出**，
+           所以现在不做截断，靠固定列宽的栅格保证对齐、整齐。 */
+        extraCssText: 'box-shadow:0 6px 20px rgba(0,0,0,.14);border-radius:10px;max-width:312px;pointer-events:none;',
         formatter: function (p) {
           const v = p.data.value;
           const days = v[6] || 0;
@@ -900,14 +936,15 @@
             '<div style="margin-top:2px;font-size:11.5px"><b>' + days + '</b> ' + (LANE_I18N.day || '天') + '</div>';
           const subs = p.data.subs;
           if (subs && subs.length > 1) {
-            /* 最多铺 9 枚胶囊（3 行内），其余折成「+N」；每枚胶囊不可折行，容器自动换行 */
-            const MAXC = 9;
             let chips = '';
-            for (let i = 0; i < Math.min(MAXC, subs.length); i++) chips += '<i>' + fd(subs[i]) + '</i>';
-            if (subs.length > MAXC) chips += '<i class="more">+' + (subs.length - MAXC) + '</i>';
+            for (let i = 0; i < subs.length; i++) chips += '<i>' + fd(subs[i]) + '</i>';
             h += '<div class="tl-tip-sub">' +
               '<div class="tl-tip-sub-h">' + (LANE_I18N.refresh || '刷新') + ' ' + subs.length + ' ' + (LANE_I18N.times || '次') + '</div>' +
               '<div class="tl-tip-chips">' + chips + '</div></div>';
+          }
+          /* 点击色块可跳转选手主页 —— 在弹窗底部提示一句，避免只能靠猜 */
+          if (LANE_I18N.click) {
+            h += '<div style="margin-top:6px;font-size:10.5px;opacity:.55">' + esc(LANE_I18N.click) + '</div>';
           }
           return h;
         }

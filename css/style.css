@@ -1401,20 +1401,22 @@ button.exp-v3-wca.pid-copy:hover{color:var(--accent)}
 .tl-zoom-reset[hidden]{display:none}
 #tlChart[data-view="lane"],#tlChart[data-view="lane"] canvas{cursor:grab}
 /* 鼠标压在选手色块上时恢复普通指针（用户 2026-11-01：只有空白处才是抓手，色块上不该显示抓手）。
-   .over-seg 由 charts 的 showTip / hideTip 事件增删，见 pages-extra 的 bindLaneCursor。 */
-#tlChart[data-view="lane"].over-seg,#tlChart[data-view="lane"].over-seg canvas{cursor:default}
+   .over-seg 由 charts 的 showTip / hideTip 事件增删，见 pages-extra 的 bindLaneCursor。
+   2026-11-01 起再改：色块可点击跳选手主页，所以这里用「手型」而不是默认箭头。 */
+#tlChart[data-view="lane"].over-seg,#tlChart[data-view="lane"].over-seg canvas{cursor:pointer}
 #tlChart[data-view="lane"].dragging,#tlChart[data-view="lane"].dragging canvas{cursor:grabbing}
 
-/* ---- 纪录持有图 tooltip：段内刷新日期（小胶囊，自动换行，绝不顶出弹窗） ---- */
+/* ---- 纪录持有图 tooltip：段内刷新日期（固定三列栅格，全部列出、整齐对齐） ---- */
 .tl-tip-sub{margin-top:6px;padding-top:6px;border-top:1px solid rgba(128,128,128,.22)}
 .tl-tip-sub-h{font-size:11px;font-weight:700;margin-bottom:4px}
-.tl-tip-chips{display:flex;flex-wrap:wrap;gap:3px;max-width:262px}
-.tl-tip-chips i{font-style:normal;font-size:10.5px;line-height:1.55;padding:0 6px;border-radius:999px;
-  background:rgba(128,128,128,.16);font-variant-numeric:tabular-nums;white-space:nowrap}
-.tl-tip-chips i.more{background:transparent;opacity:.6;padding:0 2px}
+/* 三列等宽栅格：日期串宽度一致，竖着对齐像一张小表；行数随刷新次数自然增长，不做截断 */
+.tl-tip-chips{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px 5px}
+.tl-tip-chips i{font-style:normal;font-size:10.5px;line-height:1.6;padding:0 4px;border-radius:999px;
+  background:rgba(128,128,128,.16);font-variant-numeric:tabular-nums;white-space:nowrap;
+  text-align:center;overflow:hidden}
 
-/* ---- 分数竞速图：登顶时长徽标（图表下方一行，点击切换「天 / 年月日」） ---- */
-.tl-crown{display:flex;justify-content:flex-start;margin-top:8px}
+/* ---- 分数竞速图：登顶时长徽标（图表**上方**一行，点击切换「天 / 年月日」） ---- */
+.tl-crown{display:flex;justify-content:flex-start;margin:0 0 10px}
 .tl-crown[hidden]{display:none}
 .tl-crown-btn{display:inline-flex;align-items:center;gap:7px;padding:6px 14px 6px 11px;
   border-radius:999px;border:1px solid var(--border-2);background:var(--bg-elev);

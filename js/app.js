@@ -838,13 +838,16 @@
         try { inst = P.drawTimeline(box); } catch (e) { inst = null; }
         if (inst && inst.on) {
           inst.on('click', function (params) {
-            let id = (params.data && params.data.id) || '';
+            /* 竞速图条形上的 data 字段是 id，纪录持有图色块上的是 pid（选手 id，用于区分同名） */
+            let id = (params.data && (params.data.id || params.data.pid)) || '';
             if (!id && params.componentType === 'yAxis') {
               const nm = params.value;
               const hit = M.ranked.filter(function (x) { return x.name === nm; })[0];
               if (hit) id = hit.id;
             }
-            if (id) location.hash = '#/player/' + id;
+            /* 只跳「本站确实有档案」的选手：泳道里的纪录持有者可能是排名很靠后、
+               没有收录进 ranked 的人，跳过去只会看到空页面。 */
+            if (id && M.ranked.some(function (x) { return x.id === id; })) location.hash = '#/player/' + id;
           });
         }
         if (P.tlHighlightRail) P.tlHighlightRail(state.tlFy || (P.tlEndFy ? P.tlEndFy() : 2026));

@@ -758,8 +758,16 @@ console.log('== 纪录持有图：筛选联动 / 一人一色 / 表单归属 =='
   const hR2 = tryRender('分数竞速图（表单归属）', () => P.timeline(Object.assign({}, base, { tlView: 'race' })));
   ok(hL.indexOf('msImportBtn') < 0 && hL.indexOf('data-msreset') < 0, '纪录持有图下方不再有「自定义重大事件」表单');
   ok(hR2.indexOf('msImportBtn') >= 0, '分数竞速图仍然保留自定义重大事件表单');
-  ok(/data-y0="/.test(hL) && /data-y1="/.test(hL) && /data-retired="/.test(hL),
+  ok(/data-y0="/.test(hL) && /data-y1="/.test(hL) && /data-tlretired="/.test(hL),
     '纪录持有图容器带上年份区间 / 停办项目的筛选参数');
+  /* ★ 回归（2026-11-01 用户报「拖动/单击后视角回到全局」）：
+     图表容器上原来的 data-dim / data-type / data-gender / data-retired 与全局事件委托
+     （document 的 [data-dim] 等）撞名 —— 点一下图就被当成点了筛选按钮，整页 re-render，
+     缩放状态随之丢失。这些属性必须带 tl 前缀，避开委托选择器。 */
+  ok(!/ data-dim="/.test(hL) && !/ data-type="/.test(hL) && !/ data-gender="/.test(hL) && !/ data-retired="/.test(hL),
+    '图表容器不再使用与全局事件委托同名的 data-* 属性（否则点图会触发整页重渲染）');
+  ok(/ data-tldimv="/.test(hL) && / data-tltype="/.test(hL) && / data-tlgender="/.test(hL),
+    '筛选用 data-tl* 前缀属性挂在容器上');
 
   const C = win.Charts;
   /* 三段全部来自同一个国家（China）—— 旧实现按国籍上色时这三段一模一样 */
@@ -1042,8 +1050,8 @@ console.log('== 时间轴绘制（桩 echarts，验证 setOption 真的被调用
   function mkBox(view) {
     const attrs = {
       'data-view': view, 'data-mode': 'cumulative', 'data-fy': '2026', 'data-metric': 'overall',
-      'data-lane': 'single', 'data-smooth': '0', 'data-region': '', 'data-country': '', 'data-ev': '',
-      'data-gender': 'all', 'data-type': 'all'
+      'data-lane': 'single', 'data-smooth': '0', 'data-tlregion': '', 'data-tlcountry': '', 'data-ev': '',
+      'data-tlgender': 'all', 'data-tltype': 'all', 'data-tldimv': ''
     };
     const box = {
       clientWidth: 900, clientHeight: 600, offsetWidth: 900, offsetHeight: 600, style: {},
@@ -1216,10 +1224,30 @@ console.log('== 纪录持有图：段内姓名 / 刷新次数 ==');
         ok(badge.style.x > bar.shape.x + bar.shape.width * 0.5, '角标贴在段尾一侧');
         ok(!nmTx || nmTx.style.x + 60 < badge.style.x, '姓名与角标不重叠');
       }
-      /* 段内刻度：6 次刷新 → 5 根竖线（首条是段首，不画） */
+      /* 段内刷新：6 个刷新点把段切成 5 小格，其中 2 格压了「交替遮罩」（一亮一暗，肉眼能数格数）。
+         条体本身（r:5）与角标（r:半径）都带圆角，遮罩小格不带 r，用这个区分。 */
+      const bands = kids.filter(function (k) { return k.type === 'rect' && k.shape && !k.shape.r; });
+      ok(bands.length === 2, '合并段按每次刷新切成「一亮一暗」交替小格（实得 ' + bands.length + ' 格）');
+      /* 段内分隔线：内部交界 4 根（段首不画，段尾那根落在条边外） */
       const ticks = kids.filter(function (k) { return k.type === 'path'; })[0];
-      ok(!!ticks && (ticks.shape.path.match(/M/g) || []).length >= 3,
-        '段内按刷新位置画竖线（实得 ' + (ticks ? (ticks.shape.path.match(/M/g) || []).length : 0) + ' 根）');
+      ok(!!ticks && (ticks.shape.path.match(/M/g) || []).length === 4,
+        '每次刷新位置都压一根分隔线（实得 ' + (ticks ? (ticks.shape.path.match(/M/g) || []).length : 0) + ' 根）');
+    }
+    /* ★ 窄段也必须挂角标：默认视野下大多数段只有 40~60px，旧门槛（w > badgeW+34）导致角标几乎从不出现，
+       用户反馈「合并段刷了几次完全看不出来」。1 年 ≈ 40px 的段现在应该能看到「×3」。 */
+    {
+      const seg2 = Object.assign({}, seg, { to: 2006, toDn: 20060101, days: 365, subs: [20050101, 20050615, 20060101] });
+      const opt2 = C.lanes([{ ev: '333', label: '3x3x3', segs: [seg2] }], { y0: 2003, y1: 2016, laneH: 30 });
+      const api2 = {
+        value: function (i) { return opt2.series[0].data[0].value[i]; },
+        coord: function (p) { return [60 + (p[0] - 2003) * 40, 40]; },
+        size: function () { return [0, 30]; },
+        visual: function () { return '#3355cc'; }
+      };
+      const g2 = opt2.series[0].renderItem({ dataIndex: 0, coordSys: { x: 0, y: 0, width: 900, height: 300 } }, api2);
+      const k2 = (g2 && g2.children) || [];
+      ok(k2.some(function (k) { return k.type === 'text' && k.style && k.style.text === '×3'; }),
+        '窄段（1 年 ≈ 40px）也挂上「×3」角标');
     }
     const fmt = opt.tooltip && opt.tooltip.formatter;
     ok(typeof fmt === 'function', 'tooltip 有 formatter');
@@ -1229,9 +1257,10 @@ console.log('== 纪录持有图：段内姓名 / 刷新次数 ==');
       ok(html.indexOf('刷新 6 次') >= 0 || html.indexOf('Refreshed 6 times') >= 0,
         'tooltip 明确写出刷新次数');
       ok(html.indexOf('Multi Holder') >= 0, 'tooltip 里有姓名');
-      /* 胶囊最多 9 枚，其余折成「+N」 */
+      /* 2026-11-01 用户要求：刷新日期**全部列出**，不再截断成 9 枚 + 「+N」 */
       const chips = (html.match(/<i[ >]/g) || []).length;
-      ok(chips <= 10, '胶囊数量有上限（实得 ' + chips + '，≤10）');
+      ok(chips === 6, '刷新日期全部列出、不再截断（实得 ' + chips + '，应为 6）');
+      ok(html.indexOf('more') < 0, '不再出现「+N」折叠标签');
     }
     ok(opt.tooltip && opt.tooltip.confine === false,
       'tooltip 不再被 confine 关在图表内（允许超出顶层）');
