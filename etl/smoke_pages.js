@@ -769,20 +769,23 @@ console.log('== 纪录持有图：筛选联动 / 一人一色 / 表单归属 =='
   ok(/ data-tldimv="/.test(hL) && / data-tltype="/.test(hL) && / data-tlgender="/.test(hL),
     '筛选用 data-tl* 前缀属性挂在容器上');
 
-  /* ★ 2026-11-01（第四轮）用户要求：登顶时长徽标挪进「六维筛选」同一行、常驻显示。
-     位置断言：必须在 tlDimSeg 之后、那一行行尾的 .spacer 之前，且整体在图表（.tl-stage）之前。 */
+  /* ★ 2026-11-01（第五轮）用户要求：徽标挪到「整行最右侧」。
+     位置断言：必须在 tlDimSeg 与行尾 .spacer 之后，且整体在图表（.tl-stage）之前。 */
   {
     const iDim = hR2.indexOf('id="tlDimSeg"');
+    const iSpacer = hR2.indexOf('<span class="spacer">', iDim);
     const iCrown = hR2.indexOf('id="tlCrown"');
-    const iRowEnd = hR2.indexOf('<span class="spacer">', iDim);
     const iStage = hR2.indexOf('class="tl-stage"');
-    ok(iDim >= 0 && iCrown > iDim && iRowEnd > iCrown && iCrown < iStage,
-      '登顶时长徽标排在「六维筛选」同一行的后面（dim seg 之后、行尾 spacer 之前、图表之前）');
+    ok(iDim >= 0 && iSpacer > iDim && iCrown > iSpacer && iCrown < iStage,
+      '登顶时长徽标排在整行最右端（dim seg → spacer → 徽标 → 图表）');
     ok(!/id="tlCrown"[^>]*\shidden/.test(hR2), '徽标常驻显示（不再默认 hidden，避免布局跳动）');
     ok(/id="tlCrown"[^>]*data-st="pending"/.test(hR2), '徽标带占位状态 data-st（pending / none / ok）');
     ok(/class="tl-crown-tx"/.test(hR2) && /class="tl-crown-val"/.test(hR2),
       '徽标是「姓名 / 说明」两行 + 时长 的结构');
   }
+  /* ★ 第五轮用户要求：两个视图的说明文字整块删除 */
+  ok(hR2.indexOf('class="tl-desc"') < 0 && hL.indexOf('class="tl-desc"') < 0,
+    '竞速图 / 纪录持有图的说明文字已删除（不再有 .tl-desc 块）');
   /* ★ 2026-11-01（第四轮）用户反馈「播放中改上方筛选，竞速图就停住了」：
      根因是播放循环闭包攥着已被 innerHTML 换掉的旧 range / box，重渲染后没人用新 DOM 重启它。 */
   {
@@ -794,23 +797,28 @@ console.log('== 纪录持有图：筛选联动 / 一人一色 / 表单归属 =='
   }
 
   const C = win.Charts;
-  /* == 分数竞速图 tooltip：去掉国家两位码，换名次 + 国家全名 + 分数 + 相对榜首 ==
-     用户 2026-11-01：「删除里面的国家英文简写，更换为其他更有意义的内容」。 */
+  /* == 分数竞速图 tooltip（2026-11-01 第五轮版式）==
+       国旗 姓名 / 第 N 名 · 分数分 / 相对关系·参照选手分数 */
   {
     const ro = C.barRace([
       { id: 'a', name: 'A', iso: 'AU', cname: 'Australia', flag: '', color: '#3355cc', value: 100, rank: 1, no: 1 },
       { id: 'b', name: 'B', iso: 'CN', cname: 'China', flag: '', color: '#cc5533', value: 80, rank: 2, no: 2 }
     ], { top: 15 });
     const sd = ro.series[0].data;
-    ok(sd[0].cname === 'Australia' && sd[1].cname === 'China', '竞速图数据带上国家全名 cname');
     const tip1 = ro.tooltip.formatter({ data: sd[0] });
     const tip2 = ro.tooltip.formatter({ data: sd[1] });
     ok(tip1.indexOf('AU') < 0 && tip2.indexOf('CN') < 0, 'tooltip 不再出现国家两位码');
-    ok(/Australia/.test(tip1) && /China/.test(tip2), 'tooltip 显示国家全名');
     ok(/第 1 名|#1/.test(tip1) && /第 2 名|#2/.test(tip2), 'tooltip 显示当前名次');
-    ok(/100\.00/.test(tip1) && /80\.00/.test(tip2), 'tooltip 显示当前分数');
+    /* 「第 1 名 · 100.00分」：名次与分数同一行，分数后面紧接单位 */
+    const stripT = (s) => String(s).replace(/<[^>]*>/g, '');
+    ok(/第 1 名 · /.test(stripT(tip1)) || /#1 · /.test(stripT(tip1)),
+      '第二行是「第 N 名 · 分数」（实得 ' + stripT(tip1) + '）');
+    ok(/100\.00<\/b>分|100\.00<\/b> pts/.test(tip1), '分数后紧跟单位（分 / pts）');
     ok(/领先第二名|ahead of #2/.test(tip1), '第 1 名给出「领先第二名多少」');
     ok(/榜首的|of #1/.test(tip2), '其余名次给出「是榜首的百分之几」');
+    /* 第三行末尾要带上参照选手的分数（第 1 名 → 第二名 80.00；其余 → 榜首 100.00） */
+    ok(/80\.00/.test(tip1), '第 1 名的第三行带上第二名的分数');
+    ok(/100\.00/.test(tip2.split('·').pop()), '其余名次的第三行带榜首分数');
   }
   /* 三段全部来自同一个国家（China）—— 旧实现按国籍上色时这三段一模一样 */
   const fake = [
@@ -872,6 +880,38 @@ console.log('== 纪录持有图：范围纪录链 / 缩放平移 / 段内刷新 
   ((oCN && oCN.series && oCN.series[0] && oCN.series[0].data) || []).forEach((d) => segsCN.push(d.value[5]));
   ok(segsCN.length > 0 && segsCN.every((x) => String(x).toUpperCase() === 'CN'),
     '筛选中国 → 画的是中国纪录（' + segsCN.length + ' 段全部 CN）');
+  /* ★ 2026-11-01（第五轮）用户要求：tooltip 第一行不能一律写「中国纪录」——
+     国家链里同时躺着也属于世界纪录 / 洲纪录的段（ETL 的 feedRec 会把同一份成绩
+     推进 WR / 洲 / 国家三条链），抬头必须跟着每一段自己的级别走。 */
+  {
+    const dCN = (oCN && oCN.series && oCN.series[0] && oCN.series[0].data) || [];
+    const labs = {};
+    dCN.forEach((d) => { const k = d.lab || '(空)'; labs[k] = (labs[k] || 0) + 1; });
+    ok(dCN.length > 0 && dCN.every((d) => !!d.lab),
+      '每一段都带自己的纪录级别抬头（实得 ' + JSON.stringify(labs) + '）');
+    /* 机器反查：这一段是否也出现在世界链里（同一项目、同一条刷新、同一位选手） */
+    const LC2 = M.laneChains || {};
+    const wAll = {};
+    (LC2['W|s|'] || []).forEach((L) => (L.segs || []).forEach((s) => {
+      const dn = s.fd != null ? s.fd : s.fromDn;
+      const id = s.i != null ? s.i : (s.id || '');
+      if (dn) wAll[L.ev + '|' + dn + '|' + id] = 1;
+    }));
+    let hitWR = 0, labWR = 0;
+    dCN.forEach((d) => {
+      if (!wAll[(d.ev || '') + '|' + d.value[7] + '|' + (d.pid || '')]) return;
+      hitWR++;
+      if (/世界纪录|World record/.test(d.lab || '')) labWR++;
+    });
+    if (hitWR > 0) {
+      ok(labWR === hitWR, '中国链里同时也属于世界纪录的 ' + hitWR + ' 段，抬头全部写成「世界纪录」（实得 ' + labWR + '）');
+      const tipCN = oCN.tooltip.formatter({ data: dCN.filter((d) => /世界纪录|World record/.test(d.lab || ''))[0] });
+      ok(/世界纪录|World record/.test(tipCN), 'tooltip 第一行跟着段走（' +
+        tipCN.replace(/<[^>]*>/g, ' ').trim().slice(0, 24) + '…）');
+    } else {
+      console.log('  --   （样板数据里中国链没有世界纪录段，跳过抬头反查）');
+    }
+  }
   /* 女子口径：所有持有者都必须是女子 */
   const oF = P.tlOption('lane', 'cumulative', 2025, false, 'overall', '', '', 'single', [], 'F', 'all');
   const byId = {}; M.ranked.forEach((p) => { byId[p.id] = p; });

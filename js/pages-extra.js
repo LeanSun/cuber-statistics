@@ -247,8 +247,8 @@
     const sl = tlSlider(step, fy);
     const rate = loadRate();
 
-    /* 2026-11-01 用户要求删掉页面顶部那段说明文字（「历史地位随时间的推移而演变…」），
-       图表随之上移，直接贴着标题开始。视图自身的说明仍在图上方（.tl-desc）。 */
+    /* 2026-11-01 用户要求删掉页面顶部那段说明文字（「历史地位随时间的推移而演变…」）；
+       第五轮又要求把两个视图各自的说明（.tl-desc）也删掉，图表直接贴着控件开始。 */
     let h = '<div class="page-head reveal"><h1>' + esc(t('tl.title')) + '</h1></div>';
 
     /* 纪录范围（大洲 cont:* / 国家 ISO2 / 细分地区 reg:*）必须在拼筛选条之前算出来：
@@ -275,10 +275,14 @@
         h += '<button data-tldim="' + k + '" class="' + (dimCur === k ? 'on' : '') + '">' + esc(t('m' + k[1] + '.name')) + '</button>';
       });
       h += '</div></div>';
-      /* 登顶时长徽标（2026-11-01 用户要求）：从图表下方挪到「六维筛选」同一行的后面，常驻显示。
-         内容是「某选手登顶（当前榜单第一）已持续多久」，随筛选范围（世界 / 亚洲 / 中国 …，
-         女子再加「女子」）和播放时间实时更新；单击在「xx 天 / xx 年 xx 个月 xx 天」之间切换。
-         没算完时不再整块隐藏（那样会跳一下布局），而是显示占位「—」，由 tlCrownPaint 换成真值。 */
+    }
+    h += '<span class="spacer"></span>';
+    /* 登顶时长徽标（2026-11-01 用户要求，第五轮再挪到**整行最右端**）：常驻显示。
+       内容是「某选手登顶（当前榜单第一）已持续多久」，随筛选范围（世界 / 亚洲 / 中国 …，
+       女子再加「女子」）和播放时间实时更新；单击在「xx 天 / xx 年 xx 个月 xx 天」之间切换。
+       放在 .spacer 之后 + margin-left:auto，无论这一行换不换行都贴住右边界。
+       没算完时不再整块隐藏（那样会跳一下布局），而是显示占位「—」，由 tlCrownPaint 换成真值。 */
+    if (view === 'race') {
       h += '<div class="tl-crown" id="tlCrown" data-st="pending">' +
         '<button type="button" class="tl-crown-btn" id="tlCrownBtn" title="' + esc(t('tl.crown.tip')) + '">' +
         '<span class="tl-crown-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3.2 8.4l4.6 3.4L12 4.2l4.2 7.6 4.6-3.4-1.7 9.9H4.9L3.2 8.4z"/></svg></span>' +
@@ -291,7 +295,6 @@
         '<span class="tl-crown-swap" aria-hidden="true">⇄</span>' +
         '</button></div>';
     }
-    h += '<span class="spacer"></span>';
     /* 「3 期滑动平滑」已按需求移除：它只在中间帧起作用，用户感知不到差别反而多一个开关。 */
     h += '</div>';
 
@@ -314,9 +317,8 @@
       h += '</div>';
     }
 
-    h += '<div class="tl-desc"><span class="tl-desc-ic">' + Ic.glyph('info') + '</span>' +
-      '<div><b>' + esc(t(view === 'lane' ? 'tl.view.lane' : 'tl.view.race')) + '</b>：' +
-      esc(t(view === 'lane' ? 'tl.view.lane.d' : 'tl.view.race.d')) + '</div></div>';
+    /* 两个视图的说明文字（「纪录持有图：每个项目一条泳道…」/「分数竞速图：横向条形…」）
+       已按用户 2026-11-01 第五轮要求整块删除 —— 图表直接贴着控件开始，少一层噪声。 */
 
     if (view !== 'lane') {
       h += '<div class="tl-ctl">';
@@ -801,8 +803,8 @@
      与 p.records（ev/date/type），两者在明细档选手里都是完整的。
      结果按「项目组合 + 单均口径」缓存在选手对象上：播放时每帧都会调用，
      不能逐帧重扫一遍领奖台与纪录。 */
-  function evYearlyOf(p, evList, rtype) {
-    const ck = '__evy' + (rtype || 'all') + '_' + evList.join('+');
+  function evYearlyOf(p, evList, rtype, ckKey) {
+    const ck = ckKey || ('__evy' + (rtype || 'all') + '_' + evList.join('+'));
     const hit0 = p[ck];
     if (hit0) return hit0;
     const y = {};
@@ -830,19 +832,33 @@
          s_d(口径, 项目范围) = s_d(口径, 全局) × [ s_d(合并, 项目范围) ÷ s_d(合并, 全局) ]
        项目范围 = 全部项目时份额恒为 1，公式精确退化为全局单/均分，不会凭空造数。 */
   const SIXD_RACE = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'];
-  function evScopeT(p, evList, rtype) {
+  /* 所选项目的**逐维求和**（不合成、不含权重）—— 这是与时间无关的常量，
+     按「项目组合」缓存在选手对象上。原来每帧每人都在这里 forEach 一遍 evList、
+     还每次都去问一次六维权重，多选项目时（17 个项目）单单这一步就要几十毫秒。
+     权重改为每帧现乘（6 次乘法），所以参数页改占比依然实时生效，不会读到旧缓存。 */
+  function evScopeVec(p, evList, ckKey) {
+    const ck = ckKey || ('__evs6_' + evList.join('+'));
+    const hit = p[ck];
+    if (hit !== undefined) return hit || null;
     const se = p && p.sixEv;
-    if (!se) return 0;
-    const w = (P.util && P.util.sixW) ? P.util.sixW() : { m1: .42, m2: .14, m3: .22, m4: .10, m5: .04, m6: .08 };
-    const s = [0, 0, 0, 0, 0, 0];
-    let hit = 0;
-    evList.forEach(function (ev) {
-      const a = se[ev];
-      if (!a) return;
-      for (let d = 0; d < 6; d++) s[d] += (a[d] || 0);
-      hit++;
-    });
-    if (!hit) return 0;
+    let s = null;
+    if (se) {
+      const a6 = [0, 0, 0, 0, 0, 0];
+      let hitN = 0;
+      for (let i = 0; i < evList.length; i++) {
+        const a = se[evList[i]];
+        if (!a) continue;
+        for (let d = 0; d < 6; d++) a6[d] += (a[d] || 0);
+        hitN++;
+      }
+      if (hitN) s = a6;
+    }
+    p[ck] = s || false;
+    return s;
+  }
+  function evScopeT(p, evList, rtype, w, ckKey) {
+    const s = evScopeVec(p, evList, ckKey);
+    if (!s) return 0;
     let t = 0;
     for (let d = 0; d < 6; d++) t += (w[SIXD_RACE[d]] || 0) * s[d];
     if (rtype !== 'single' && rtype !== 'avg') return t;
@@ -863,27 +879,101 @@
        于是「2007 年才出现第一条中国三盲成绩」的人，在 2003 年的画面里就已经有一条
        属于他的分数条 —— 那几年本该是空白。events 只能回答「玩过没有」，
        回答不了「从哪一年开始的」，所以要读 ETL 下发的 evStat[eid].years。
-     结果按「项目组合」缓存到选手对象上：播放时每帧都会调用，不能逐帧重扫。 */
-  function evFirstYear(p, evList) {
-    const ck = '__evfy_' + evList.join('+');
-    if (p[ck] !== undefined) return p[ck];
+     结果按「项目组合」缓存到选手对象上：播放时每帧都会调用，不能逐帧重扫。
+     ★ ck（缓存键）由调用方预算好传进来：原来每次调用都要 `evList.join('+')` 拼一次键，
+       播放时「人数 × 每帧」次字符串拼接光 GC 就吃掉一百多毫秒。 */
+  function evFirstYear(p, evList, ckKey) {
+    const ck = ckKey || ('__evfy_' + evList.join('+'));
+    const hit = p[ck];
+    if (hit !== undefined) return hit;
+    /* 再按「单个项目」缓存一层：换项目组合（加减一个项目）时只需要解码新增的那个，
+       不必把已有项目的 evStat 重新拆一遍 —— evStat 是紧凑字符串，拆一次不便宜。 */
+    let m = p.__evfy1;
+    if (!m) m = p.__evfy1 = {};
     let first = null;
-    const take = (y) => { const n = +y; if (n > 0 && (first === null || n < first)) first = n; };
     for (let i = 0; i < evList.length; i++) {
-      const b = (M.evStatRaw ? M.evStatRaw(p, evList[i]) : (p.evStat && p.evStat[evList[i]])) || null;
-      if (b && b.years && b.years.length) for (let j = 0; j < b.years.length; j++) take(b.years[j]);
+      const ev = evList[i];
+      let v = m[ev];
+      if (v === undefined) {
+        let f = null;
+        const b = (M.evStatRaw ? M.evStatRaw(p, ev) : (p.evStat && p.evStat[ev])) || null;
+        if (b && b.years && b.years.length) {
+          for (let j = 0; j < b.years.length; j++) {
+            const n = +b.years[j];
+            if (n > 0 && (f === null || n < f)) f = n;
+          }
+        }
+        v = m[ev] = (f === null ? 0 : f);   /* 0 = 该项目上查不到数据 */
+      }
+      if (v > 0 && (first === null || v < first)) first = v;
     }
     /* 兜底（长尾名册档没有 evStat）：先用该项目上最早的领奖台 / 纪录年份，
        再不行退回生涯起始年 —— 宁可少筛一个人，也不能把人凭空删掉。 */
     if (first === null) {
-      (p.podiums || []).forEach(function (d) { if (evList.indexOf(d.ev) >= 0) take(d.year); });
+      (p.podiums || []).forEach(function (d) { if (evList.indexOf(d.ev) >= 0) { const n = +d.year; if (n > 0 && (first === null || n < first)) first = n; } });
       (p.records || []).forEach(function (r) {
-        if (evList.indexOf(r.ev) >= 0) take(String(r.date || '').slice(0, 4));
+        if (evList.indexOf(r.ev) >= 0) { const n = +String(r.date || '').slice(0, 4); if (n > 0 && (first === null || n < first)) first = n; }
       });
-      if (first === null && p.start) take(p.start);
+      if (first === null && p.start) { const n = +p.start; if (n > 0) first = n; }
     }
     p[ck] = first;
     return first;
+  }
+
+  /* ★ 性能（2026-11-01 第五轮）：逐年对象（p.yearly / p.yearlyS / p.yearlyA /
+     按项目组合的 evYearly）的「累计值」原来每帧都 for-in 一遍全部键、
+     还要把键从字符串转成数字再比较。多选项目时一个人的评分开销因此翻了好几倍，
+     播放就变成一帧几十毫秒、动画明显卡顿。
+     现在首次访问时把它整理成「有序年份 + 前缀和」，之后用二分查找，
+     「到 END_Y 为止的合计」直接取最后一项，均摊 O(log n) 且没有任何分配。 */
+  function seriesOf(p, yv, ck) {
+    let s = p[ck];
+    if (s) return s;
+    const ys = [], cs = [];
+    let acc = 0;
+    for (const k in yv) {
+      const n = +k;
+      if (n > 0) ys.push(n);
+    }
+    ys.sort(function (a, b) { return a - b; });
+    for (let i = 0; i < ys.length; i++) { acc += (yv[ys[i]] || 0); cs.push(acc); }
+    s = { ys: ys, cs: cs, yv: yv };
+    p[ck] = s;
+    return s;
+  }
+  function seriesCum(ser, f) {
+    const ys = ser.ys;
+    let lo = 0, hi = ys.length - 1, idx = -1;
+    while (lo <= hi) { const m = (lo + hi) >> 1; if (ys[m] <= f) { idx = m; lo = m + 1; } else hi = m - 1; }
+    let s = idx >= 0 ? ser.cs[idx] : 0;
+    const yi = Math.floor(f), frac = f - yi;
+    if (frac > 0) { const v = ser.yv[yi + 1]; if (v) s += v * frac; }
+    return s;
+  }
+
+  /* 与时间无关的筛选池：region / country / gender / evs 一旦确定，「谁在范围内」就固定了。
+     播放时每帧都重新做一遍 inScope（多选项目还要逐个比对 p.events 数组）纯属浪费，
+     这里按签名缓存候选池，之后每帧只遍历池内的人（筛了国家 / 大洲时人数还会大幅减少）。 */
+  const POOL_CACHE = {};
+  const POOL_ORDER = [];
+  function poolFor(region, country, gender, evs) {
+    const k = [region || '', country || '', (gender && gender !== 'all') ? gender : 'all',
+      (evs && evs.length) ? evs.join('+') : ''].join('|');
+    const hit = POOL_CACHE[k];
+    if (hit) return hit;
+    const out = [];
+    const R = M.ranked;
+    for (let i = 0; i < R.length; i++) {
+      const p = R[i];
+      if (inScope(p, region, country, gender, evs)) out.push(p);
+    }
+    POOL_CACHE[k] = out;
+    POOL_ORDER.push(k);
+    while (POOL_ORDER.length > 6) {
+      const old = POOL_ORDER.shift();
+      if (old !== k) delete POOL_CACHE[old];
+    }
+    return out;
   }
 
   /* 竞速分求值器：吃一位选手 + 一个时间点，返回他在这一刻的竞速分（≤0 表示这一帧不计入）。
@@ -891,7 +981,9 @@
        ① 常规快照（每帧一次全量扫描）；
        ② 登顶时间线的「候选筛选」（在若干采样时刻取榜首）；
        ③ 登顶时间线的「逐点求解」（只看候选集合，反复调用）。
-     三处必须是同一把尺子，否则榜首时间线与画面上的 #1 会对不上。 */
+     三处必须是同一把尺子，否则榜首时间线与画面上的 #1 会对不上。
+     ★ 范围判定（region / country / gender / evs）不再放在这里 —— 由 poolFor 预先筛好，
+       调用方各自遍历 val.pool，等价但每帧省掉一次全量 inScope。 */
   function mkScorer(mode, smooth, region, country, evs, gender, rtype, dim) {
     /* 选中项目（单项目 / 多项目）时，整张图切换成「所选项目的六维能力分排名」，与上方筛选项目实时联动：
          分数取每个所选项目的六维总分（p.sixEv 已含 per-event 六维分 a[6]=t_ev）求和，
@@ -899,22 +991,24 @@
          不选项目时仍用全项目历史地位分（生涯累计 × 年度比例）。 */
     const evList = (evs && evs.length) ? evs : null;
     const key = rtype === 'single' ? 'yearlyS' : (rtype === 'avg' ? 'yearlyA' : 'yearly');
-    /* 累计 / 小数年插值：抽成「吃逐年对象」的纯函数，全项目分支与项目分支共用一套读法 */
-    function cumY(yv, y) { let s = 0; for (const k in yv) if (+k <= y) s += yv[k]; return s; }
-    function cumFY(yv, f) {
-      let s = 0; for (const k in yv) if (+k <= f) s += yv[k];
-      const yi = Math.floor(f), frac = f - yi;
-      if (frac > 0) s += (yv[yi + 1] || 0) * frac;
-      return s;
+    const serKey = '__ser_' + key;
+    /* ★ 缓存键在这里预算一次。以前是在每个选手的每次求值里现拼（join + 字符串相加），
+       播放时「人数 × 每帧」次分配，光是 GC 就占掉一百多毫秒 —— 这才是多选项目卡顿的真凶。 */
+    let ckFirst = '', ckVec = '', ckEvSer = '', ckEvY = '';
+    if (evList) {
+      const combo = evList.join('+');
+      ckFirst = '__evfy_' + combo;
+      ckVec = '__evs6_' + combo;
+      ckEvY = '__evy' + rtype + '_' + combo;
+      ckEvSer = '__sere' + rtype + '_' + combo;
     }
-    function cum(p, y) { return cumY(p[key] || {}, y); }
-    function cumF(p, f) { return cumFY(p[key] || {}, f); }
+    /* 六维权重每帧只取一次（原来在 evScopeT 里每人取一次） */
+    const W6 = (P.util && P.util.sixW) ? P.util.sixW() : { m1: .42, m2: .14, m3: .22, m4: .10, m5: .04, m6: .08 };
     const END_Y = 2026;
     /* 六维单独筛选：直接用该维度的维度分作为基准分，再乘同一条年度进度曲线，
        这样「只看 M3」的竞速图里条形只按大赛表现这一维比拼。 */
     const dimMode = (dim && ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'].indexOf(dim) >= 0);
-    return function valueOf(p, fy) {
-      if (!inScope(p, region, country, gender, evs)) return 0;
+    function valueOf(p, fy) {
       if (evList) {
         /* 多项目（含单项目）：把所选项目的六维分逐维求和，再用当前权重合成，
            与榜单「项目筛选」完全同一把尺子（不再直接读 ETL 预置的 a[6]，
@@ -923,37 +1017,39 @@
              所以「单次 / 平均」筛选看着像失效；现在由 evScopeT 按口径取值。 */
         /* ★ 该项目（组合）里还没有他的任何成绩 → 这一帧不该有这个人。
            以前这段缺失，导致早期年份里出现后来才进这个项目的选手（例如 2007 年前的中国三盲）。 */
-        const firstY = evFirstYear(p, evList);
+        const firstY = evFirstYear(p, evList, ckFirst);
         if (firstY != null && Math.floor(fy) < firstY) return 0;
-        const t = evScopeT(p, evList, rtype);
+        const t = evScopeT(p, evList, rtype, W6, ckVec);
         if (t <= 0) return 0;
         /* ★ 时间演化（此前缺失 → 单/多项目播放时条形纹丝不动，只显示最终名次）：
            总分 t 是「截至今天」的能力值，必须再乘一条随时间推进的进度曲线，
            播放时才会逐年长出来。进度曲线用「该选手在所选项目上的年度荣誉累计占比」，
            与全项目分支的 p.yearly 读法完全同源（领奖台按赛级/名次加权 + 破纪录计数），
            只是把统计范围收窄到所选项目 —— 所以三阶图只会随他三阶上的成绩推进。 */
-        const evY = evYearlyOf(p, evList, rtype);
-        const evAll = cumY(evY, END_Y);
+        const evSer = seriesOf(p, evYearlyOf(p, evList, rtype, ckEvY), ckEvSer);
+        const evAll = seriesCum(evSer, END_Y);
         let ratio;
         if (evAll > 0) {
-          let cf = cumFY(evY, fy);
-          if (smooth) cf = (cumFY(evY, fy) + cumFY(evY, fy - 1) + cumFY(evY, fy - 2)) / 3;
+          let cf = seriesCum(evSer, fy);
+          if (smooth) cf = (seriesCum(evSer, fy) + seriesCum(evSer, fy - 1) + seriesCum(evSer, fy - 2)) / 3;
           ratio = Math.max(0, Math.min(1, cf / evAll));
         } else {
           /* 该项目上没有任何领奖台 / 纪录（例如只靠「当前排名」拿分的人）：
              退回全局年度曲线，否则他的分数恒为 0、整张图少一个人。 */
-          const gAll = cum(p, END_Y);
-          const gcf = smooth ? ((cumF(p, fy) + cumF(p, fy - 1) + cumF(p, fy - 2)) / 3) : cumF(p, fy);
+          const gSer = seriesOf(p, p[key] || {}, serKey);
+          const gAll = seriesCum(gSer, END_Y);
+          const gcf = smooth ? ((seriesCum(gSer, fy) + seriesCum(gSer, fy - 1) + seriesCum(gSer, fy - 2)) / 3) : seriesCum(gSer, fy);
           ratio = gAll > 0 ? Math.max(0, Math.min(1, gcf / gAll)) : 1;
         }
         return t * ratio;
       }
-      const all = cum(p, END_Y);
+      const ser = seriesOf(p, p[key] || {}, serKey);
+      const all = seriesCum(ser, END_Y);
       /* 该维没有年度荣誉累计（all=0，如仅靠当前排名拿分）时，进度曲线取 1
          （显示其当前维度分），而不是把整条丢弃。 */
       if (all <= 0 && !dimMode) return 0;
-      let cf = cumF(p, fy);
-      if (smooth) cf = (cumF(p, fy) + cumF(p, fy - 1) + cumF(p, fy - 2)) / 3;
+      let cf = seriesCum(ser, fy);
+      if (smooth) cf = (seriesCum(ser, fy) + seriesCum(ser, fy - 1) + seriesCum(ser, fy - 2)) / 3;
       const ratio = all > 0 ? Math.max(0, Math.min(1, cf / all)) : 1;
       if (ratio <= 0) return 0;
       if (dimMode) {
@@ -964,7 +1060,10 @@
       const career = sc.career * ratio;
       const ratio2 = Math.max(0.05, Math.min(3, sc.peak / Math.max(sc.career, 0.01)));
       return career * Math.pow(ratio2, 0.4);
-    };
+    }
+    /* 候选池挂在函数上：调用方遍历 valueOf.pool 即可，不必再各自做一次 inScope */
+    valueOf.pool = poolFor(region, country, gender, evs);
+    return valueOf;
   }
 
   /* ★ 性能（2026-11-01）：这里原来会把**所有有分的选手**都塞进数组再整体排序 ——
@@ -976,7 +1075,7 @@
     const val = mkScorer(mode, smooth, region, country, evs, gender, rtype, dim);
     const K = (topK > 0) ? Math.round(topK) : 0;
     const out = [];
-    const ranked = M.ranked;
+    const ranked = val.pool;
     function makeRow(p, v) {
       return {
         name: p.name, country: p.country, hue: p.hue, id: p.id, iso: p.country,
@@ -1133,6 +1232,34 @@
     return Math.max(0, Math.round((y - x) / 86400000));
   }
 
+  /* 段的「真实纪录级别」反推（2026-11-01 第五轮）：
+     ETL 里同一个成绩会**同时**推进世界 / 洲 / 国家三条链（见 build.js 的 feedRec），
+     所以「国家链」里也躺着其实是世界纪录的段、「洲链」里也有世界纪录。
+     tooltip 抬头如果只按当前筛选范围写死（筛亚洲就一律写「亚洲纪录」），
+     这些段就会标错。这里按「该段是否也出现在更高级别的链里」反推真实级别。
+     链是静态数据，结果按「范围 | 口径 | 性别」缓存，只建一次。 */
+  const LSEG_SETS = {};
+  function chainSegSet(kindKey, gen, scopeKey) {
+    const ck = scopeKey + '|' + kindKey + '|' + (gen || '');
+    if (LSEG_SETS[ck]) return LSEG_SETS[ck];
+    const out = {};
+    const arr = (M.laneChains && M.laneChains[ck]) || [];
+    for (let i = 0; i < arr.length; i++) {
+      const L = arr[i];
+      const m = {};
+      const segs = L.segs || [];
+      for (let j = 0; j < segs.length; j++) {
+        const raw = segs[j];
+        const dn = raw.fd != null ? raw.fd : raw.fromDn;
+        const id = raw.i != null ? raw.i : (raw.id || '');
+        if (dn) m[dn + '|' + id] = 1;
+      }
+      out[L.ev] = m;
+    }
+    LSEG_SETS[ck] = out;
+    return out;
+  }
+
   function tlOption(view, mode, fy, smooth, metric, region, country, lane, evs, gender, rtype, box, dim) {
     if (window.Charts.setLaneI18n) window.Charts.setLaneI18n({
       mo: (t.isEn() ? 'mo' : '个月'), y: (t.isEn() ? 'y' : '年'), day: (t.isEn() ? 'd' : '天'),
@@ -1171,6 +1298,17 @@
       const gen = gNeed === 'F' ? 'f' : '';
       const kindKey = useAvg ? 'a' : 's';
       const chainKey = scope + '|' + kindKey + '|' + gen;
+      /* 段级抬头：先备好「世界链 / 洲链」的索引，tooltip 抬头跟着每一段自己的级别走 */
+      const baseLab = recScopeLabel(scope, gen);
+      let wSetA = null, cSetA = null, wLabA = '', cLabA = '';
+      if (scope !== 'W') {
+        wSetA = chainSegSet(kindKey, gen, 'W');
+        wLabA = recScopeLabel('W', gen);
+        if (scope.indexOf('N:') === 0) {
+          const contA = M.continentOf ? M.continentOf[String(scope.slice(2)).toUpperCase()] : '';
+          if (contA) { cSetA = chainSegSet(kindKey, gen, 'C:' + contA); cLabA = recScopeLabel('C:' + contA, gen); }
+        }
+      }
       /* 旧数据包（还没有 laneChains）退回「世界纪录链 + 按人筛选」的老行为，保证不白屏。 */
       const hasChains = !!(M.laneChains && typeof M.laneChains === 'object');
       let srcLanes;
@@ -1244,7 +1382,14 @@
             }
             segs.push({
               from: c.f, to: c.e, holder: sg.holder, iso: sg.iso,
-              id: sg.id, days: sg.days, fromDn: sg.fromDn, toDn: sg.toDn, subs: subs
+              id: sg.id, days: sg.days, fromDn: sg.fromDn, toDn: sg.toDn, subs: subs,
+              /* 这一段自己的纪录级别抬头（世界纪录 / 亚洲纪录 / 中国纪录 …） */
+              lab: (function () {
+                const k2 = (sg.fromDn || 0) + '|' + (sg.id || '');
+                if (wSetA && wSetA[L.ev] && wSetA[L.ev][k2]) return wLabA;
+                if (cSetA && cSetA[L.ev] && cSetA[L.ev][k2]) return cLabA;
+                return baseLab;
+              })()
             });
           });
           return { ev: L.ev, label: evName(M.EV[L.ev] || { zh: L.zh, en: L.en }), segs: segs };
@@ -1366,6 +1511,9 @@
      整个构建按片（每帧一小段）跑，不阻塞主线程；结果按筛选签名缓存，换筛选才重算。 */
   const CROWN_CACHE = {};
   let CROWN_SEQ = 0;
+  /* 每发起一次构建就 +1；旧任务在下一个分片边界自检时发现自己已过期就退出，
+     避免连续换筛选时堆起一串半成品任务和播放循环抢主线程。 */
+  let CROWN_GEN = 0;
   const CROWN_TOP = 10;
   const CROWN_SAMPLES = 18;
   function crownIt(fn) {
@@ -1415,6 +1563,12 @@
   }
   function crownCompute(cfg, sig, endFy, sync) {
     const rec = CROWN_CACHE[sig] = { ready: false, spells: [], busy: true, ts: ++CROWN_SEQ };
+    /* ★ 只留最新的那一份：换筛选时旧的构建立刻作废。
+       以前多次连续换筛选会同时挂起好几条「18 次全量采样 + 每步 240 个周」的分片任务，
+       和播放循环抢主线程 —— 表现就是「不停下来就永远算不完、看不到新内容」。
+       冒烟测试走 sync 分支，不受影响。 */
+    const gen = ++CROWN_GEN;
+    const alive = function () { return sync || gen === CROWN_GEN; };
     /* sync = 同步跑完（只给冒烟测试用）；正常路径按片让出主线程 */
     const defer = sync ? function (f) { f(); } : crownIt;
     const val = mkScorer(cfg.mode, cfg.smooth, cfg.region, cfg.country, cfg.evs, cfg.gender, cfg.rtype, cfg.dim);
@@ -1425,9 +1579,10 @@
     const candIds = [], seen = {};
     let si = 0;
     function sampleTick() {
+      if (!alive()) { rec.busy = false; return; }
       const tt = samples[si];
       const best = [];
-      const ranked = M.ranked;
+      const ranked = val.pool;
       for (let i = 0; i < ranked.length; i++) {
         const p = ranked[i];
         const v = val(p, tt);
@@ -1467,6 +1622,7 @@
         return bi >= 0 ? list[bi].id : null;
       }
       function stepTick() {
+        if (!alive()) { rec.busy = false; return; }
         let n = 0;
         while (k < stops.length && n < 240) {
           const tt = stops[k];
@@ -1532,6 +1688,16 @@
   P.tlCrownPaint = function (box, fy) {
     const el = crownEl();
     if (!el) return;
+    /* 一律以「屏幕上那个 #tlChart」为准：传入的 box 可能是上一轮渲染留下、
+       已经脱离文档的节点（例如播放循环 / 延迟 rAF 里的闭包），拿它的榜首去写
+       徽标会写出一个和画面完全对不上的结果（表现为时长突然变成「—」且不再刷新）。 */
+    if (document.getElementById) {
+      const live = document.getElementById('tlChart');
+      if (live && live !== box && live.getAttribute && live.getAttribute('data-view') === 'race') {
+        box = live;
+        fy = parseFloat(live.getAttribute('data-fy')) || fy;
+      }
+    }
     /* 筛选范围变了（大洲 / 国家 / 性别）→「登顶 xx 第一」的说法也要跟着变，
        否则会出现「筛选了中国，徽标还写世界第一」的错配。 */
     const lab = el.querySelector('.tl-crown-lab');
@@ -1539,44 +1705,37 @@
     if (lab && labTxt && lab.textContent !== labTxt) lab.textContent = labTxt;
     const lead = box && box.__raceLeader;
     const rec = box && box.__crown;
-    const nm0 = el.querySelector('.tl-crown-name');
-    const dv0 = el.querySelector('.tl-crown-val');
-    const fg0 = el.querySelector('.tl-crown-flag');
-    const since = (lead && rec && rec.ready) ? crownSince(rec.spells, lead.id, fy) : null;
-    if (since == null) {
-      /* 'pending' = 榜首时间线还在分片构建；'none' = 当前时刻还没人上榜 */
-      const st = (rec && !rec.ready) ? 'pending' : 'none';
-      if (el.getAttribute('data-st') !== st) {
-        el.setAttribute('data-st', st);
-        el.removeAttribute('data-k');
-      }
-      if (nm0 && nm0.textContent) nm0.textContent = '';
-      if (dv0 && dv0.textContent !== '—') dv0.textContent = '—';
-      if (fg0 && !fg0.hidden) { fg0.hidden = true; fg0.removeAttribute('src'); }
-      return;
-    }
-    const days = Math.max(0, Math.round(fyToDays(fy) - fyToDays(since)));
-    const fmt = box.__crownFmt === 'ymd' ? 'ymd' : 'd';
-    const key = lead.id + '|' + days + '|' + fmt;
-    if (el.getAttribute('data-k') === key && el.getAttribute('data-st') === 'ok') return;
+    const ready = !!(rec && rec.ready);
+    const since = (lead && ready) ? crownSince(rec.spells, lead.id, fy) : null;
+    /* 'ok' = 时长已知；'pending' = 榜首时间线还在分片构建；'none' = 当前时刻还没人上榜 */
+    const st = (since != null) ? 'ok' : (ready ? 'none' : 'pending');
+    const days = (since != null) ? Math.max(0, Math.round(fyToDays(fy) - fyToDays(since))) : -1;
+    const fmt = (box && box.__crownFmt === 'ymd') ? 'ymd' : 'd';
+    /* ★ 2026-11-01 第五轮：换筛选时徽标不再「先清空、等算完再出现」。
+       榜首（姓名 + 国旗）每帧都是现成的（就画在竞速图第 1 条上），先写上去，
+       只有「时长」在 pending 阶段显示「—」。这样筛选一改，徽标立刻有反应，
+       不会出现「必须暂停才看到内容变化」的观感。 */
+    const showName = !!lead && st !== 'none';
+    const key = [st, showName ? lead.id : '', days, fmt].join('|');
+    if (el.getAttribute('data-k') === key) return;
     el.setAttribute('data-k', key);
-    el.setAttribute('data-st', 'ok');
-    const flag = el.querySelector('.tl-crown-flag');
+    el.setAttribute('data-st', st);
     const nm = el.querySelector('.tl-crown-name');
     const dv = el.querySelector('.tl-crown-val');
-    if (nm) nm.textContent = lead.name || '';
+    const flag = el.querySelector('.tl-crown-flag');
+    if (nm) nm.textContent = showName ? (lead.name || '') : '';
     if (flag) {
-      const uri = window.Charts.flagUri(lead.iso);
+      const uri = showName ? window.Charts.flagUri(lead.iso) : '';
       if (uri) { flag.src = uri; flag.hidden = false; } else { flag.removeAttribute('src'); flag.hidden = true; }
     }
-    if (dv) {
-      if (fmt === 'd') dv.textContent = (U.num ? U.num(days) : String(days)) + (t.isEn() ? ' d' : ' 天');
-      else {
-        const ymd = daysToYmd(days, Math.round(fyToDays(since)));
-        dv.textContent = t.isEn()
-          ? ((ymd.y ? ymd.y + 'y ' : '') + (ymd.m ? ymd.m + 'mo ' : '') + ymd.d + 'd')
-          : ((ymd.y ? ymd.y + ' 年 ' : '') + (ymd.m ? ymd.m + ' 个月 ' : '') + ymd.d + ' 天');
-      }
+    if (!dv) return;
+    if (since == null) { dv.textContent = '—'; return; }
+    if (fmt === 'd') dv.textContent = (U.num ? U.num(days) : String(days)) + (t.isEn() ? ' d' : ' 天');
+    else {
+      const ymd = daysToYmd(days, Math.round(fyToDays(since)));
+      dv.textContent = t.isEn()
+        ? ((ymd.y ? ymd.y + 'y ' : '') + (ymd.m ? ymd.m + 'mo ' : '') + ymd.d + 'd')
+        : ((ymd.y ? ymd.y + ' 年 ' : '') + (ymd.m ? ymd.m + ' 个月 ' : '') + ymd.d + ' 天');
     }
   };
   function crownRepaint() {

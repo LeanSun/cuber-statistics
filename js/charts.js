@@ -434,23 +434,31 @@
              但条被裁短时国旗可能落在条外，tooltip 里始终带上更稳。 */
           const fu = flagUri(d.iso);
           const ft = fu ? '<img src="' + fu + '" style="width:15px;height:11px;vertical-align:-1px;margin-right:5px" alt="">' : '';
-          /* 第二行：名次 + 国家全名（2026-11-01 用户要求去掉国家两位码 —— 「AU」这种缩写
-             既不好读也没信息量，换成「澳大利亚」这类可读名称）。 */
-          const sub = [];
-          if (no) sub.push(fillTpl(LANE_I18N.raceRank || '第 {n} 名', { n: no }));
-          if (d.cname) sub.push(esc(d.cname));
+          const ptTxt = esc(LANE_I18N.pt || '分');
+          const num = function (x) {
+            return '<b style="font-variant-numeric:tabular-nums">' + f2(x) + '</b>' + ptTxt;
+          };
+          /* 版式（2026-11-01 第五轮，用户指定）：
+               国旗 姓名
+               第 N 名 · 1553.94分          ← 名次 + 自己的分数
+               领先第二名 75.3%·2146.25分    ← 与参照选手的相对关系 + 参照选手的分数
+             第 1 名的参照是第二名，其余名次的参照是榜首。 */
           let h = '<div style="display:flex;align-items:center;gap:2px">' + ft + '<b>' + esc(d.name) + '</b></div>';
-          if (sub.length) h += '<div style="margin-top:3px;font-size:11.5px;opacity:.82">' + sub.join(' · ') + '</div>';
-          /* 第三行：当前分数 + 与榜首的相对位置（第 1 名说自己领先多少，其余说自己是榜首的百分之几） */
+          const rankTxt = no ? esc(fillTpl(LANE_I18N.raceRank || '第 {n} 名', { n: no })) + ' · ' : '';
+          h += '<div style="margin-top:3px;font-size:11.5px;opacity:.85">' + rankTxt + num(v) + '</div>';
           let rel = '';
+          let ref = 0;
           if (no === 1 && lead2 > 0 && lead1 > lead2) {
             rel = fillTpl(LANE_I18N.raceAhead || '领先第二名 {p}%', { p: ((lead1 - lead2) / lead2 * 100).toFixed(1) });
+            ref = lead2;
           } else if (no > 1 && lead1 > 0 && v > 0) {
             rel = fillTpl(LANE_I18N.raceOfTop || '榜首的 {p}%', { p: (v / lead1 * 100).toFixed(1) });
+            ref = lead1;
           }
-          h += '<div style="margin-top:2px;font-size:12px"><b style="font-variant-numeric:tabular-nums">' +
-            f2(v) + '</b> ' + esc(LANE_I18N.pt || '分') +
-            (rel ? '<span style="opacity:.7"> · ' + esc(rel) + '</span>' : '') + '</div>';
+          if (rel) {
+            h += '<div style="margin-top:2px;font-size:11.5px;opacity:.85">' + esc(rel) +
+              (ref > 0 ? '·' + num(ref) : '') + '</div>';
+          }
           return h;
         }
       }),
@@ -785,9 +793,14 @@
           /* value[5] 是国旗用的国码：新数据直接给 ISO2；旧数据只有国名全称，退回旧字段 */
           value: [sg.from, li, sg.to, li, sg.holder, sg.iso || sg.country, sg.days, sg.fromDn || 0, sg.toDn || 0],
           pid: sg.id,
+          /* 该段属于哪个项目（tooltip / 冒烟反查「这一段是不是也是世界纪录」都要用） */
+          ev: L.ev,
           /* 合并段内每一次刷新的日期（同一个人连续破纪录时合并成一段，这里保留明细） */
           subs: sg.subs || null,
           scopes: sg.scopes || null,
+          /* 该段自己的纪录级别抬头（世界纪录 / 亚洲纪录 / 中国纪录 …），由调用方按
+             「这一段是否也出现在更高级别的链里」反推；缺省时退回整体口径 opts.recLabel */
+          lab: sg.lab || '',
           itemStyle: { color: laneColor }
         });
       });
@@ -964,8 +977,11 @@
           const iso = String(v[5] || '').toUpperCase();
           function fd(dn) { const s = String(dn || ''); return s.length === 8 ? s.slice(0, 4) + '-' + s.slice(4, 6) + '-' + s.slice(6, 8) : (LANE_I18N.now || '至今'); }
           const flagTag = iso ? '<img src="' + flagUri(iso) + '" style="width:15px;height:11px;vertical-align:-1px;margin-right:4px" alt="">' : '';
-          const recTag = opts.recLabel
-            ? '<div style="font-size:11px;opacity:.7;margin-bottom:2px">' + esc(opts.recLabel) + '</div>' : '';
+          /* 抬头：优先用这一段自己的级别（数据里同一份成绩会同时进 WR / 洲 / 国家三条链，
+             所以「筛选亚洲」时也可能有真正的世界纪录段），没有才退回整体口径。 */
+          const labTxt = (p.data && p.data.lab) || opts.recLabel;
+          const recTag = labTxt
+            ? '<div style="font-size:11px;opacity:.7;margin-bottom:2px">' + esc(labTxt) + '</div>' : '';
           let h = recTag + '<div style="display:flex;align-items:center;gap:2px">' + flagTag + '<b>' + esc(v[4]) + '</b></div>' +
             '<div style="margin-top:3px;font-size:11.5px;opacity:.85">' + fd(v[7]) + ' → ' + fd(v[8]) + '</div>' +
             '<div style="margin-top:2px;font-size:11.5px"><b>' + days + '</b> ' + (LANE_I18N.day || '天') + '</div>';

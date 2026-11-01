@@ -589,7 +589,7 @@
     'tl.crown.tip': 'How long the current leader has been on top · click to switch between days and years/months/days',
     'tl.laneClick': 'Click a block to open the player page',
     'tl.race.rank': '#{n}', 'tl.race.ahead': '{p}% ahead of #2',
-    'tl.race.ofTop': '{p}% of #1', 'tl.race.pt': 'pts',
+    'tl.race.ofTop': '{p}% of #1', 'tl.race.pt': ' pts',
     'tl.play': 'Play', 'tl.pause': 'Pause', 'tl.replay': 'Replay', 'tl.step': 'Step', 'tl.step.year': 'Year', 'tl.step.month': 'Month', 'tl.step.week': 'Week', 'tl.metric': 'Metric', 'tl.metric.overall': 'Overall', 'tl.lane': 'Single/Avg',
     'tl.smooth': '3-period smoothing',
     'tl.smooth.d': 'Averages each frame over three periods — the current day plus the two days before it. This smooths out spikes caused by a single day of unusually many records, so bars and rank changes move more steadily. Off = the true cumulative total for that day only. It only affects mid-playback jitter: the final frame is still the full all-time score and is never averaged away.',
