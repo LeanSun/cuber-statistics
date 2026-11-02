@@ -1513,12 +1513,16 @@ button.exp-v3-wca.pid-copy:hover{color:var(--accent)}
    徽标整体宽度现在随内容走，所以给姓名一个上限：极端长名只截姓名，不把整行撑爆。 */
 .tl-crown-tx{display:flex;flex-direction:row;align-items:baseline;gap:7px;
   flex:0 1 auto;min-width:0;overflow:hidden}
-/* 姓名：装得下就正常显示，装不下才滚动（2026-11-03 用户要求，替掉原来的省略号）。
-   外层定宽裁剪，内层放两份同样的文字平移 -50%，接缝处正好接上；
-   .cn-a/.cn-b 各自带同样的 padding-right，作为两份文字之间的间隔。
-   短名时 .cn-b 不显示、内层不动画，与普通文本无异。 */
+/* 姓名：装得下就正常显示，装不下才滚动（2026-11-03 用户要求，替掉省略号）。
+   外层定宽裁剪，内层放两份同样的文字按实测像素平移，接缝处正好接上。
+   ★ 宽度上限要卡在「常见姓名之上、带括号汉字的姓名之下」：实测 12px/700 下
+   Feliks Zemdegs 86px、Tymon Kolasiński 98px、Yiheng Wang (王艺衡) 123px、
+   Baoqiang Dong (董百强) 136px、Seung Hyuk Nahm (남승혁) 154px。
+   先给过 16em（192px）→ 连 154px 都算「装得下」，徽标只是被撑宽、根本不滚，
+   用户看到的就是「超长名字依旧静止」。现在收到 11em（约 132px）：
+   纯拉丁姓名照常静态显示，带中日韩括号的、以及更长的一律滚动。 */
 .tl-crown-name{display:block;font-size:12px;letter-spacing:-.1px;font-weight:700;color:var(--text);
-  white-space:nowrap;flex:0 1 auto;min-width:0;max-width:16em;overflow:hidden;text-overflow:ellipsis}
+  white-space:nowrap;flex:0 1 auto;min-width:0;max-width:11em;overflow:hidden;text-overflow:ellipsis}
 /* 内层用 inline-block 而不是 inline-flex：两份文字等宽、不能被 flex 压缩，
    平移 -50% 才刚好等于「一份文字 + 一个间隔」，接缝处不会露出空白或叠字。 */
 .tl-crown-name-in{display:inline-block;white-space:nowrap;will-change:transform}
@@ -1532,10 +1536,9 @@ button.exp-v3-wca.pid-copy:hover{color:var(--accent)}
 .tl-crown-name.run .cn-b{display:inline-block}
 .tl-crown-name.run .tl-crown-name-in{animation:tlCrownRun var(--run-dur,7s) linear infinite}
 @keyframes tlCrownRun{from{transform:translateX(0)}to{transform:translateX(var(--run-x,-100%))}}
-@media (prefers-reduced-motion:reduce){
-  .tl-crown-name.run .tl-crown-name-in{animation:none}
-  .tl-crown-name.run{text-overflow:ellipsis}
-}
+/* ★ 这里**不**用 prefers-reduced-motion 关掉动画：这是站主明确要求的「读不到全名」兜底，
+   关掉就等于名字又被裁掉。速度本来就慢（34px/s，一圈 4~15 秒），不构成眩晕风险。
+   （Chrome 无头 / 部分系统会报 reduce，之前的写法在那里会直接静止，排查时别被误导。） */
 .tl-crown-name:empty{display:none}
 /* 名字结构里常驻一个空的内层元素，:empty 不再成立，改用 JS 打的 isempty */
 .tl-crown-name.isempty{display:none}
@@ -1548,9 +1551,9 @@ button.exp-v3-wca.pid-copy:hover{color:var(--accent)}
 .tl-crown[data-st="none"] .tl-crown-val{color:var(--text-3);opacity:.75}
 .tl-crown[data-st="pending"] .tl-crown-ic{animation:tlCrownPulse 1.5s ease-in-out infinite}
 @keyframes tlCrownPulse{0%,100%{opacity:1}50%{opacity:.5}}
-/* 窄屏：姓名上限收紧（宽度已自适应，不再需要锁 --crown-w） */
-@media (max-width:1300px){ .tl-crown-name{max-width:13em} }
-@media (max-width:980px){ .tl-crown-name{max-width:10em} }
+/* 窄屏：姓名上限再收紧（宽度已自适应，不再需要锁 --crown-w） */
+@media (max-width:1300px){ .tl-crown-name{max-width:10em} }
+@media (max-width:980px){ .tl-crown-name{max-width:8.5em} }
 @media (max-width:720px){ .tl-crown-name{max-width:7em} .tl-crown-val{min-width:4.5em} }
 
 /* ============ 重大事件：浮在分数竞速图右下角的可折叠弹窗 ============ */

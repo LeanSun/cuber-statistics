@@ -1163,7 +1163,12 @@ console.log('== 默认值：停办项目计入 / 竞速图速率 ==');
     /* 徽标宽度自适应：不能再有 --crown-w 锁宽 */
     ok(!/width:var\(--crown-w/.test(cs) && /\.tl-crown\{[^}]*width:auto/.test(cs),
       '登顶徽标宽度随内容自适应（不再锁 --crown-w）');
-    ok(/\.tl-crown-name\{[^}]*max-width:16em/.test(cs), '超长姓名只截姓名（max-width 兜底）');
+    /* 姓名宽度上限：11em（132px）—— 超过这个宽度才滚动。
+       上限给大了（曾经 16em）会让 20 来字符的名字都算「装得下」，徽标只是被撑宽、不滚。 */
+    ok(/\.tl-crown-name\{[^}]*max-width:11em/.test(cs), '姓名宽度上限 11em（约 132px，超出才滚动）');
+    /* 跑马灯不能被 prefers-reduced-motion 关掉：关了就等于名字又被裁掉（站主要求） */
+    ok(!/prefers-reduced-motion:reduce\{[^}]*tl-crown-name\.run/.test(cs),
+      '跑马灯不受 prefers-reduced-motion 影响（否则部分机器上会静止）');
     /* 地区下拉：打开时回到顶部，不再滚到选中项 */
     ok(/menu\.scrollTop = 0/.test(appSrc2) && !/scrollIntoView\(\{ block: 'nearest' \}\)/.test(appSrc2),
       '地区下拉打开时列表回到置顶（不记住上次翻到的位置）');
