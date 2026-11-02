@@ -65,6 +65,10 @@ const p0 = M.ranked[0];
 ok(/^[A-Z]{2}$/.test(p0.country), '国家已归一化为 ISO2: ' + p0.country);
 ok(!!M.countriesZh[p0.country], '中文国名: ' + M.countriesZh[p0.country]);
 ok(!!M.continentOf[p0.country], '洲际: ' + M.continentOf[p0.country]);
+/* CI 跑的是 etl/_sample_data.js（8 人），本地与线上跑完整 data.js（6 万+）。
+   凡是「覆盖面 / 比例」类断言在样本上天然不成立（样本里压根没有换籍选手、纪录持有者只有 7 位），
+   一律用这个标志兜住，否则 CI 必假红。 */
+const SAMPLE = M.ranked.length < 1000;
 
 console.log('== 洲纪录 CR（曾全为 0）==');
 let totWR = 0, totCR = 0, totNR = 0, crPlayers = 0;
@@ -440,7 +444,8 @@ if (splitIds.length) {
      他们的拆分自然进不了国家榜。所以先取「页面上真的有」的那批人再校验。
      （2026-11-02：旧写法直接取 splitIds[0]，一旦那人是长尾就必失败。） */
   const inPage = splitIds.filter((id) => M.ranked.some((p) => p.id === id));
-  ok(inPage.length > 0, '换籍选手中至少有人在页面上（' + inPage.length + ' / ' + splitIds.length + '）');
+  ok(SAMPLE || inPage.length > 0,
+    '换籍选手中至少有人在页面上（' + inPage.length + ' / ' + splitIds.length + '）' + (SAMPLE ? ' [样本跳过]' : ''));
   const pid = inPage.filter((id) => Object.keys(M.natSplit[id]).length > 1)[0] || inPage[0];
   const parts = M.natSplit[pid] || {};
   console.log('   换籍样例：', pid, Object.keys(parts).map((k) => k + '=' + parts[k]).join(' / '));
@@ -595,8 +600,9 @@ console.log('== 评分真实性：六维总分（当前模型唯一口径） =='
     const recNoSix = M.ranked.filter(function (p) { return (p.records || []).length && !p.six; });
     console.log('   纪录本身得分为 0、因而无六维分的纪录持有者：' + recNoSix.length + ' 人'
       + (recNoSix.length ? '（' + recNoSix.map(function (p) { return p.id; }).join(',') + '）' : ''));
-    ok(M.ranked.filter(function (p) { return (p.records || []).length && p.overall > 0; }).length > 4000,
-      '纪录持有者基本都进了总榜（' + M.ranked.filter(function (p) { return (p.records || []).length && p.overall > 0; }).length + ' 人）');
+    const recInRank = M.ranked.filter(function (p) { return (p.records || []).length && p.overall > 0; }).length;
+    ok(SAMPLE || recInRank > 4000,
+      '纪录持有者基本都进了总榜（' + recInRank + ' 人）' + (SAMPLE ? ' [样本跳过]' : ''));
   }
   /* 排序必须按六维总分单调不增 */
   let mono = true;
