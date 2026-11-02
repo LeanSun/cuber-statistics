@@ -351,6 +351,11 @@
   function openGeo(inp) {
     const box = inp && inp.closest ? inp.closest('.geo-combo') : null;
     if (!box) return;
+    /* ★ 2026-11-02 用户要求：点开输入框就把「已选中的地区名」清掉，
+       不用先手动删几个字才能搜索。名字仍记在 data-label 上 ——
+       没选新项直接关掉（Esc / 点空白）时 closeGeo 会把它写回去。 */
+    const label = inp.getAttribute('data-label') || '';
+    if ((inp.value || '') === label) inp.value = '';
     document.querySelectorAll('.geo-combo[data-open="1"]').forEach(function (b) { if (b !== box) closeGeo(b); });
     box.setAttribute('data-open', '1');
     inp.setAttribute('aria-expanded', 'true');

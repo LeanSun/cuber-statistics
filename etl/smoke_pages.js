@@ -394,6 +394,42 @@ console.log('   时间轴显示：', lbl);
 ok(/^\d{4}-\d{2}-\d{2}$/.test(lbl.trim()), '时间轴右侧显示具体到日（YYYY-MM-DD）');
 ok(/id="tlRange"[^>]*step="1"/.test(h8), '时间轴按天步进（step=1）');
 
+/* 停办项目的终点：选了已取消的项目，时间轴必须停在该项目停办的那一刻，
+   而不是继续拉到今天（2026-11-02 用户反馈）。 */
+if (typeof P.tlSetEnd === 'function') {
+  const fyMagic = P.tlSetEnd(['magic']);
+  const slMagic = P.tlSlider('day', fyMagic);
+  ok(fyMagic < 2014, '选八板时时间轴终点提前到停办年（' + slMagic.label + '）');
+  const fyFeet = P.tlSetEnd(['333ft']);
+  ok(fyFeet > 2019 && fyFeet < 2021, '选脚拧时时间轴终点落在 2019 年末（' + P.tlSlider('day', fyFeet).label + '）');
+  const fyBoth = P.tlSetEnd(['magic', '333ft']);
+  ok(fyBoth > 2019 && fyBoth < 2021, '多个停办项目取最晚的那个终点');
+  const fyLive = P.tlSetEnd(['333']);
+  ok(fyLive > 2025, '含在办项目时终点仍是数据最后一天');
+  P.tlSetEnd([]);
+  ok(P.tlEndFy() > 2025, '清空筛选后终点恢复');
+}
+
+/* 单维竞速图：每维走自己的年度曲线（p.sy）。不变量 ——
+   ① 曲线起点不得早于本人首次参赛年；② 终点比率必须是 1000（否则末期分数对不上维度分）。 */
+{
+  const withSy = M.ranked.filter((p) => p.sy && p.sy.m4);
+  if (withSy.length) {
+    const early = withSy.filter((p) => {
+      const first = +(String(p.sy.m4).split(',')[0].split(':')[0]) || 0;
+      return first && p.start && first < p.start;
+    });
+    ok(early.length === 0, '统治力曲线不早于首次参赛年（越界 ' + early.length + ' 人）');
+    const noTail = withSy.filter((p) => {
+      const a = String(p.sy.m4).split(',');
+      return +a[a.length - 1].split(':')[1] !== 1000;
+    });
+    ok(noTail.length === 0, '统治力曲线终点比率为 1000（异常 ' + noTail.length + ' 人）');
+  } else {
+    ok(SAMPLE, '样本数据没有六维年度曲线，跳过单维曲线校验');
+  }
+}
+
 const h9 = tryRender('纪录持有图（lane）', () => P.timeline(Object.assign({}, base, { tlView: 'lane' })));
 ok(h9.indexOf('tlChart') >= 0, '泳道图渲染');
 

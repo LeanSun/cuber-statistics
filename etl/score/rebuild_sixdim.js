@@ -49,6 +49,13 @@ if (!SKIP_PACK) {
     file: path.join(D, 'make_sixev_lazy.js'),
     args: [MEM, path.join(D, 'make_sixev_lazy.js')],
   });
+  /* ⑤ 六维年度曲线：每维自己的时间演进（图表可视化页「维度」筛选用）。
+     必须放在 three 轨之后 —— 它按 sixdim_site.tsv 的白名单出表。 */
+  STEPS.push({
+    label: '⑤ 六维年度曲线（sixyear.tsv，单维竞速图用）',
+    file: path.join(D, 'sixyear.js'),
+    args: [MEM, path.join(D, 'sixyear.js')],
+  });
 }
 
 const t0 = Date.now();
@@ -84,6 +91,9 @@ if (!SKIP_PACK) {
     const mb = fs.statSync(p).size / 1048576;
     if (mb < 1) problems.push(`${f} 只有 ${mb.toFixed(2)}MB，可能是空包`);
   }
+  const sy = path.join(D, 'sixyear.tsv');
+  if (!fs.existsSync(sy)) problems.push('sixyear.tsv 不存在（六维年度曲线没生成，单维竞速图会退回旧曲线）');
+  else if (fs.statSync(sy).size / 1048576 < 1) problems.push('sixyear.tsv 过小，可能是空表');
 }
 
 const sec = ((Date.now() - t0) / 1000).toFixed(0);

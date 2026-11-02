@@ -243,7 +243,20 @@
     const mode = 'cumulative';
     const step = 'day';
     const metric = 'overall';
-    const fy = state.tlFy || P.tlEndFy();
+    /* 生效的项目集合必须**先**算出来 —— 时间轴终点依赖它（选中停办项目时终点提前）。
+       以前这段在拼完滑块之后才算，于是再也改不了已经渲染出去的上限。 */
+    const evSel0 = state.evSel || [];
+    let evsBox = evSel0.slice();
+    if (!evsBox.length && state.group && state.group !== 'all' && !M.EV[state.group]) {
+      const g0 = M.presetGroups.filter(function (x) { return x.id === state.group; })[0];
+      if (g0 && g0.ids) evsBox = g0.ids.slice();
+    } else if (!evsBox.length && state.group && M.EV[state.group]) {
+      evsBox = [state.group];
+    }
+    const tlEnd = tlEndFromEvs(evsBox);
+    /* 终点提前后，原来停在 2026 的游标要一起夹回来，否则会出现「时间轴到底了但图上写着 2026」 */
+    const fy = Math.min(state.tlFy || tlEnd, tlEnd);
+    if (state.tlFy != null && state.tlFy > tlEnd) state.tlFy = tlEnd;
     const sl = tlSlider(step, fy);
     const rate = loadRate();
 
@@ -345,16 +358,9 @@
     }
 
     const chH = view === 'race' ? 520 : Math.max(560, (M.events.length * 46 + 90));
-    /* 当前生效的项目集合（显式多选 / 预设分组 / 单个项目）——供竞速图按项目切换 */
-    const evSel0 = state.evSel || [];
-    let evsBox = evSel0.slice();
-    if (!evsBox.length && state.group && state.group !== 'all' && !M.EV[state.group]) {
-      const g = M.presetGroups.filter(function (x) { return x.id === state.group; })[0];
-      if (g && g.ids) evsBox = g.ids.slice();
-    } else if (!evsBox.length && state.group && M.EV[state.group]) {
-      evsBox = [state.group];
-    }
-    const singleEv = evSel0.length === 1 ? evSel0[0] : (state.group && M.EV[state.group] ? state.group : '');
+    /* 生效的项目集合（显式多选 / 预设分组 / 单个项目）已在函数开头算出（evsBox / evSel0）——
+       时间轴终点要用它，不能等到这里才算。 */
+    const singleEv = evSel0.length === 1 ? evSel0[0] : (state.group && M.EV[state.group] ? state.group : '');;
     const msBase = singleEv ? M.eventMilestones(singleEv) : M.milestones;
     const hidden = loadHiddenMs();
     const custom = loadCustomMs().map(function (m) { return Object.assign({ custom: true }, m); });
@@ -483,7 +489,74 @@
   /* 时间轴「最新时刻」：默认落点应该是数据的**最后一天**，而不是写死的 2025 年初。
      之前 state.tlFy 默认 2025，打开图表看到的是「2025-01-01 的排名」，
      用户自然觉得「数据进入 2026 年就不动了」。现在默认直接落在最新日期。 */
-  P.tlEndFy = function () { return tlDateToFy(TL_END); };
+  const TL_END_ALL = tlDateToFy(TL_END);
+  /* ★ 2026-11-02：选中「已停办」的项目时，时间轴要停在该项目停办的那一刻。
+     以前的实现把终点写死成「数据最后一天」，于是选八板 / 脚拧 / 旧多盲，
+     时间轴仍然一路拉到今天：后面十几年里所有人分数纹丝不动，
+     播放也只是白跑一遍。这里把「当前终点」做成一个可变值：
+       · 选中的项目**全是停办项目** → 终点取这些项目里最晚的那一天（M.meta.evLast）；
+       · 只要含一个在办项目（或没选项目）→ 终点仍是数据最后一天。 */
+  let TL_END_CUR = TL_END_ALL;
+  /* 终点同时记住「日序号」：由日期直接算出，不经过小数年往返 ——
+     tlDateToFy(12-31) 按「年末=下一年初」的约定会得到 2019-12-31→2020.0，
+     再换回日序号就成了 2020-01-01，滑块标签会显示成停办项目之后的那一天。 */
+  let TL_END_IDX = TL_DAYS;
+  function tlDnToDate(dn) {
+    const s = String(dn);
+    return new Date(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8));
+  }
+  function tlDayIndexOf(d) {
+    return Math.max(0, Math.min(TL_DAYS, Math.round((d - TL_START) / 86400000)));
+  }
+  /* 某项目最后一次有人比赛的日期（YYYYMMDD）。优先用 ETL 下发的 meta.evLast；
+     老数据包里没有，就退回泳道段的结束日（停办项目的段本来就停在停办年）。 */
+  function tlEvLastDn(ev) {
+    const m = (M.meta && M.meta.evLast) || null;
+    if (m && m[ev]) return +m[ev];
+    let best = 0;
+    const pools = [M.lanes, M.lanesAvg];
+    for (let k = 0; k < pools.length; k++) {
+      const p = pools[k];
+      if (!p) continue;
+      for (const key in p) {
+        const arr = p[key];
+        if (!arr || !arr.length) continue;
+        for (let i = 0; i < arr.length; i++) {
+          const L = arr[i];
+          if (!L || L.ev !== ev) continue;
+          (L.segs || []).forEach(function (sg) {
+            const dn = sg && (sg.td != null ? sg.td : sg.toDn);
+            if (dn && dn > best) best = +dn;
+          });
+        }
+      }
+    }
+    return best;
+  }
+  /* 按「当前选中的项目」重置时间轴终点，返回终点（小数年） */
+  function tlEndFromEvs(evs) {
+    let end = TL_END_ALL;
+    TL_END_IDX = TL_DAYS;                 /* 默认：数据最后一天 */
+    if (evs && evs.length) {
+      let mx = 0, allRetired = true;
+      for (let i = 0; i < evs.length; i++) {
+        const e = M.EV && M.EV[evs[i]];
+        if (!e || !e.retired) { allRetired = false; break; }
+        const dn = tlEvLastDn(evs[i]);
+        if (dn > mx) mx = dn;
+      }
+      if (allRetired && mx > 0) {
+        const d = tlDnToDate(mx);
+        const fy = tlDateToFy(d);
+        /* 至少留出一年半的可见跨度，否则只剩头几段、图会很挤 */
+        if (fy > 2003.5) { end = fy; TL_END_IDX = tlDayIndexOf(d); }
+      }
+    }
+    TL_END_CUR = end;
+    return end;
+  }
+  P.tlSetEnd = function (evs) { return tlEndFromEvs(evs); };
+  P.tlEndFy = function () { return TL_END_CUR; };
   function tlFyToDayIdx(fy) {
     const y = Math.max(2003, Math.min(TL_END.getFullYear(), Math.floor(fy)));
     const jan1 = new Date(y, 0, 1);
@@ -505,20 +578,25 @@
     return { fy: tlDateToFy(d), label: d.getFullYear() + '.' + (d.getMonth() + 1 < 10 ? '0' : '') + (d.getMonth() + 1) };
   }
   function tlSlider(step, fy) {
+    /* 滑块上限跟着「当前终点」走（选了停办项目 → 终点提前），
+       否则停办项目的播放会白跑十几年的空白。 */
+    const endIdx = TL_END_IDX;
     if (step === 'day' || step == null) {
-      const v = tlFyToDayIdx(fy || 2003);
-      return { min: 0, max: TL_DAYS, step: 1, value: v, label: tlIdxToInfo(v, 'day').label };
+      const v = Math.max(0, Math.min(endIdx, tlFyToDayIdx(fy || 2003)));
+      return { min: 0, max: endIdx, step: 1, value: v, label: tlIdxToInfo(v, 'day').label };
     }
     if (step === 'year') {
-      const v = Math.max(2003, Math.min(2025, Math.round(fy)));
-      return { min: 2003, max: 2025, step: 1, value: v, label: String(v) };
+      const v = Math.max(2003, Math.min(Math.round(TL_END_CUR), Math.round(fy)));
+      return { min: 2003, max: Math.round(TL_END_CUR), step: 1, value: v, label: String(v) };
     }
     if (step === 'month') {
-      const v = Math.max(0, Math.min(276, Math.round((fy - 2003) * 12) + 1));
-      return { min: 0, max: 276, step: 1, value: v, label: tlIdxToInfo(v, 'month').label };
+      const maxM = Math.max(0, Math.round((TL_END_CUR - 2003) * 12));
+      const v = Math.max(0, Math.min(maxM, Math.round((fy - 2003) * 12) + 1));
+      return { min: 0, max: maxM, step: 1, value: v, label: tlIdxToInfo(v, 'month').label };
     }
-    const v = Math.max(0, Math.min(1200, Math.round((fy - 2003) * 365.25 / 7) + 1));
-    return { min: 0, max: 1200, step: 1, value: v, label: tlIdxToInfo(v, 'week').label };
+    const maxW = Math.max(0, Math.round((TL_END_CUR - 2003) * 365.25 / 7));
+    const v = Math.max(0, Math.min(maxW, Math.round((fy - 2003) * 365.25 / 7) + 1));
+    return { min: 0, max: maxW, step: 1, value: v, label: tlIdxToInfo(v, 'week').label };
   }
   /* 日期串（YYYY-MM-DD 或 YYYY）→ 滑块索引，供事件轨道跳转 */
   P.tlDateToIdx = function (s) {
@@ -545,13 +623,16 @@
     if (!box || !window.Charts || !window.Charts.has()) return null;
     const view = box.getAttribute('data-view');
     const mode = box.getAttribute('data-mode');
-    const fy = parseFloat(box.getAttribute('data-fy')) || P.tlEndFy();
+    const evs = (box.getAttribute('data-ev') || '').split(',').filter(Boolean);
+    /* 时间轴终点与「是否停办项目」有关，必须在这里同步一次：
+       播放循环 / 延迟 rAF 里的调用都可能晚于渲染，若不刷新就还按旧终点跑。 */
+    const tlEnd = tlEndFromEvs(evs);
+    const fy = Math.min(parseFloat(box.getAttribute('data-fy')) || tlEnd, tlEnd);
     const metric = box.getAttribute('data-metric') || 'overall';
     const lane = box.getAttribute('data-lane') || 'single';
     const smooth = box.getAttribute('data-smooth') === '1';
     const region = box.getAttribute('data-tlregion') || '';
     const country = box.getAttribute('data-tlcountry') || '';
-    const evs = (box.getAttribute('data-ev') || '').split(',').filter(Boolean);
     const gender = box.getAttribute('data-tlgender') || '';
     const rtype = box.getAttribute('data-tltype') || 'all';
     const dim = box.getAttribute('data-tldimv') || '';
@@ -950,10 +1031,60 @@
     const ys = ser.ys;
     let lo = 0, hi = ys.length - 1, idx = -1;
     while (lo <= hi) { const m = (lo + hi) >> 1; if (ys[m] <= f) { idx = m; lo = m + 1; } else hi = m - 1; }
-    let s = idx >= 0 ? ser.cs[idx] : 0;
+    /* ★ 首次有成绩之前必须返回 0。旧实现只把 s 记成 0，却照样 `s += yv[yi+1]*frac`
+       —— 于是「2012 年才首次参赛」的人，在 2011.25 就已经有 25% 的分（凭空早了一年）。 */
+    if (idx < 0) return 0;
+    let s = ser.cs[idx];
     const yi = Math.floor(f), frac = f - yi;
     if (frac > 0) { const v = ser.yv[yi + 1]; if (v) s += v * frac; }
     return s;
+  }
+
+  /* ================= 六维各自的年度曲线（ETL 下发 p.sy[dim]） =================
+     p.sy[dim] = "2009:0,2010:82,2011:302,…"，值是「占本人该维最终分的千分比」。
+     来源是六维引擎自己的事实现表（M1 纪录持有 / M2 领奖台 / M3 大赛表现 /
+     M4 统治力 / M5 当前排名 / M6 突破幅度），所以每一维的起始年、人员构成、
+     增长节奏都跟着这一维的事实走 —— 不再拿「领奖台 + 纪录次数」的通用年度曲线去套。
+     缺这条曲线（旧数据包 / 该维没有事实）时返回 null，调用方退回旧算法。 */
+  function dimCurve(p, dim) {
+    if (!p.sy || !p.sy[dim]) return null;
+    let c = p.__syc;
+    if (!c) c = p.__syc = {};
+    if (c[dim] !== undefined) return c[dim];
+    const ys = [], rs = [];
+    p.sy[dim].split(',').forEach(function (kv) {
+      const i = kv.indexOf(':');
+      if (i <= 0) return;
+      const y = +kv.slice(0, i), r = +kv.slice(i + 1);
+      if (y > 0 && isFinite(r)) { ys.push(y); rs.push(r); }
+    });
+    c[dim] = ys.length ? { ys: ys, rs: rs } : null;
+    return c[dim];
+  }
+  function dimRatioAt(p, dim, fy) {
+    const c = dimCurve(p, dim);
+    if (!c) return null;
+    const ys = c.ys;
+    if (fy < ys[0] - 1e-9) return 0;       /* 该维事实发生之前一律 0（不再「提前出现」） */
+    let lo = 0, hi = ys.length - 1, idx = -1;
+    while (lo <= hi) { const m = (lo + hi) >> 1; if (ys[m] <= fy + 1e-9) { idx = m; lo = m + 1; } else hi = m - 1; }
+    if (idx < 0) return 0;
+    let r = c.rs[idx];
+    /* 年内线性插值到下一年（曲线是年度采样，播放时条形才会连续增长）；
+       但绝不越过第一个采样点，所以不会「提前」给出下一年的值。 */
+    if (idx < ys.length - 1) {
+      const span = ys[idx + 1] - ys[idx];
+      const f = span > 0 ? Math.max(0, Math.min(1, (fy - ys[idx]) / span)) : 0;
+      r = r + (c.rs[idx + 1] - r) * f;
+    }
+    return Math.max(0, r / 1000);
+  }
+  /* 生涯进度（0→1）：只给「该维没有任何事实」的极少数人兜底用。
+     旧实现这种情况下直接给 ratio=1，于是 2003 年的画面里坐满当代选手。 */
+  function careerRamp(p, fy) {
+    const a = +p.start || 2003;
+    const b = Math.max(a + 1, +p.end || 2026);
+    return Math.max(0, Math.min(1, (fy - a) / (b - a)));
   }
 
   /* 与时间无关的筛选池：region / country / gender / evs 一旦确定，「谁在范围内」就固定了。
@@ -1013,6 +1144,10 @@
     /* 六维单独筛选：直接用该维度的维度分作为基准分，再乘同一条年度进度曲线，
        这样「只看 M3」的竞速图里条形只按大赛表现这一维比拼。 */
     const dimMode = (dim && ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'].indexOf(dim) >= 0);
+    /* 该口径下的六维分（单次 / 平均 / 合并） */
+    function sixOfTrack(p) {
+      return rtype === 'single' ? (p.sixS || p.six) : (rtype === 'avg' ? (p.sixA || p.six) : p.six);
+    }
     function valueOf(p, fy) {
       if (evList) {
         /* 多项目（含单项目）：把所选项目的六维分逐维求和，再用当前权重合成，
@@ -1024,6 +1159,15 @@
            以前这段缺失，导致早期年份里出现后来才进这个项目的选手（例如 2007 年前的中国三盲）。 */
         const firstY = evFirstYear(p, evList, ckFirst);
         if (firstY != null && Math.floor(fy) < firstY) return 0;
+        /* ★ 项目 + 维度同时选中时，只比这一维（以前会忽略维度、拿六维加权和去比） */
+        if (dimMode) {
+          const vec = evScopeVec(p, evList, ckVec);
+          if (!vec) return 0;
+          const base0 = vec[SIXD_RACE.indexOf(dim)] || 0;
+          if (!(base0 > 0)) return 0;
+          const dr = dimRatioAt(p, dim, fy);
+          return base0 * (dr == null ? careerRamp(p, fy) : dr);
+        }
         const t = evScopeT(p, evList, rtype, W6, ckVec);
         if (t <= 0) return 0;
         /* ★ 时间演化（此前缺失 → 单/多项目播放时条形纹丝不动，只显示最终名次）：
@@ -1040,27 +1184,37 @@
           ratio = Math.max(0, Math.min(1, cf / evAll));
         } else {
           /* 该项目上没有任何领奖台 / 纪录（例如只靠「当前排名」拿分的人）：
-             退回全局年度曲线，否则他的分数恒为 0、整张图少一个人。 */
-          const gSer = seriesOf(p, p[key] || {}, serKey);
-          const gAll = seriesCum(gSer, END_Y);
-          const gcf = smooth ? ((seriesCum(gSer, fy) + seriesCum(gSer, fy - 1) + seriesCum(gSer, fy - 2)) / 3) : seriesCum(gSer, fy);
-          ratio = gAll > 0 ? Math.max(0, Math.min(1, gcf / gAll)) : 1;
+             按生涯进度长出来，而不是从 2003 年起就满值站着。 */
+          ratio = careerRamp(p, fy);
         }
         return t * ratio;
       }
+      /* ★ 单维模式：走**该维度自己的年度曲线**（ETL 下发的 p.sy[dim]）。
+         旧实现拿 p.yearly（领奖台 + 纪录次数）当所有维度的进度曲线，
+         该曲线为空时还直接给 ratio=1 —— 结果「统治力」在首次参赛前就冒出来，
+         「当前排名」2003 年的画面里坐满 2020 年代才出道的选手。 */
+      if (dimMode) {
+        const sv = sixOfTrack(p);
+        const base0 = sv ? (sv[dim] || 0) : 0;
+        if (!(base0 > 0)) return 0;
+        if (fy < (+p.start || 2003) - 1e-9) return 0;      /* 首次参赛之前不设此人 */
+        const dr = dimRatioAt(p, dim, fy);
+        if (dr != null) return base0 * dr;
+        /* 旧数据包（没有 p.sy）：退回年度荣誉曲线，为空则按生涯进度，绝不直接给 1 */
+        const serD = seriesOf(p, p[key] || {}, serKey);
+        const allD = seriesCum(serD, END_Y);
+        let cfD = seriesCum(serD, fy);
+        if (smooth) cfD = (seriesCum(serD, fy) + seriesCum(serD, fy - 1) + seriesCum(serD, fy - 2)) / 3;
+        const ratioD = allD > 0 ? Math.max(0, Math.min(1, cfD / allD)) : careerRamp(p, fy);
+        return base0 * ratioD;
+      }
       const ser = seriesOf(p, p[key] || {}, serKey);
       const all = seriesCum(ser, END_Y);
-      /* 该维没有年度荣誉累计（all=0，如仅靠当前排名拿分）时，进度曲线取 1
-         （显示其当前维度分），而不是把整条丢弃。 */
-      if (all <= 0 && !dimMode) return 0;
+      if (all <= 0) return 0;
       let cf = seriesCum(ser, fy);
       if (smooth) cf = (seriesCum(ser, fy) + seriesCum(ser, fy - 1) + seriesCum(ser, fy - 2)) / 3;
-      const ratio = all > 0 ? Math.max(0, Math.min(1, cf / all)) : 1;
+      const ratio = Math.max(0, Math.min(1, cf / all));
       if (ratio <= 0) return 0;
-      if (dimMode) {
-        const sv = rtype === 'single' ? (p.sixS || p.six) : (rtype === 'avg' ? (p.sixA || p.six) : p.six);
-        return (sv ? (sv[dim] || 0) : 0) * ratio;
-      }
       const sc = P.util.scoreOf(p, rtype);
       const career = sc.career * ratio;
       const ratio2 = Math.max(0.05, Math.min(3, sc.peak / Math.max(sc.career, 0.01)));
@@ -1793,7 +1947,13 @@
      字体等属性直接从真实元素（dv）的计算样式取，避免与实际渲染的字体族/字重不一致。
      结果按文本缓存，避免逐帧重复测量。 */
   const _crownMeasCache = {};
-  const CROWN_VAL_TPL = function () { return t.isEn() ? '88y 88mo 88d' : '88 年 88 个月 88 天'; };
+  /* 两种格式各有一条上界模板：按「当前格式」锁宽即可，不必永远按最长的年月日锁 ——
+     锁成最宽值时数值区白占四五十像素，姓名就只剩几个字可显示（用户反馈的名字被截断）。
+     天数用 5 位（WCA 至今最长在位约 6000 天）作上界，年月日用两位数字占位。 */
+  const CROWN_VAL_TPL = function (fmt) {
+    if (fmt === 'ymd') return t.isEn() ? '88y 88mo 88d' : '88 年 88 个月 88 天';
+    return t.isEn() ? '99999 d' : '99999 天';
+  };
   function measureVal(txt, ref) {
     if (_crownMeasCache[txt] != null) return _crownMeasCache[txt];
     let w = 0;
@@ -1862,21 +2022,24 @@
     const nm = el.querySelector('.tl-crown-name');
     const dv = el.querySelector('.tl-crown-val');
     const flag = el.querySelector('.tl-crown-flag');
-    if (nm) nm.textContent = showName ? (lead.name || '') : '';
+    if (nm) {
+      nm.textContent = showName ? (lead.name || '') : '';
+      /* 姓名会按徽标宽度出省略号，用 title 补上全名（鼠标悬停可读全） */
+      if (showName && lead.name) nm.setAttribute('title', lead.name); else nm.removeAttribute('title');
+    }
     if (flag) {
       const uri = showName ? window.Charts.flagUri(lead.iso) : '';
       if (uri) { flag.src = uri; flag.hidden = false; } else { flag.removeAttribute('src'); flag.hidden = true; }
     }
     if (!dv) return;
+    /* 先按当前格式锁宽度：pending（时长还是「—」）时也锁，否则徽标会先窄后宽跳一下 */
+    try { dv.style.minWidth = measureVal(CROWN_VAL_TPL(fmt), dv) + 'px'; } catch (e) { }
     if (since == null) { dv.textContent = '—'; return; }
     const ymd = daysToYmd(days, Math.round(fyToDays(since)));
     const ymdTxt = t.isEn()
       ? ((ymd.y ? ymd.y + 'y ' : '') + (ymd.m ? ymd.m + 'mo ' : '') + ymd.d + 'd')
       : ((ymd.y ? ymd.y + ' 年 ' : '') + (ymd.m ? ymd.m + ' 个月 ' : '') + ymd.d + ' 天');
-    /* 锁死徽标数值宽度 = 「xx 年 xx 个月 xx 天」的最大显示宽度（两位数字上界模板）：
-       无论当前显示「xx 天」还是「xx 年 xx 个月 xx 天」，无论时长怎么增长，
-       徽标整体宽度都恒定，切换格式 / 播放推进 / 换筛选范围时都不再伸缩。 */
-    try { dv.style.minWidth = measureVal(CROWN_VAL_TPL(), dv) + 'px'; } catch (e) { }
+    /* 数值区宽度已在上面按格式锁定，这里不再重复设置 */
     if (fmt === 'd') dv.textContent = (U.num ? U.num(days) : String(days)) + (t.isEn() ? ' d' : ' 天');
     else dv.textContent = ymdTxt;
   };

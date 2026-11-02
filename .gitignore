@@ -13,6 +13,9 @@ WCA_export*
 !etl/score/sixdim_site.tsv
 !etl/score/sixdim_site_single.tsv
 !etl/score/sixdim_site_avg.tsv
+# 六维年度曲线（sixyear.js 产出，build.js 直接依赖）：不入库时单维竞速图会退回
+# 旧的通用年度曲线 —— 「统治力在首次参赛前就出现 / 当前排名 2003 年坐满当代选手」
+!etl/score/sixyear.tsv
 
 # 例外：全量总分轻表（pid + 总分，约 6.5MB）。主表只有前 62,000 名，
 # build.js 靠这张表给长尾名册的 23 万人补真实总分，否则搜索到的人一律显示 0 分。
@@ -69,6 +72,10 @@ Thumbs.db
 tmp/
 temp/
 *.log
+# 无头 Chrome 的临时 profile / 截图目录（用完即弃，常被 lockfile 占住删不掉）
+_cdpchk/
+_cprof*/
+_shot/
 
 # WorkBuddy 项目数据（内存 / 缓存，不入库）
 .workbuddy/

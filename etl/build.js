@@ -43,6 +43,27 @@ const SIX = new Map();
   console.log('六维分数载入:', SIX.size, '人');
 })();
 
+/* ---------- 六维「年度曲线」（sixyear.tsv，etl/score/sixyear.js 产出）----------
+   每个维度各自的年度演进（占本人该维最终分的千分比），供图表可视化页的「维度」
+   筛选使用 —— 旧实现拿 p.yearly（领奖台 + 纪录次数）当所有维度的进度曲线，
+   于是「统治力」在首次参赛前就冒出来、「当前排名」2003 年就有一整屏当代选手。
+   缺表时前端退回旧曲线（p.yearly），不会报错。 */
+const SIXY = new Map();      // pid → { m1:'2009:0,2010:82', ... }
+(function loadSixYear() {
+  const f = path.join(__dirname, 'score', 'sixyear.tsv');
+  if (!fs.existsSync(f)) { console.warn('⚠ 未找到 ' + f + ' —— 单维竞速图将退回通用年度曲线；请先跑 etl/score/sixyear.js'); return; }
+  const lines = fs.readFileSync(f, 'utf8').trim().split('\n');
+  for (let i = 1; i < lines.length; i++) {
+    const c = lines[i].split('\t');
+    if (!c[0]) continue;
+    const o = {};
+    let any = false;
+    for (let k = 1; k <= 6; k++) { if (c[k]) { o[SIXK[k - 1]] = c[k]; any = true; } }
+    if (any) SIXY.set(c[0], o);
+  }
+  console.log('六维年度曲线载入:', SIXY.size, '人');
+})();
+
 /* ---------- 全量总分轻表（sixdim_tail.tsv）----------
    站点主表 sixdim_site.tsv 为控制仓库体积只保留前 62,000 名，剩下 23 万人在
    主表里查不到分，overall 会被记成 0 —— 搜索结果看起来像「根本没被统计」。
@@ -833,6 +854,7 @@ function recordLevel(v) {
   return '';
 }
 const eventLastYear = {};   // event -> 有成绩的最近年份（停办项目泳道截止用）
+const eventLastDn = {};     // event -> 有成绩的最近一天（YYYYMMDD，停办项目的时间轴终点）
 
 /* ★ 2026-11-02 修：纪录必须按「发生当时所代表的国家」归属。
    WCA 导出 results.tsv 第 13 列 person_country_id 就是那场比赛登记的代表国；
@@ -906,6 +928,10 @@ async function processResults() {
     const comp = comps.get(compId);
     const year = comp ? comp.year : 2003;
     if (year > (eventLastYear[eid] || 0)) eventLastYear[eid] = year;
+    /* 同一项目的「最后一天」：竞速图选到停办项目时，时间轴要停在它停办的那一刻
+       （例如八板停在 2012、脚拧停在 2019），而不是一路延续到今天。 */
+    const dn = dateNum(comp ? comp.date : '') || (year * 10000 + 101);
+    if (dn > (eventLastDn[eid] || 0)) eventLastDn[eid] = dn;
     const p = getPlayer(pid);
     /* ★ 该场成绩登记的代表国（results.person_country_id）。换籍选手的每条成绩
        都带自己当时的国家，不能拿 persons.tsv 的当前国籍一刀切。 */
@@ -1572,6 +1598,9 @@ function buildEventMilestones() {
     sixNames: { m1: '纪录持有', m2: '领奖台', m3: '大赛表现', m4: '统治力', m5: '当前排名', m6: '突破幅度' },
     sixCovered: SIX.size,
     evGamma: EV_GAMMA,
+    /* 项目 → 该项目最后一天（YYYYMMDD）。前端竞速图选到停办项目时把时间轴截到这一天；
+       值等于「该项目最后一次有人比赛的日子」，比按年份写死更准。 */
+    evLast: eventLastDn,
     emitted: emit.length, detailMax: DETAIL_MAX, slimMax: SLIM_MAX,
     continentTotals: continentTotals, nationTotals: nationTotals
   };
@@ -1581,6 +1610,8 @@ function buildEventMilestones() {
     start: p.start, end: p.end, comps: p.comps, mainEvent: p.mainEvent, events: p.events, hue: p.hue,
     m: p.m, pk: p.pk, career: p.career, peak: p.peak, overall: p.overall, esum: p.esum, evRk: p.evRk,
     six: p.six || null, sixEv: p.sixEv || null, sixS: p.sixS || null, sixA: p.sixA || null,
+    /* 六维各自的年度曲线（占本人该维最终分的千分比）。没有就不下发，前端退回旧曲线。 */
+    sy: SIXY.get(p.id) || null,
     balance: Math.round(Math.log(Math.max(p.career, 0.01) / Math.max(p.peak, 0.01)) * 1000) / 1000,
     wr: p.wr, cr: p.cr, nr: p.nr, nrW: Math.round((p.nrW || 0) * 100) / 100,
     recTotal: p.recTotal || 0, podTotal: p.podTotal || 0,
@@ -1599,7 +1630,7 @@ function buildEventMilestones() {
      不再冗余存储；约 150 字节/人，可把全部约 30 万 WCA 选手随包下发、可搜索。 */
   const SLIM_KEYS = ['id', 'name', 'country', 'gender', 'start', 'end', 'comps', 'mainEvent', 'events',
     'm', 'pk', 'esum', 'evRk', 'wr', 'cr', 'nr', 'resultRows', 'attempts', 'solves', 'dnf', 'cities',
-    'maxEventsPerComp', 'multiEventComp', 'six', 'sixEv', 'sixS', 'sixA'];
+    'maxEventsPerComp', 'multiEventComp', 'six', 'sixEv', 'sixS', 'sixA', 'sy'];
   const MODK = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm1s', 'm1a'];
   /* 按项目六维分紧凑编码：'333:1.2,3.4,0,0,0,0.5,1.9;222:…'
      3 位小数足够（排序与 1 位小数展示都不受影响），比对象数组省约一半字节。 */
@@ -1620,6 +1651,9 @@ function buildEventMilestones() {
       if (k === 'sixS') return p.sixS ? SIXK.map((mk) => round2(p.sixS[mk])).concat([round2(p.sixS.t)]) : null;
       if (k === 'sixA') return p.sixA ? SIXK.map((mk) => round2(p.sixA[mk])).concat([round2(p.sixA.t)]) : null;
       if (k === 'sixEv') return encSixEv(p.sixEv);
+      /* 六维年度曲线：精简档也带上（明细层很多人不到 2500，全靠精简档承载，
+         少了它单维竞速图对这些人是「没有历史」，只能按生涯进度线性长出来）。 */
+      if (k === 'sy') return SIXY.get(p.id) || null;
       return p[k];
     });
     /* 精简档案不带 evS / 纪录明细，写完即释放，控制堆峰值 */
