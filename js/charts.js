@@ -513,7 +513,14 @@
              一格名次 = 绘图高 /(n+1)，当前 520px 高、top30+bottom34 时约 28.5px/格，
              取 0.88 落到 ≈25px（留 12% 间隙，名字与条不糊在一起）。
              上限一并从 24 提到 30，这样更高的视口 / 更少的入选人数也能同步变粗。 */
-          const h = Math.max(10, Math.min(30, api.size([0, 1])[1] * 0.88));
+          /* 条高与条间距（2026-11-03 用户要求）：
+             条高固定 25px、两条之间留 10px。一格名次 = 绘图高 /(n+1)，
+             由调用方把画幅定成 35px/格（见 pages-extra 的 RACE_PITCH），
+             因此这里直接取「格高 − 10」当条高，间隙就恒为 10px；
+             换窗口 / 换入选人数让格高变化时，先保间隙、再把条高夹在 10~34px。 */
+          const pitch = api.size([0, 1])[1];
+          const h = Math.max(10, Math.min(34, pitch - 10));
+
           const w = Math.max(2, x1 - x0);
           const kids = [{
             type: 'rect', transition: ['shape'],

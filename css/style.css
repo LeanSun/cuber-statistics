@@ -1513,9 +1513,32 @@ button.exp-v3-wca.pid-copy:hover{color:var(--accent)}
    徽标整体宽度现在随内容走，所以给姓名一个上限：极端长名只截姓名，不把整行撑爆。 */
 .tl-crown-tx{display:flex;flex-direction:row;align-items:baseline;gap:7px;
   flex:0 1 auto;min-width:0;overflow:hidden}
-.tl-crown-name{font-size:12px;letter-spacing:-.1px;font-weight:700;color:var(--text);white-space:nowrap;
-  flex:0 1 auto;min-width:0;max-width:16em;overflow:hidden;text-overflow:ellipsis}
+/* 姓名：装得下就正常显示，装不下才滚动（2026-11-03 用户要求，替掉原来的省略号）。
+   外层定宽裁剪，内层放两份同样的文字平移 -50%，接缝处正好接上；
+   .cn-a/.cn-b 各自带同样的 padding-right，作为两份文字之间的间隔。
+   短名时 .cn-b 不显示、内层不动画，与普通文本无异。 */
+.tl-crown-name{display:block;font-size:12px;letter-spacing:-.1px;font-weight:700;color:var(--text);
+  white-space:nowrap;flex:0 1 auto;min-width:0;max-width:16em;overflow:hidden;text-overflow:ellipsis}
+/* 内层用 inline-block 而不是 inline-flex：两份文字等宽、不能被 flex 压缩，
+   平移 -50% 才刚好等于「一份文字 + 一个间隔」，接缝处不会露出空白或叠字。 */
+.tl-crown-name-in{display:inline-block;white-space:nowrap;will-change:transform}
+.tl-crown-name-in > span{display:inline-block;padding-right:1.6em}
+.tl-crown-name .cn-b{display:none}
+/* 滚动态：取消省略号（裁剪即可），显示第二份文字，开始循环。
+   平移量用 JS 量出来的像素（--run-x）而不是 -50%：内层布局宽带不带尾部 padding
+   在浏览器间有差异，按百分比算会每次循环差几个像素、看着像卡一下；
+   直接量「第二份相对第一份的偏移」，接缝就对得死准。 */
+.tl-crown-name.run{text-overflow:clip}
+.tl-crown-name.run .cn-b{display:inline-block}
+.tl-crown-name.run .tl-crown-name-in{animation:tlCrownRun var(--run-dur,7s) linear infinite}
+@keyframes tlCrownRun{from{transform:translateX(0)}to{transform:translateX(var(--run-x,-100%))}}
+@media (prefers-reduced-motion:reduce){
+  .tl-crown-name.run .tl-crown-name-in{animation:none}
+  .tl-crown-name.run{text-overflow:ellipsis}
+}
 .tl-crown-name:empty{display:none}
+/* 名字结构里常驻一个空的内层元素，:empty 不再成立，改用 JS 打的 isempty */
+.tl-crown-name.isempty{display:none}
 .tl-crown-lab{font-size:10.5px;opacity:.62;white-space:nowrap;flex:0 0 auto}
 .tl-crown-val{display:inline-block;min-width:5em;text-align:left;font-size:14px;font-weight:800;color:var(--accent);
   font-variant-numeric:tabular-nums;letter-spacing:-.2px;white-space:nowrap;flex:0 0 auto}

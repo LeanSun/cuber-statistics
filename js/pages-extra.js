@@ -304,7 +304,14 @@
         '<span class="tl-crown-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3.2 8.4l4.6 3.4L12 4.2l4.2 7.6 4.6-3.4-1.7 9.9H4.9L3.2 8.4z"/></svg></span>' +
         '<img class="tl-crown-flag" alt="" hidden>' +
         '<span class="tl-crown-tx">' +
-        '<b class="tl-crown-name"></b>' +
+        /* 姓名两层结构：外层定宽 + 裁剪，内层放两份同样的文字并做循环平移（跑马灯）。
+           短名只有第一份显示（.cn-b 默认 display:none），行为与普通文本完全一致；
+           名字长到装不下时，tlCrownPaint 给外层加 .run，第二份显示、内层开始滚动。
+           两份之间靠 .cn-a/.cn-b 各自相同的 padding-right 制造间隔，平移 -50%
+           正好越过「一份文字 + 一个间隔」，接缝处不会闪。 */
+        '<b class="tl-crown-name">' +
+        '<span class="tl-crown-name-in"><span class="cn-a"></span><span class="cn-b" aria-hidden="true"></span></span>' +
+        '</b>' +
         '<span class="tl-crown-lab">' + esc(crownLabel(geoRegion, geoCountry, state.gender)) + '</span>' +
         '</span>' +
         '<b class="tl-crown-val">—</b>' +
@@ -355,7 +362,13 @@
       h += '</div>';
     }
 
-    const chH = view === 'race' ? 520 : Math.max(560, (M.events.length * 46 + 90));
+    /* 竞速图画幅：条高 25px + 条间 10px（用户 2026-11-03 要求，条间距恢复成以前的 10px）。
+       Y 轴范围 0..n+1（n = 15 个可见名次，上下各留一格缓冲）共 16 格 →
+       画幅 = 16 × 35 + 网格上下留白 64 = 624px。以前 520px 时一格只有 28.5px，
+       条子加高到 25px 后间隙被挤成 3px，所以这里把画幅一并加高。 */
+    const RACE_PITCH = 35;
+    const chH = view === 'race' ? (RACE_PITCH * 16 + 64) : Math.max(560, (M.events.length * 46 + 90));
+
     /* 生效的项目集合（显式多选 / 预设分组 / 单个项目）已在函数开头算出（evsBox / evSel0）——
        时间轴终点要用它，不能等到这里才算。 */
     const singleEv = evSel0.length === 1 ? evSel0[0] : (state.group && M.EV[state.group] ? state.group : '');;
@@ -1935,8 +1948,59 @@
     return t(fem ? 'tl.crown.labelF' : 'tl.crown.labelIn', { scope: crownScopeName(region, country) });
   }
   P.crownLabel = crownLabel;
-
   function crownEl() { try { return document.getElementById('tlCrown'); } catch (e) { return null; } }
+
+  /* 姓名是否要滚动（2026-11-03 用户要求）：
+     名字长到徽标装不下时，过去是打省略号，读不到全名。现在改成「跑马灯」——
+     外层 .tl-crown-name 定宽裁剪、内层 .tl-crown-name-in 放两份同样的文字，
+     平移 -50%（= 一份文字 + 一个间隔）后从头再来，循环无缝。
+     判定方式：先摘掉 .run（回到「只显示一份」的状态）量 scrollWidth 与 clientWidth，
+     有溢出才加回去。多留 8px 容差：差距只有一两像素时滚动反而像抖动，不如老实省略。
+     时长按「一份文字的宽度 ÷ 34px/s」算，长名滚得慢、短一点的名滚得快，
+     但视觉速度恒定 —— 用固定时长会让长名飞快掠过。 */
+  function crownNameFit(nm) {
+    if (!nm) return;
+    nm.classList.remove('run');
+    let over = false, oneW = 0;
+    try {
+      /* 摘掉 .run 后只剩一份文字，此时 scrollWidth 就是「一份文字 + 一个间隔」的宽度，
+         正好是滚动一周期要平移的距离（内层是两份，所以是 -50%）。 */
+      oneW = nm.scrollWidth || 0;
+      over = oneW > nm.clientWidth + 8;
+    } catch (e) { over = false; }
+    if (!over) { nm.style.removeProperty('--run-dur'); nm.style.removeProperty('--run-x'); return; }
+    nm.classList.add('run');
+    try {
+      /* 一段文字的步进量：优先直接量「第二份相对第一份的偏移」（最准，含两份之间的间隔），
+         量不到才退回上面那份 scrollWidth 估值。 */
+      let step = oneW;
+      const ca = nm.querySelector('.cn-a');
+      const cb = nm.querySelector('.cn-b');
+      if (ca && cb) { const dd = cb.offsetLeft - ca.offsetLeft; if (dd > 20) step = dd; }
+      const dur = Math.max(3.5, Math.min(40, step / 34));
+      nm.style.setProperty('--run-x', (-Math.round(step)) + 'px');
+      nm.style.setProperty('--run-dur', dur.toFixed(2) + 's');
+    } catch (e) { }
+  }
+  P.crownNameFit = crownNameFit;
+  /* 窗口尺寸变了 → 姓名可用宽度也变了，重新判断该省略还是该滚动。
+     监听挂在 window 上、只挂一次：徽标节点每次 render() 都会重建，
+     若按节点挂监听，来回切筛选会不断累积（旧节点已是幽灵，闭包却还活着）。 */
+  let _crownRzT = 0;
+  let _crownRzBound = false;
+  P.crownBindResize = function () {
+    if (_crownRzBound || !window.addEventListener) return;
+    _crownRzBound = true;
+    window.addEventListener('resize', function () {
+      if (_crownRzT) clearTimeout(_crownRzT);
+      _crownRzT = setTimeout(function () {
+        _crownRzT = 0;
+        const cur = crownEl();
+        if (cur) crownNameFit(cur.querySelector('.tl-crown-name'));
+      }, 180);
+    });
+  };
+
   /* 量出一段文字在徽标数值样式下的像素宽，用于把徽标数值区锁定为固定宽度。
      ★ 量的是「上界模板」而不是当前文本：时长会随时间推进、筛选范围变化而增长
      （「96 天」→「1 年 2 个月 20 天」），若按当前文本锁宽，数值位数一变宽度就跟着抖。
@@ -2021,9 +2085,21 @@
     const dv = el.querySelector('.tl-crown-val');
     const flag = el.querySelector('.tl-crown-flag');
     if (nm) {
-      nm.textContent = showName ? (lead.name || '') : '';
+      const nmTxt = showName ? (lead.name || '') : '';
+      /* 两份文字都要写（滚动时第二份是接缝后的下一段）；内容没变就不动，
+         否则每帧写 textContent 会让 CSS 动画不断从头开始，看着像在抽搐。 */
+      const a = nm.querySelector('.cn-a');
+      const b2 = nm.querySelector('.cn-b');
+      if (a) { if (a.textContent !== nmTxt) a.textContent = nmTxt; }
+      if (b2) { if (b2.textContent !== nmTxt) b2.textContent = nmTxt; }
+      if (!a && nm.textContent !== nmTxt) nm.textContent = nmTxt;   /* 兜底：老结构 */
+      /* 没有榜首时把姓名整块收掉（内层元素常驻，:empty 判不出来），
+         否则会留下一个「国旗 + 7px 间隙 + 空姓名」的豁口贴着「登顶 xx 第一」 */
+      if (nmTxt) nm.classList.remove('isempty'); else nm.classList.add('isempty');
       /* 姓名会按徽标宽度出省略号，用 title 补上全名（鼠标悬停可读全） */
       if (showName && lead.name) nm.setAttribute('title', lead.name); else nm.removeAttribute('title');
+      /* 宽度判定放在写入之后：这一帧名字变了才需要重新判断能不能放下 */
+      crownNameFit(nm);
     }
     if (flag) {
       const uri = showName ? window.Charts.flagUri(lead.iso) : '';
@@ -2053,6 +2129,7 @@
     const el = crownEl();
     if (!el || el.__bound) return;
     el.__bound = true;
+    if (P.crownBindResize) P.crownBindResize();
     try { box.__crownFmt = localStorage.getItem('goat-crown-fmt') === 'ymd' ? 'ymd' : 'd'; } catch (e) { box.__crownFmt = 'd'; }
     const btn = el.querySelector('.tl-crown-btn');
     if (!btn) return;

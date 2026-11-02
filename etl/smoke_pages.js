@@ -1167,9 +1167,19 @@ console.log('== 默认值：停办项目计入 / 竞速图速率 ==');
     /* 地区下拉：打开时回到顶部，不再滚到选中项 */
     ok(/menu\.scrollTop = 0/.test(appSrc2) && !/scrollIntoView\(\{ block: 'nearest' \}\)/.test(appSrc2),
       '地区下拉打开时列表回到置顶（不记住上次翻到的位置）');
-    /* 竞速图条高 20 → 25px：0.88 × 28.5px/格 ≈ 25px */
-    ok(/Math\.min\(30, api\.size\(\[0, 1\]\)\[1\] \* 0\.88\)/.test(chSrc),
-      '竞速图条高按名次格高的 0.88 取（约 25px，上限 30px）');
+    /* 竞速图：条高 25 + 条间 10（2026-11-03 用户要求间隙回到 10px） */
+    ok(/Math\.min\(34, pitch - 10\)/.test(chSrc),
+      '竞速图条高取「格高 − 10px」，条间距恒为 10px');
+    const peSrc = fs.readFileSync(path.join(ROOT, 'js/pages-extra.js'), 'utf8');
+    ok(/RACE_PITCH = 35/.test(peSrc) && /RACE_PITCH \* 16 \+ 64/.test(peSrc),
+      '竞速图按 35px/格 撑开画幅（画幅加高，条高 25 + 间隙 10）');
+    /* 超长姓名改为跑马灯滚动（不再是省略号）：两份文字 + 按实测像素平移 */
+    ok(/@keyframes tlCrownRun\{from\{transform:translateX\(0\)\}to\{transform:translateX\(var\(--run-x/.test(cs) &&
+      /\.tl-crown-name\.run \.cn-b\{display:inline-block\}/.test(cs) &&
+      /--run-x'/.test(peSrc),
+      '超长姓名走无缝跑马灯（第二份文字 + 按实测像素平移）');
+    ok(/function crownNameFit\(nm\)/.test(peSrc) && /oneW > nm\.clientWidth \+ 8/.test(peSrc),
+      '只有装不下时才滚动（带 8px 容差，短名保持静止）');
   }
   {
     /* ---- 按项目筛选：早年不该出现「后来者」 ----
