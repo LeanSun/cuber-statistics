@@ -570,10 +570,14 @@ console.log('== 评分真实性：六维总分（当前模型唯一口径） =='
       if (d > 0.05) badT++;
     });
     ok(badT === 0, '六维总分 t = Σ w_d·s_d 自洽（' + sixP.length + ' 人，最大偏差 ' + maxDiff.toFixed(4) + '）');
-    ok(M.ranked.filter(function (p) { return !p.six && p.overall > 0; }).length === 0,
-      '总分一律取自六维（无六维分者记 0，不回退旧 esum）');
-    ok(M.ranked.filter(function (p) { return p.overall > 0; }).length <= sixP.length,
-      '有总分的选手不会多于有六维分的选手');
+    /* 2026-11-02 口径变更：主表只收前 62,000 名 + 纪录持有者，其余人的总分由
+       build 从 sixdim_tail.tsv 写进 overall（以前这里要求「无六维分者一律 0」，
+       结果纪录保持者被抹成 0 分 —— 时间轴里有他、总榜上查无此人）。
+       现在要求：没有 p.six 的人，overall 必须来自长尾表且为正（不能是旧 esum 量纲）。 */
+    const orphan = M.ranked.filter(function (p) { return !p.six && p.overall > 0; });
+    ok(orphan.length > 0, '长尾纪录持有者的总分被 sixdim_tail 补齐（' + orphan.length + ' 人无六维向量但有分）');
+    ok(M.ranked.filter(function (p) { return !p.six && p.overall > 0 && p.overall < 0.01; }).length === 0,
+      '长尾补分不是 0/占位值（最小 ' + Math.min.apply(null, orphan.map(function (p) { return p.overall; })) + '）');
   }
   /* 排序必须按六维总分单调不增 */
   let mono = true;

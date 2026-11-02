@@ -15,7 +15,8 @@
     'nav.pk': '选手 PK', 'nav.timeline': '图表可视化', 'nav.topics': '另类统计', 'nav.model': '参数设置',
     'nav.homeTip': '返回首页',
 
-    'f.events': '项目范围', 'f.all': '全部', 'f.region': '国家 / 地区', 'f.continent': '大洲 / 地区',
+    'f.events': '项目范围', 'f.all': '全部', 'f.region': '地区', 'f.continent': '大洲 / 地区',
+    'f.searchPh': '搜索地区…',
     'f.gender': '性别', 'f.gender.all': '不限', 'f.gender.m': '男', 'f.gender.f': '女',
     'f.period': '时间区间', 'f.now': '至今', 'f.retired': '停办项目', 'f.include': '计入', 'f.exclude': '不计入',
     'f.reset': '重置筛选', 'f.summary': '共 {n} 位选手符合当前条件',
@@ -363,7 +364,8 @@
     'nav.pk': 'Head to head', 'nav.timeline': 'Charts', 'nav.topics': 'Fun stats', 'nav.model': 'Parameters',
     'nav.homeTip': 'Back to home',
 
-    'f.events': 'Events', 'f.all': 'All', 'f.region': 'Country / region', 'f.continent': 'Continent / region',
+    'f.events': 'Events', 'f.all': 'All', 'f.region': 'Region', 'f.continent': 'Continent / region',
+    'f.searchPh': 'Search region…',
     'f.gender': 'Gender', 'f.gender.all': 'Any', 'f.gender.m': 'Male', 'f.gender.f': 'Female',
     'f.period': 'Period', 'f.now': 'now', 'f.retired': 'Discontinued', 'f.include': 'Include', 'f.exclude': 'Exclude',
     'f.reset': 'Reset', 'f.summary': '{n} competitors match the current filters',

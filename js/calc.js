@@ -46,7 +46,12 @@
   var MODKEYS = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'];
   var WEIGHTS = { m1: 0.45, m2: 0.15, m3: 0.20, m4: 0.15, m5: 0.01, m6: 0.04 };
   function sixOf(p) { return (p && p.six) ? p.six : null; }
-  function sixTotal(p) { var s = sixOf(p); return s && s.t != null ? s.t : 0; }
+  /* 六维总分。p.six 缺失时**不要直接归零**：
+     data.js 的 --slim-max 只打包前 6 万人，其余选手（含被「纪录持有者补入明细层」
+     拉进来的长尾纪录保持者）没有六维向量，ETL 已用 sixdim_tail.tsv 给他们写好
+     p.overall。旧实现无条件写 0，于是这些人在总榜上凭空消失 ——
+     纪录时间轴里看得到他，历史地位排名里却查无此人。 */
+  function sixTotal(p) { var s = sixOf(p); if (s && s.t != null) return s.t; return (p && p.overall) ? +p.overall : 0; }
   /* 兼容旧签名：weighted(mods) 仍按六维权重求和，供历史调用点使用 */
   function weighted(m) {
     var s = 0;

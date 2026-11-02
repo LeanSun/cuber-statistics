@@ -434,7 +434,14 @@ async function loadDimensions() {
     const id = r.wca_id; if (!id) return;
     const sub = toInt(r.sub_id);
     const cur = persons.get(id);
-    if (!cur || sub >= cur.sub_id) persons.set(id, { name: r.name, country_id: r.country_id, gender: r.gender, sub_id: sub });
+    /* ★ 2026-11-02 修：一个人可能有多行（sub_id 1/2/3）—— 换过代表国、或改过姓名的人，
+       导出会为同一 wca_id 保留多条 person 记录。旧逻辑取「sub_id 最大」的那行当现国籍，
+       于是 2012YUTA01 喻韬（sub1=Ireland, sub2=China）被当成中国、
+       2015XION03 Max Xiong（sub1=Canada, sub2=China）被当成中国 ——
+       整份档案的国旗、地区排名、国家实力榜人数全部挂错国家。
+       正确做法：**sub_id 最小的那行才是 WCA 的个人主档案**（当前国籍 / 现用姓名）。
+       历史代表国不靠这张表，逐条成绩的 results.person_country_id 才是权威（见 addRecord）。 */
+    if (!cur || sub < cur.sub_id) persons.set(id, { name: r.name, country_id: r.country_id, gender: r.gender, sub_id: sub });
   });
   log('persons:', persons.size);
 

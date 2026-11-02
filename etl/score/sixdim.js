@@ -96,6 +96,17 @@ const FULL = 1000;
    属于体积约束、不是评分口径的截断：全量 298,719 人的总分另见 sixdim_tail.tsv。
    2026-10-29 前这一步靠跑完手工截断，重建时会悄悄退回全量（19MB / 90MB），故收进代码。 */
 const SITE_MAX = 62000;
+/* ★ 2026-11-02：截断必须把**所有纪录持有者**捞回来。
+   build.js 会把「有纪录但排不进前 6 万」的选手补进 data.js 明细层（时间轴要能点开他们），
+   而六维主表若只按总分截前 62,000，这些人在站点上 p.six = null →
+   总分显示 0、雷达空白、历史地位排名里查无此人，可纪录时间轴里明明有他。
+   典型：2007YUAR01 Aron Yu（2007 年中国首个三盲 NR）、2007YUGU01 Guanyang Yu。
+   所以主表 = 总分前 SITE_MAX ∪ 所有在 M1_facts 里出现过的人（纪录持有者全集，约 4.9 千）。 */
+const REC_HOLDERS = new Set();
+for (const ln of fs.readFileSync(path.join(__dirname, 'M1_facts.tsv'), 'utf8').split('\n').slice(1)) {
+  const pid = ln.slice(0, ln.indexOf('\t'));
+  if (pid) REC_HOLDERS.add(pid);
+}
 const TRACK_OF = { single: 'single', avg: 'avg' };
 
 /* ── 姓名 + 性别：data.js 全量玩家为主源，roster 长尾名册兜底 ── */
@@ -367,7 +378,11 @@ const trk = (OPT.track === 'both' || !OPT.track) ? '' : '_' + OPT.track;   // ''
 if (OPT.csv && noFilter) {
   /* 站点接入用：s_d = Σ_ev (v/mx) × evW × FULL / wSum，满足 总分 = Σ_d w_d × s_d */
   const site = ['pid\ts1\ts2\ts3\ts4\ts5\ts6\tt'];
-  const siteRows = rowsOut.slice(0, SITE_MAX);
+  /* 前 SITE_MAX 名 ∪ 纪录持有者（见 REC_HOLDERS 注释）；rowsOut 已按总分降序，
+     filter 保序，所以并入的人依旧按总分插在原位，rank 不乱。 */
+  const siteRows = rowsOut.filter((x, i) => i < SITE_MAX || REC_HOLDERS.has(x.pid));
+  const rescued = siteRows.length - Math.min(SITE_MAX, rowsOut.length);
+  if (rescued > 0) console.log(`  纪录持有者补录 ${rescued} 人（总分在 ${SITE_MAX} 名之外，但时间轴要能点开他们）`);
   for (const x of siteRows) {
     const s = selDims.map((dim) => {
       let acc = 0;
@@ -470,10 +485,10 @@ if (OPT.csv && noFilter) {
         count: compact.length,
         weights: Object.fromEntries(DIM_KEYS.map((k) => [k, DIMS[k].w])),
         labels: Object.fromEntries(DIM_KEYS.map((k) => [k, DIMS[k].cn])),
-        /* truncated = 全量人数（本页只放前 SITE_MAX 名）。缺这两个字段时，
+        /* truncated = 全量人数（本页只放前 SITE_MAX 名 + 纪录持有者）。缺这两个字段时，
            页面看不出「62,000 是截断后的展示量，不是评分总量」。 */
         truncated: rowsOut.length,
-        note: `仅展示前 ${SITE_MAX} 人（与 js/data.js 的 --slim-max 60000 承载范围一致）；全量 ${rowsOut.length} 人的总分见 sixdim_tail.tsv`,
+        note: `仅展示前 ${SITE_MAX} 人 + 全部纪录持有者（与 js/data.js 的承载范围一致）；全量 ${rowsOut.length} 人的总分见 sixdim_tail.tsv`,
       },
       rows: compact,
     };

@@ -167,7 +167,31 @@ code,kbd{font-family:var(--mono);font-size:.92em;background:var(--bg-soft);paddi
 .flabel{font-size:11.5px;color:var(--text-3);letter-spacing:.02em;line-height:1.35}
 .fctl{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-height:30px}
 /* 国家/地区下拉限宽：198 个国家里最长的英文名会把整行顶开，导致第二行提前换行 */
+/* 地区选择器（2026-11-02：由原生 select 改为可输入的 combobox）
+   198 个国家里最长的英文名会把整行顶开，所以输入框限宽；下拉面板可超出该宽度。 */
 #fgGeo{max-width:190px}
+.geo-combo{position:relative;max-width:190px;min-width:132px}
+.geo-input{width:100%;padding-right:26px;cursor:text}
+.geo-combo[data-empty="1"] .geo-input{border-color:var(--warn)}
+.geo-caret{position:absolute;right:9px;top:50%;width:0;height:0;margin-top:-2px;
+  border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid var(--text-3);
+  pointer-events:none;transition:transform .16s ease}
+.geo-combo[data-open="1"] .geo-caret{transform:rotate(180deg);margin-top:-3px}
+.geo-menu{display:none;position:absolute;z-index:70;top:calc(100% + 4px);left:0;
+  min-width:100%;width:max-content;max-width:340px;max-height:min(52vh,340px);overflow:auto;
+  background:var(--bg-elev);border:1px solid var(--border-2);border-radius:var(--r-md);
+  box-shadow:var(--shadow-lg);padding:4px;-webkit-overflow-scrolling:touch}
+.geo-combo[data-open="1"] .geo-menu{display:block}
+.geo-grp{padding:6px 8px 2px;font-size:11px;color:var(--text-3);letter-spacing:.04em;white-space:nowrap}
+.geo-grp[hidden]{display:none}
+.geo-opt{display:block;width:100%;text-align:left;padding:5px 9px;border:0;background:none;
+  color:var(--text);font:inherit;font-size:13px;line-height:1.5;border-radius:var(--r-sm);
+  cursor:pointer;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.geo-opt:hover,.geo-opt:focus{background:var(--bg-soft);outline:none}
+.geo-opt.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.geo-opt[hidden]{display:none}
+.geo-none{display:none;padding:8px 10px;font-size:12.5px;color:var(--text-3);white-space:nowrap}
+.geo-combo[data-empty="1"] .geo-none{display:block}
 .chip{
   border:1px solid var(--border-2);background:transparent;color:var(--text-2);
   border-radius:999px;padding:4px 12px;font-size:12.5px;cursor:pointer;white-space:nowrap;

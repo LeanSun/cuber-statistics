@@ -328,6 +328,84 @@
     return preset.concat(window.EvGroups.all());
   }
 
+  /* 地区筛选的显示名（state.geo = '' | ISO2 | 'cont:XX' | 'reg:xx'） */
+  function geoLabel(v) {
+    if (!v) return t('f.all');
+    if (v.indexOf('cont:') === 0) {
+      const o = M.continents[v.slice(5)];
+      return o ? (t.isEn() ? o.en : o.zh) : v;
+    }
+    if (v.indexOf('reg:') === 0) {
+      const k = v.slice(4);
+      const r = (M.regions || {})[k];
+      if (r) return t.isEn() ? (r.en || r.zh) : (r.zh || r.en);
+      return k.toUpperCase();
+    }
+    const iso = (window.Calc && window.Calc.isoNorm) ? window.Calc.isoNorm(v) : v;
+    if (t.isEn()) return (M.countries && M.countries[iso]) || iso;
+    return (M.countriesZh && M.countriesZh[iso]) || P.util.countryName(iso) || iso;
+  }
+
+  /* 地区 combobox：打开 / 过滤 / 选中 / 关闭。全部走 body 级委托，
+     render() 换掉整条筛选栏后不需要重新绑定。 */
+  function openGeo(inp) {
+    const box = inp && inp.closest ? inp.closest('.geo-combo') : null;
+    if (!box) return;
+    document.querySelectorAll('.geo-combo[data-open="1"]').forEach(function (b) { if (b !== box) closeGeo(b); });
+    box.setAttribute('data-open', '1');
+    inp.setAttribute('aria-expanded', 'true');
+    geoFilter(inp);
+    /* 让当前选中项滚动到可见位置 */
+    const on = box.querySelector('.geo-opt.on');
+    if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest' });
+  }
+  function closeGeo(box) {
+    if (!box || !box.getAttribute) return;
+    box.setAttribute('data-open', '0');
+    const inp = box.querySelector('.geo-input');
+    if (inp) {
+      inp.setAttribute('aria-expanded', 'false');
+      inp.value = inp.getAttribute('data-label') || '';
+    }
+  }
+  function closeGeoAll() {
+    document.querySelectorAll('.geo-combo[data-open="1"]').forEach(closeGeo);
+  }
+  function geoFilter(inp) {
+    const box = inp.closest('.geo-combo');
+    if (!box) return;
+    const q = (inp.value || '').trim().toLowerCase();
+    const label = inp.getAttribute('data-label') || '';
+    /* 输入框里显示的就是当前选中项的名字时视为「未输入」，列出全部 */
+    const on = q && q !== label.toLowerCase() ? q : '';
+    let shown = 0;
+    const grpSeen = {};
+    box.querySelectorAll('.geo-opt').forEach(function (o) {
+      const hit = !on || (o.getAttribute('data-s') || '').indexOf(on) >= 0;
+      o.hidden = !hit;
+      if (hit) {
+        shown++;
+        const prev = o.previousElementSibling;
+        if (prev && prev.classList.contains('geo-grp')) grpSeen[prev] = 1;
+      }
+    });
+    /* 分组标题：该组下面一个可见项都没有就藏起来 */
+    box.querySelectorAll('.geo-grp').forEach(function (g) {
+      let n = 0, s = g.nextElementSibling;
+      while (s && !s.classList.contains('geo-grp')) { if (!s.hidden) n++; s = s.nextElementSibling; }
+      g.hidden = !n;
+    });
+    box.setAttribute('data-empty', shown ? '0' : '1');
+  }
+  function pickGeo(btn) {
+    const v = btn.getAttribute('data-geo') || '';
+    if (v.indexOf('reg:') === 0) { state.region = v.slice(4); state.geo = ''; }
+    else { state.geo = v; state.region = ''; }
+    state.country = ''; state.continent = ''; state.page = 1;
+    closeGeoAll();
+    syncFilterUrl(true);
+  }
+
   function renderFilterBar(route) {
     if (route !== 'rank' && route !== 'timeline' && route !== 'topics') { fbEl.hidden = true; fbEl.innerHTML = ''; return; }
     fbEl.hidden = false;
@@ -393,30 +471,39 @@
     }
     h += '<div class="frow frow-meta">';
 
-    /* ---------- 国家 / 大洲 合并为单一下拉（总榜 + 图表可视化 + 另类统计；已移除 WCA 地区分组） ---------- */
+    /* ---------- 地区（大洲 / 国家合并为单一下拉；已移除 WCA 地区分组） ----------
+       ★ 2026-11-02 用户要求：名称由「国家 / 地区」改为「地区」，并支持**手动输入搜索**。
+       原生 <select> 只能按首字母跳转、且只认当前语言的显示名（中文界面下敲 "china" 找不到中国），
+       所以改成一个自绘 combobox：输入框 + 下拉列表，匹配串同时包含
+       中文名 / 英文名 / ISO2 三套写法，中英文界面下都能搜。 */
     if (route === 'rank' || route === 'timeline' || route === 'topics') {
       h += '<div class="fgroup"><span class="flabel">' + esc(t('f.region')) + '</span><div class="fctl">';
-      h += '<select id="fgGeo" class="sel">';
-      h += '<option value="">' + esc(t('f.all')) + '</option>';
+      h += '<div class="geo-combo" id="fgGeoBox" data-open="0">';
+      h += '<input id="fgGeoQ" class="geo-input" type="text" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="fgGeoMenu" placeholder="' + esc(t('f.searchPh')) + '" value="' + esc(geoLabel(state.geo)) + '" data-label="' + esc(geoLabel(state.geo)) + '" data-geo="' + esc(state.geo || '') + '">';
+      h += '<span class="geo-caret" aria-hidden="true"></span>';
+      h += '<div class="geo-menu" id="fgGeoMenu" role="listbox">';
       const contOrder = ['As', 'NAm', 'SAm', 'Eu', 'Af', 'Oc'];
-      h += '<optgroup label="' + esc(t.isEn() ? 'Continents' : '大洲') + '">';
+      const cn = P.util.countryName;
+      /* 搜索串 = 中文名 + 英文名 + ISO2（含小写），于是「中国 / China / cn」都能命中 */
+      const mt = function (zh, en, iso) {
+        return esc((zh + ' ' + en + ' ' + iso + ' ' + iso.toLowerCase()).toLowerCase());
+      };
+      h += '<button type="button" class="geo-opt' + (!state.geo ? ' on' : '') + '" data-geo="" data-s="' + mt(t('f.all'), 'all', '') + '">' + esc(t('f.all')) + '</button>';
+      h += '<div class="geo-grp">' + esc(t.isEn() ? 'Continents' : '大洲') + '</div>';
       contOrder.forEach(function (c) {
         const v = 'cont:' + c;
-        h += '<option value="' + v + '"' + (state.geo === v ? ' selected' : '') + '>' + esc(t.isEn() ? M.continents[c].en : M.continents[c].zh) + '</option>';
+        const zh = M.continents[c].zh, en = M.continents[c].en;
+        h += '<button type="button" class="geo-opt' + (state.geo === v ? ' on' : '') + '" data-geo="' + v + '" data-s="' + mt(zh, en, c) + '">' + esc(t.isEn() ? en : zh) + '</button>';
       });
-      h += '</optgroup>';
-      h += '<optgroup label="' + esc(t.isEn() ? 'Countries' : '国家 / 地区') + '">';
+      h += '<div class="geo-grp">' + esc(t.isEn() ? 'Countries / regions' : '国家 / 地区') + '</div>';
       const fixed = ['CN', 'HK', 'MO', 'TW'];
-      const cn = P.util.countryName;
-      const optLabel = function (iso) {
-        const zh = (M.countriesZh && M.countriesZh[iso]) || cn(iso) || iso;
-        return t.isEn() ? (M.countries[iso] || iso) : zh;
-      };
       fixed.concat(M.countryList.slice().sort()).filter(function (iso, i, a) { return a.indexOf(iso) === i; }).forEach(function (iso) {
-        h += '<option value="' + iso + '"' + (state.geo === iso ? ' selected' : '') + '>' + esc(optLabel(iso)) + '</option>';
+        const zh = (M.countriesZh && M.countriesZh[iso]) || cn(iso) || iso;
+        const en = M.countries[iso] || iso;
+        h += '<button type="button" class="geo-opt' + (state.geo === iso ? ' on' : '') + '" data-geo="' + iso + '" data-s="' + mt(zh, en, iso) + '">' + esc(t.isEn() ? en : zh) + '</button>';
       });
-      h += '</optgroup>';
-      h += '</select></div></div>';
+      h += '<div class="geo-none">' + esc(t.isEn() ? 'No matching region' : '没有匹配的地区') + '</div>';
+      h += '</div></div></div></div>';
     }
 
     if (route === 'rank' || route === 'timeline' || route === 'topics') {
@@ -1519,15 +1606,41 @@
     });
   }
 
+  /* ── 地区 combobox 的交互（body 级委托：render() 换掉筛选栏也不用重绑）── */
+  document.addEventListener('focusin', function (e) {
+    if (e.target && e.target.id === 'fgGeoQ') openGeo(e.target);
+  });
+  document.addEventListener('input', function (e) {
+    if (e.target && e.target.id === 'fgGeoQ') geoFilter(e.target);
+  });
+  document.addEventListener('keydown', function (e) {
+    if (!e.target || e.target.id !== 'fgGeoQ') return;
+    const box = e.target.closest('.geo-combo');
+    if (e.key === 'Escape') { closeGeo(box); e.target.blur(); return; }
+    if (e.key === 'Enter') {
+      const first = box && box.querySelector('.geo-opt:not([hidden])');
+      if (first) { e.preventDefault(); pickGeo(first); }
+      return;
+    }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      const opts = Array.prototype.slice.call(box.querySelectorAll('.geo-opt:not([hidden])'));
+      if (!opts.length) return;
+      e.preventDefault();
+      let i = opts.indexOf(document.activeElement);
+      i = e.key === 'ArrowDown' ? (i + 1) % opts.length : (i <= 0 ? opts.length - 1 : i - 1);
+      opts[i].focus();
+    }
+  });
+  document.addEventListener('click', function (e) {
+    const opt = e.target.closest ? e.target.closest('.geo-opt') : null;
+    if (opt) { e.preventDefault(); pickGeo(opt); return; }
+    const box = e.target.closest ? e.target.closest('#fgGeoBox') : null;
+    if (box) { const inp = box.querySelector('#fgGeoQ'); if (inp && document.activeElement !== inp) openGeo(inp); return; }
+    closeGeoAll();
+  });
+
   document.addEventListener('change', function (e) {
     const el = e.target;
-    if (el.id === 'fgGeo') {
-      const v = el.value || '';
-      if (v.indexOf('reg:') === 0) { state.region = v.slice(4); state.geo = ''; }
-      else { state.geo = v; state.region = ''; }
-      state.country = ''; state.continent = ''; state.page = 1;
-      syncFilterUrl(true);
-    }
     if (el.id === 'fgCountry') { state.country = el.value; state.page = 1; render(true); }
     if (el.id === 'fgRegion') { state.region = el.value; state.page = 1; render(true); }
     if (el.id === 'fgY0') { state.y0 = el.value ? +el.value : null; state.page = 1; render(true); }
