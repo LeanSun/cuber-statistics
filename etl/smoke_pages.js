@@ -1140,6 +1140,38 @@ console.log('== 默认值：停办项目计入 / 竞速图速率 ==');
   }
   ok((P.tlRate ? P.tlRate().jump : 0) === 60, '默认动画速率为 60 天/秒（实得 ' + (P.tlRate ? P.tlRate().jump : '?') + '）');
   {
+    /* ---- 2026-11-02 第二轮：图表切换标签 / 空格键播放 / 徽标自适应 / 条高 ---- */
+    const cs = fs.readFileSync(path.join(ROOT, 'css/style.css'), 'utf8');
+    const appSrc2 = fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8');
+    const chSrc = fs.readFileSync(path.join(ROOT, 'js/charts.js'), 'utf8');
+    const lbl = t('tl.viewLabel');
+    ok(hR.indexOf('>' + lbl + '</span>') >= 0, '分数演进图的视图按钮上方有「' + lbl + '」标签');
+    ok(hR.indexOf(t('tl.dimLabel')) >= 0 && hR.indexOf('>' + lbl + '</span>') < hR.indexOf(t('tl.dimLabel')),
+      '「' + lbl + '」与「' + t('tl.dimLabel') + '」同排、且在其左侧（水平对齐）');
+    {
+      const hL2 = tryRender('纪录时间轴（图表切换标签）', () => P.timeline(Object.assign({}, base, { tlView: 'lane' })));
+      ok(hL2.indexOf('>' + lbl + '</span>') >= 0, '纪录时间轴也有同一个标签（两视图等高，按钮不跳）');
+    }
+    /* 空格键：body 级委托 + 焦点在别的按钮 / 输入框时不劫持 */
+    ok(/e\.key !== ' ' && e\.code !== 'Space'/.test(appSrc2) && /getElementById\('tlPlay'\)/.test(appSrc2),
+      '空格键委托到「播放/暂停/重播」按钮');
+    ok(/String\(tg\.type \|\| 'text'\)\.toLowerCase\(\) !== 'range'\) return;/.test(appSrc2) &&
+      /tg\.tagName === 'TEXTAREA' \|\| tg\.tagName === 'SELECT'/.test(appSrc2),
+      '在输入框里打字时空格不被劫持（只有滑杆放行）');
+    ok(/tg\.tagName === 'BUTTON' \|\| tg\.tagName === 'A'\) && tg !== btn/.test(appSrc2),
+      '焦点在其它按钮 / 链接上时空格交还原生行为');
+    /* 徽标宽度自适应：不能再有 --crown-w 锁宽 */
+    ok(!/width:var\(--crown-w/.test(cs) && /\.tl-crown\{[^}]*width:auto/.test(cs),
+      '登顶徽标宽度随内容自适应（不再锁 --crown-w）');
+    ok(/\.tl-crown-name\{[^}]*max-width:16em/.test(cs), '超长姓名只截姓名（max-width 兜底）');
+    /* 地区下拉：打开时回到顶部，不再滚到选中项 */
+    ok(/menu\.scrollTop = 0/.test(appSrc2) && !/scrollIntoView\(\{ block: 'nearest' \}\)/.test(appSrc2),
+      '地区下拉打开时列表回到置顶（不记住上次翻到的位置）');
+    /* 竞速图条高 20 → 25px：0.88 × 28.5px/格 ≈ 25px */
+    ok(/Math\.min\(30, api\.size\(\[0, 1\]\)\[1\] \* 0\.88\)/.test(chSrc),
+      '竞速图条高按名次格高的 0.88 取（约 25px，上限 30px）');
+  }
+  {
     /* ---- 按项目筛选：早年不该出现「后来者」 ----
        旧口径只查 p.events（生涯玩过没）→ 2007 年才有中国盲拧成绩的人，
        2004 年的画面里就已经有一条属于他的分数条。 */

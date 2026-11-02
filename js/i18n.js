@@ -253,6 +253,7 @@
     'tl.msWhy': '重大事件仅在「分数演进图」中呈现：右下角「事件轨道」可点击跳转，播放经过时右下角会弹出提示卡（弹入/淡出动效）。纪录时间轴保持纯净，不再叠加任何标注线或清单。',
     'tl.msEdit': '自定义重大事件', 'tl.msSaveEdit': '保存', 'tl.msGuide': '填入「项目 / 时间 / 事件内容」三项后点「添加」即可。事件会出现在分数演进图右下角的事件轨道（可点击跳转）。时间填 4 位年份或 YYYY-MM-DD，可留空（默认取当年 1 月 1 日）。', 'tl.msImport': '添加', 'tl.msAdd': '添加', 'tl.msEv': '项目', 'tl.msTime': '时间', 'tl.msText': '事件内容', 'tl.msEvAll': '（全部项目）', 'tl.msDel': '删除', 'tl.msEmpty': '请填写事件内容与年份', 'tl.msReset': '恢复默认', 'tl.msSample': '填充示例', 'tl.msCustom': '自定义', 'tl.msOk': '已导入重大事件', 'tl.msHidden': '已隐藏 {n} 条内置事件', 'tl.msRestore': '恢复内置事件', 'tl.msEditing': '已进入编辑模式：修改后点「保存修改」覆盖原事件', 'tl.msRestored': '已恢复全部内置事件', 'tl.msDelOk': '已删除该事件', 'tl.msErr': '格式错误：需为 JSON 数组，每项含 year（数字）与 zh（文字）',
     'tl.viewTip': '三种图怎么看',
+    'tl.viewLabel': '图表切换',
     'tl.dimLabel': '六维筛选',
     'tl.dimTip': '分数演进图按所选维度单独比拼（总分 = 某一维）',
 
@@ -602,6 +603,7 @@
     'tl.msWhy': 'Milestones appear only in the score evolution: the rail at bottom-right is clickable to jump, and a toast card pops in/out (fade) at bottom-right as playback passes each date. The record timeline stays clean with no overlay lines or lists.',
     'tl.msEdit': 'Custom milestones', 'tl.msSaveEdit': 'Save', 'tl.msGuide': 'Fill in event / date / description and click Add. The milestone appears in the rail at bottom-right of the score evolution (click to jump). Date accepts a 4-digit year or YYYY-MM-DD; leaving it empty defaults to Jan 1 of that year.', 'tl.msImport': 'Add', 'tl.msAdd': 'Add', 'tl.msEv': 'Event', 'tl.msTime': 'Date', 'tl.msText': 'Description', 'tl.msEvAll': '(all events)', 'tl.msDel': 'Delete', 'tl.msEmpty': 'Please fill in the description and year', 'tl.msReset': 'Reset', 'tl.msSample': 'Fill sample', 'tl.msCustom': 'Custom', 'tl.msOk': 'Milestones imported', 'tl.msHidden': '{n} built-in milestone(s) hidden', 'tl.msRestore': 'Restore built-in', 'tl.msEditing': 'Editing mode: change the fields, then click Save to overwrite this milestone', 'tl.msRestored': 'All built-in milestones restored', 'tl.msDelOk': 'Milestone deleted', 'tl.msErr': 'Format error: need a JSON array; each item needs year (number) and zh (text)',
     'tl.viewTip': 'How to read the three charts',
+    'tl.viewLabel': 'Chart',
     'tl.dimLabel': 'Dimension',
     'tl.dimTip': 'Score evolution by a single dimension (score = that dimension only)',
 

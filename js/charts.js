@@ -399,7 +399,7 @@
          「姓名先跳、条形再追」的错位会重新出现。 */
       animation: false,
       /* 上下留白 30：Y 轴范围 1..n 时，第 1 名 / 第 n 名的条形中心正好贴在
-         网格上下边界，条形高约 24px，留白不够上半条 / 下半条会被切掉。
+         网格上下边界，条形高约 25px，留白不够上半条 / 下半条会被切掉。
          同时 series.clip 关掉（见下），双保险：就算有极端行高也不会被裁。 */
       /* 2026-10-27 彻底修「x 轴刻度被第 15 名遮挡」：
          之前只是把 grid.bottom 从 30 加到 46 —— 但那没用，因为末名的条形中心就画在
@@ -509,7 +509,11 @@
           const yc = api.coord([0, rank])[1];
           const x0 = api.coord([0, rank])[0];
           const x1 = api.coord([val, rank])[0];
-          const h = Math.max(10, Math.min(24, api.size([0, 1])[1] * 0.68));
+          /* 条高（2026-11-02 第二轮用户要求：从 20px 加高到 25px）：
+             一格名次 = 绘图高 /(n+1)，当前 520px 高、top30+bottom34 时约 28.5px/格，
+             取 0.88 落到 ≈25px（留 12% 间隙，名字与条不糊在一起）。
+             上限一并从 24 提到 30，这样更高的视口 / 更少的入选人数也能同步变粗。 */
+          const h = Math.max(10, Math.min(30, api.size([0, 1])[1] * 0.88));
           const w = Math.max(2, x1 - x0);
           const kids = [{
             type: 'rect', transition: ['shape'],

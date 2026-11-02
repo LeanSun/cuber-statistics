@@ -273,12 +273,10 @@
 
     h += '<div class="card reveal">';
     h += '<div class="row tl-top">';
-    /* ★ 2026-11-01 第六轮修复「切换视图后按钮位置跳动」：
-       竞速视图比纪录视图多了「维度」标签（.flabel）把整行撑高，
-       .tl-top 用 align-items:flex-end，于是视图切换按钮在竞速视图里比纪录视图低约 20px。
-       这里补一个不可见的 .flabel 占位，让视图段的高度与带标签的维度段完全一致，
-       两个视图下按钮垂直位置恒定不变。 */
-    h += '<div class="fgroup"><span class="flabel" aria-hidden="true" style="visibility:hidden">.</span><div class="seg" id="tlViewSeg">';
+    /* ★ 2026-11-02 第二轮（用户要求）：视图切换按钮上方补一个可见标签「图表切换」，
+       与右侧「六维筛选」那张 .flabel 水平对齐。以前这里是个 visibility:hidden 的占位符
+       （只为把两种视图的行高撑成一样），现在它有真名字了，对齐与等高两件事一起解决。 */
+    h += '<div class="fgroup"><span class="flabel">' + esc(t('tl.viewLabel')) + '</span><div class="seg" id="tlViewSeg">';
     VIEWS.forEach(function (v) {
       h += '<button data-tlview="' + v[0] + '" class="' + (view === v[0] ? 'on' : '') + '">' + Ic.glyph(v[2]) + ' ' + esc(t(v[1])) + '</button>';
     });

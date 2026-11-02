@@ -360,9 +360,11 @@
     box.setAttribute('data-open', '1');
     inp.setAttribute('aria-expanded', 'true');
     geoFilter(inp);
-    /* 让当前选中项滚动到可见位置 */
-    const on = box.querySelector('.geo-opt.on');
-    if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest' });
+    /* ★ 2026-11-02（第二轮用户要求）：点开后列表一律回到顶部，
+       不再把当前选中项滚到可见位置 —— 记住上次翻到的位置，下次打开会「接着往下看」，
+       用户找「中国」却停在大洋洲，反而更难用。 */
+    const menu = box.querySelector('.geo-menu');
+    if (menu) menu.scrollTop = 0;
   }
   function closeGeo(box) {
     if (!box || !box.getAttribute) return;
@@ -1610,6 +1612,31 @@
       it.style.display = ok ? '' : 'none';
     });
   }
+
+  /* ── 空格键播放 / 暂停 / 重播（2026-11-02 第二轮用户要求）──
+     只在「分数演进图」页（#tlPlay 存在）生效，等价于点一下播放按钮。
+     以下情况不劫持，交还给浏览器 / 原生控件：
+       ① 正在文本框里打字（空格是字符）；② 焦点在别的按钮 / 链接上（空格本该激活它）；
+       ③ 带修饰键（Ctrl/⌘/Alt）。滑杆（range）例外放行 —— 空格对 range 无原生行为。
+     焦点在播放按钮上时**必须 preventDefault**：否则原生会在 keyup 再触发一次 click，
+     加上我们自己这一次 = 播放/暂停连打两下，等于没反应。 */
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== ' ' && e.code !== 'Space' && e.keyCode !== 32) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const tg = e.target;
+    if (tg && tg.tagName === 'INPUT') {
+      /* 只有滑杆（range）放行：空格对 range 本来就没有原生行为，而「拖完时间轴
+         焦点停在滑杆上」是最常见的状态，这时用户按空格就是想播/停。
+         其它 input（文本框 / 数字框 / 复选 / 单选）里空格要么是字符、要么是原生激活，一律让开。 */
+      if (String(tg.type || 'text').toLowerCase() !== 'range') return;
+    }
+    if (tg && (tg.tagName === 'TEXTAREA' || tg.tagName === 'SELECT' || tg.isContentEditable)) return;
+    const btn = document.getElementById('tlPlay');
+    if (!btn) return;
+    if (tg && (tg.tagName === 'BUTTON' || tg.tagName === 'A') && tg !== btn) return;
+    e.preventDefault();
+    btn.click();
+  });
 
   /* ── 地区 combobox 的交互（body 级委托：render() 换掉筛选栏也不用重绑）── */
   document.addEventListener('focusin', function (e) {

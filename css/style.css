@@ -359,6 +359,10 @@ details.card .card-body{padding-top:12px}
    进而让整段在切换时横向抖动；位置（水平 / 垂直）在两种视图下恒定。 */
 #tlViewSeg{flex-wrap:nowrap}
 #tlViewSeg button{flex:1 1 0;min-width:104px;justify-content:center}
+/* ★ 2026-11-02 第二轮：视图段（带图标）与六维段（纯文字）整段高度实测差 1px，
+   而 .tl-top 是 align-items:flex-end —— 差 1px 就让上方两个 .flabel（「图表切换」/
+   「六维筛选」）错开 1px。这里统一最小高度，两段等高，两个标签严格同线。 */
+.tl-top .seg{min-height:36px;align-items:center}
 /* 失效态：六维筛选选中某一维时「筛选方式」不再起作用，置灰并禁用点击 */
 .seg.is-off{opacity:.45;pointer-events:none}
 .tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin-bottom:14px;overflow-x:auto;scrollbar-width:none}
@@ -1483,12 +1487,13 @@ button.exp-v3-wca.pid-copy:hover{color:var(--accent)}
      ① 姓名太长时会把整枚徽标撑宽 → 一行放不下就换行 → 「登顶xx第一」被挤掉；
      ② 旧的 `transform:translateX(calc(100px - 50%))` 让它随自身宽度左右漂移，
         宽度一变位置就变，永远对不齐前面的筛选。
-   修法：**宽度锁定**（--crown-w），姓名超长走省略号，「登顶xx第一」永不截断（flex:none），
-   去掉位移 hack，靠 margin-left:auto 贴住行尾 —— 无论谁登顶、名字多长，徽标宽度都不变。 */
+   修法：**宽度随内容自适应**（2026-11-02 第二轮用户要求「跟着名字自适应、短名更紧凑」），
+   姓名超长才走省略号（.tl-crown-name 的 max-width 兜底），「登顶xx第一」永不截断（flex:none），
+   去掉位移 hack，靠 margin-left:auto 贴住行尾 —— 右边界恒定，宽度只由内容决定。 */
 .tl-crown{display:inline-flex;align-items:center;align-self:flex-end;margin-left:auto;
-  flex:0 0 auto;max-width:100%;width:var(--crown-w,384px)}
+  flex:0 0 auto;max-width:100%;width:auto}
 .tl-crown[hidden]{display:none}
-.tl-crown-btn{display:inline-flex;align-items:center;gap:7px;padding:5px 10px 5px 7px;width:100%;min-width:0;
+.tl-crown-btn{display:inline-flex;align-items:center;gap:7px;padding:5px 10px 5px 7px;width:auto;min-width:0;
   border-radius:12px;cursor:pointer;text-align:left;overflow:hidden;
   border:1px solid color-mix(in srgb,var(--accent) 26%,var(--border-2));
   background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 12%,var(--bg-elev)),var(--bg-elev) 58%);
@@ -1504,11 +1509,12 @@ button.exp-v3-wca.pid-copy:hover{color:var(--accent)}
 .tl-crown-flag{width:16px;height:12px;border-radius:2px;flex:none;
   box-shadow:0 0 0 1px rgba(0,0,0,.12)}
 .tl-crown-flag[hidden]{display:none}
-/* 姓名可收缩（省略号），「登顶xx第一」不可收缩 —— 那是这句徽标的语义，不能没有 */
+/* 姓名可收缩（省略号），「登顶xx第一」不可收缩 —— 那是这句徽标的语义，不能没有。
+   徽标整体宽度现在随内容走，所以给姓名一个上限：极端长名只截姓名，不把整行撑爆。 */
 .tl-crown-tx{display:flex;flex-direction:row;align-items:baseline;gap:7px;
-  flex:1 1 auto;min-width:0;overflow:hidden}
+  flex:0 1 auto;min-width:0;overflow:hidden}
 .tl-crown-name{font-size:12px;letter-spacing:-.1px;font-weight:700;color:var(--text);white-space:nowrap;
-  flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+  flex:0 1 auto;min-width:0;max-width:16em;overflow:hidden;text-overflow:ellipsis}
 .tl-crown-name:empty{display:none}
 .tl-crown-lab{font-size:10.5px;opacity:.62;white-space:nowrap;flex:0 0 auto}
 .tl-crown-val{display:inline-block;min-width:5em;text-align:left;font-size:14px;font-weight:800;color:var(--accent);
@@ -1519,9 +1525,10 @@ button.exp-v3-wca.pid-copy:hover{color:var(--accent)}
 .tl-crown[data-st="none"] .tl-crown-val{color:var(--text-3);opacity:.75}
 .tl-crown[data-st="pending"] .tl-crown-ic{animation:tlCrownPulse 1.5s ease-in-out infinite}
 @keyframes tlCrownPulse{0%,100%{opacity:1}50%{opacity:.5}}
-@media (max-width:1300px){ .tl-crown{--crown-w:340px} }
-@media (max-width:980px){ .tl-crown{--crown-w:292px} }
-@media (max-width:720px){ .tl-crown{--crown-w:236px} .tl-crown-val{min-width:4.5em} }
+/* 窄屏：姓名上限收紧（宽度已自适应，不再需要锁 --crown-w） */
+@media (max-width:1300px){ .tl-crown-name{max-width:13em} }
+@media (max-width:980px){ .tl-crown-name{max-width:10em} }
+@media (max-width:720px){ .tl-crown-name{max-width:7em} .tl-crown-val{min-width:4.5em} }
 
 /* ============ 重大事件：浮在分数竞速图右下角的可折叠弹窗 ============ */
 .tl-stage{position:relative}
