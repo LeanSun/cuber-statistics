@@ -101,12 +101,9 @@ const SITE_MAX = 62000;
    而六维主表若只按总分截前 62,000，这些人在站点上 p.six = null →
    总分显示 0、雷达空白、历史地位排名里查无此人，可纪录时间轴里明明有他。
    典型：2007YUAR01 Aron Yu（2007 年中国首个三盲 NR）、2007YUGU01 Guanyang Yu。
-   所以主表 = 总分前 SITE_MAX ∪ 所有在 M1_facts 里出现过的人（纪录持有者全集，约 4.9 千）。 */
+   全集取 **data.js 里有 records 的选手**（4,952 人；M1_facts 只有 4,890 —— 差的那几十人
+   是 M1 恰好 0 分但仍持有纪录的人，漏掉就又会出现「时间轴有他、总榜没他」）。 */
 const REC_HOLDERS = new Set();
-for (const ln of fs.readFileSync(path.join(__dirname, 'M1_facts.tsv'), 'utf8').split('\n').slice(1)) {
-  const pid = ln.slice(0, ln.indexOf('\t'));
-  if (pid) REC_HOLDERS.add(pid);
-}
 const TRACK_OF = { single: 'single', avg: 'avg' };
 
 /* ── 姓名 + 性别：data.js 全量玩家为主源，roster 长尾名册兜底 ── */
@@ -123,6 +120,12 @@ for (const ln of R.rows.split('\n')) {
 for (const p of global.window.MOCK.players) {
   genderOf.set(p.id, p.gender === 'f' ? 'f' : 'm');
   nameOf.set(p.id, p.name);
+  if ((p.records || []).length) REC_HOLDERS.add(p.id);
+}
+/* M1_facts 里出现过、但 data.js 里没 records 的（理论上没有）也一并保住 */
+for (const ln of fs.readFileSync(path.join(__dirname, 'M1_facts.tsv'), 'utf8').split('\n').slice(1)) {
+  const pid = ln.slice(0, ln.indexOf('\t'));
+  if (pid) REC_HOLDERS.add(pid);
 }
 
 /* ── 载入事实表 → dim → Map(pid → Map(ev → score)) ──

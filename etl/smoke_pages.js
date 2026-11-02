@@ -436,11 +436,25 @@ ok(gap < 0.001, '各国总分之和 ≡ 选手总分之和（' + Math.round(sumN
   '，相对差 ' + (gap * 100).toFixed(3) + '%）');
 const splitIds = Object.keys(M.natSplit || {});
 if (splitIds.length) {
-  const pid = splitIds.filter((id) => (M.natSplit[id], Object.keys(M.natSplit[id]).length > 1))[0] || splitIds[0];
-  const parts = M.natSplit[pid];
+  /* nat_seg 里全站 311 位换籍选手，但 data.js 只承载 6 万人 —— 长尾换籍者在页面上不存在，
+     他们的拆分自然进不了国家榜。所以先取「页面上真的有」的那批人再校验。
+     （2026-11-02：旧写法直接取 splitIds[0]，一旦那人是长尾就必失败。） */
+  const inPage = splitIds.filter((id) => M.ranked.some((p) => p.id === id));
+  ok(inPage.length > 0, '换籍选手中至少有人在页面上（' + inPage.length + ' / ' + splitIds.length + '）');
+  const pid = inPage.filter((id) => Object.keys(M.natSplit[id]).length > 1)[0] || inPage[0];
+  const parts = M.natSplit[pid] || {};
   console.log('   换籍样例：', pid, Object.keys(parts).map((k) => k + '=' + parts[k]).join(' / '));
-  ok(Object.keys(parts).every((k) => M.nations.some((n) => n.iso === k)),
-    '换籍选手的每个代表国都出现在国家榜里');
+  const missing = [];
+  const byId = new Map(M.ranked.map((p) => [p.id, p]));
+  inPage.forEach((id) => {
+    const pl = byId.get(id);
+    /* 总分为 0 的人缩放后每一份都是 0，bumpNation 会整条跳过 —— 国家自然不会出现，属正常 */
+    if (!pl || !(pl.overall > 0)) return;
+    Object.keys(M.natSplit[id]).forEach((k) => {
+      if (!M.nations.some((n) => n.iso === k)) missing.push(id + ':' + k);
+    });
+  });
+  ok(missing.length === 0, '换籍选手的每个代表国都出现在国家榜里（缺 ' + missing.length + ' 项）');
   const sumParts = Object.keys(parts).reduce((a, k) => a + parts[k], 0);
   const pl = M.ranked.filter((p) => p.id === pid)[0];
   ok(!pl || Math.abs(sumParts - pl.overall) < 0.05,
@@ -570,14 +584,19 @@ console.log('== 评分真实性：六维总分（当前模型唯一口径） =='
       if (d > 0.05) badT++;
     });
     ok(badT === 0, '六维总分 t = Σ w_d·s_d 自洽（' + sixP.length + ' 人，最大偏差 ' + maxDiff.toFixed(4) + '）');
-    /* 2026-11-02 口径变更：主表只收前 62,000 名 + 纪录持有者，其余人的总分由
-       build 从 sixdim_tail.tsv 写进 overall（以前这里要求「无六维分者一律 0」，
-       结果纪录保持者被抹成 0 分 —— 时间轴里有他、总榜上查无此人）。
-       现在要求：没有 p.six 的人，overall 必须来自长尾表且为正（不能是旧 esum 量纲）。 */
-    const orphan = M.ranked.filter(function (p) { return !p.six && p.overall > 0; });
-    ok(orphan.length > 0, '长尾纪录持有者的总分被 sixdim_tail 补齐（' + orphan.length + ' 人无六维向量但有分）');
-    ok(M.ranked.filter(function (p) { return !p.six && p.overall > 0 && p.overall < 0.01; }).length === 0,
-      '长尾补分不是 0/占位值（最小 ' + Math.min.apply(null, orphan.map(function (p) { return p.overall; })) + '）');
+    /* 2026-11-02 口径变更：主表只收前 62,000 名 + 全部纪录持有者，其余人的总分由
+       build 从 sixdim_tail.tsv 写进 overall。
+       目标不变量：**不会出现「有总分却没有六维分」的纪录持有者** ——
+       那正是「时间轴里点得开他、历史地位排名里查无此人」的病理特征（Aron Yu 曾是 0.00）。
+       例外：一条退赛项目/极小国家的 NR 本身折算下来 ≈0.000000（如 magic 的 NR），
+       M1 事实表里根本不留行，自然没有六维分 —— 这种人的总分也是 0，不算病理。 */
+    const noSixScored = M.ranked.filter(function (p) { return (p.records || []).length && !p.six && p.overall > 0; });
+    ok(noSixScored.length === 0, '没有「有总分却没有六维分」的纪录持有者（实得 ' + noSixScored.length + ' 人）');
+    const recNoSix = M.ranked.filter(function (p) { return (p.records || []).length && !p.six; });
+    console.log('   纪录本身得分为 0、因而无六维分的纪录持有者：' + recNoSix.length + ' 人'
+      + (recNoSix.length ? '（' + recNoSix.map(function (p) { return p.id; }).join(',') + '）' : ''));
+    ok(M.ranked.filter(function (p) { return (p.records || []).length && p.overall > 0; }).length > 4000,
+      '纪录持有者基本都进了总榜（' + M.ranked.filter(function (p) { return (p.records || []).length && p.overall > 0; }).length + ' 人）');
   }
   /* 排序必须按六维总分单调不增 */
   let mono = true;
