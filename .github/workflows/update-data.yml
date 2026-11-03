@@ -67,7 +67,7 @@ jobs:
             --zip /tmp/wca_export.tsv.zip \
             --out js/data.js \
             --detail-max "${{ github.event.inputs.detail_max || '2500' }}" \
-            --slim-max "${{ github.event.inputs.slim_max || '60000' }}" \
+            --slim-max "${{ github.event.inputs.slim_max || '20000' }}" \
             --date "${EXPORT_DATE:-$(date +%F)}" \
             --ver "${EXPORT_VER:-v2.0.2}"
 
