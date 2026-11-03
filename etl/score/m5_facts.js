@@ -9,15 +9,12 @@
  *   对每个年末 Y、每个 (ev, track)：
  *     rank = 按「截至 Y 的历史最好成绩」升序名次（并列按达成日先者居前）
  *
- *   ★ M5-F3（2026-10-29 定稿）：**放弃名次制，改用成绩比值的分段函数**，
- *     与 m5_current_rank.js 同参同式（用户要求：第 1 名 = 1000、第 1% 名 ≈ 750）：
+ *   ★ M5-KINCH（2026-11-04 用户拍板：全权替换为 Kinch 排名），与 m5_current_rank.js 同式：
  *       cost = 成绩（多盲解码为 cost，统一「越小越强」）
- *       WR   = 该年末世界最佳；P1 = 该年末第 1% 分位；D0 = 1 − WR/P1 ← 逐项目、逐年标定
- *       d    = 1 − WR/cost
- *       d ≤ D0 : 1000 × (1 − (1−TARGET/1000)·d/D0)
- *       d > D0 : TARGET × (D0/d)^TAIL_H                （断崖衰减）
- *     旋钮：TARGET=750 / TAIL_H=8 / PCT=0.01。
- *   · 旧 M5-F2（w_e × rank^-GAMMA，GAMMA=0.5）已废，常量保留仅供对照。
+ *       WR   = 该年末世界最佳
+ *       k    = 100 × WR / cost            ← 单事件 Kinch 分（0..100，WR 持有者 = 100）
+ *     聚合（全组合平均、缺项=0）在 sixdim.js 里做：M5 = (1/N) × Σ k，N = 现役组合数。
+ *   · 旧 M5-F2（w_e × rank^-GAMMA）与 M5-F3（分段比值）均已废。
  *   · 深度：**最新年份全量**（站点取用的快照）；历史年份限前 100
  *     ——45 年 × 全量会膨胀到 ≈1GB，而 sixdim.js 是整表载入，会 OOM。
  *   · 停办项目（EV_RETIRED_DAY ≤ 年末）不计分；双轨各 1.0
@@ -157,11 +154,8 @@ async function main() {
       const w = W[ev] == null ? (RN.WEIGHT_V2_CFG ? RN.WEIGHT_V2_CFG.floor : 1) : W[ev];
       const arr = [...m.entries()];
       arr.sort((a, b) => (a[1].b - b[1].b) || (a[1].bd - b[1].bd));
-      /* M5-F3 标定：该年末的世界最佳 cost + 第 PCT 分位 cost → D0（逐项目、逐年标定）
-         各项目第1%分位的 d 差异达 9 倍，必须逐个标定，否则集中型项目会系统性虚高 */
+      /* Kinch 标定：该年末的世界最佳 cost（WR），逐 (项目,轨道) 各自取 */
       const wr = arr.length ? arr[0][1].b : 0;
-      const p1 = arr.length ? arr[Math.max(0, Math.floor(arr.length * CFG_PCT))][1].b : 0;
-      const D0 = (wr > 0 && p1 > 0) ? 1 - wr / p1 : 0;
       /* 深度：仅最新年份全量（站点实际取用的快照）；历史年份限深以控体积
          ——45 年 × 全量会膨胀到 ≈1GB，sixdim.js 整表载入会 OOM */
       const take = (y === LAST_YEAR) ? arr.length : Math.min(deep, arr.length);
@@ -174,7 +168,7 @@ async function main() {
           const dR = Math.max(0.2, 1 - gapR / 5 * 0.8), dP = Math.max(0.2, 1 - gapP / 5 * 0.8);
           dec = CFG_DECAY_MODE === 'dual' ? dR * dP : CFG_DECAY_MODE === 'pb' ? dP : dR;
         }
-        const score = w * shapeScore(s.b, wr, D0) * dec;
+        const score = kinchScore(s.b, wr);
         if (score <= 0) continue;
         facts.push(`${y}\t${pidArr[pi]}\t${ev}\t${kind === 0 ? 'single' : 'avg'}\t${rk}\t${score.toFixed(6)}`);
       }
@@ -196,12 +190,10 @@ const CFG_TARGET = 750;          // 第 1% 分位选手的分数（用户要求 
 const CFG_TAIL_H = 8;            // 长尾衰减指数
 const CFG_PCT = 0.01;            // 标定分位（前 1%）
 const LAST_YEAR = 2026;          // 最新年份**全量**输出（站点实际取用的快照）
-function shapeScore(cost, wr, D0) {
-  if (!(cost > 0) || !(wr > 0) || !(D0 > 0)) return 0;
-  const d = 1 - wr / cost;
-  if (d <= 0) return 1000;
-  if (d <= D0) return 1000 * (1 - (1 - CFG_TARGET / 1000) * (d / D0));
-  return CFG_TARGET * Math.pow(D0 / d, CFG_TAIL_H);
+/* Kinch：单事件得分 = 100 × 世界纪录 / 个人最好（0..100，WR 持有者 = 100） */
+function kinchScore(cost, wr) {
+  if (!(cost > 0) || !(wr > 0)) return 0;
+  return Math.min(100, 100 * wr / cost);
 }
 function log(...a) { console.log(...a); }
 

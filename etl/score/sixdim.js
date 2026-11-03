@@ -189,6 +189,10 @@ const sub = new Map();                    // dim → Map(pid → Map(ev → scor
 /* 换籍选手的按国原始分量：pid → iso → `维度|项目` → 值。
    只对 NATSEG 里那几百人建，体积可忽略；合成后 Σ_国 t 必须逐位等于总分。 */
 const natRaw = new Map();
+/* ── 项目系数（EV_WEIGHT_V2）── 提前定义：M5 的 Kinch 均值编码要用到 evW */
+const RUNS = require(path.join(ROOT, 'etl/score/runs.js'));
+const EVW = RUNS.EV_WEIGHT_V2;
+const evW = (ev) => (EVW[ev] == null ? RUNS.WEIGHT_V2_CFG.floor : EVW[ev]);
 for (const dim of OPT.dims) {
   const m = new Map();
   const put = (pid, ev, v, cty) => {
@@ -258,13 +262,25 @@ for (const dim of OPT.dims) {
       rows.push(c); if (y > bestYear) bestYear = y;
     }
     if (bestYear >= 0) {
-      for (const c of rows) {
-        if (+c[0] !== bestYear) continue;
-        if (OPT.track !== 'both' && c[3] !== OPT.track) continue;
-        if (OPT.ev && c[2] !== OPT.ev) continue;
-        put(c[1], c[2], +c[5], isCross(c[1]) ? ctyOfYear(c[1], +c[0]) : null);
+      /* 忠实 Kinch：M5 = (1/N) × Σ_{e,t} (k/100)，缺项按 0 计（分母恒为 N）。
+         这里把 per-event 值编码成 v = EVSUM·(k/100)/N/evW(ev)，
+         使下游既有公式仍成立：s5 = Σ_ev v·evW·FULL/Σw = EVSUM·(1/N)Σ(k/100)·FULL/Σw。
+         （maxOf['M5'] 随后压成 1，见合成段） */
+      const fr = rows.filter((c) => +c[0] === bestYear
+        && (OPT.track === 'both' || c[3] === OPT.track)
+        && (!OPT.ev || c[2] === OPT.ev));
+      const combos = new Set(), evs = new Set();
+      for (const c of fr) { combos.add(c[2] + '|' + c[3]); evs.add(c[2]); }
+      const N = combos.size || 1;
+      let EVSUM = 0;
+      for (const ev of evs) EVSUM += evW(ev);
+      for (const c of fr) {
+        const k = +c[5] || 0;
+        if (!(k > 0)) continue;
+        const v = EVSUM * (k / 100) / N / evW(c[2]);
+        put(c[1], c[2], v, isCross(c[1]) ? ctyOfYear(c[1], +c[0]) : null);
       }
-      console.log(`# M5 快照取 ${bestYear} 年末`);
+      console.log(`# M5 快照取 ${bestYear} 年末（Kinch 均值：N=${N} 组合，EVSUM=${EVSUM.toFixed(4)}）`);
     }
   } else if (dim === 'M6') {
     for (const ln of load('M6_by_record.tsv').slice(1)) {
@@ -281,11 +297,6 @@ for (const dim of OPT.dims) {
   sub.set(dim, m);
 }
 
-/* ── 项目系数（EV_WEIGHT_V2）── */
-const RUNS = require(path.join(ROOT, 'etl/score/runs.js'));
-const EVW = RUNS.EV_WEIGHT_V2;
-const evW = (ev) => (EVW[ev] == null ? RUNS.WEIGHT_V2_CFG.floor : EVW[ev]);
-
 /* ── 合成 ── */
 const selDims = OPT.dims;
 const wSum = selDims.reduce((s, d) => s + DIMS[d].w, 0) || 1;
@@ -296,6 +307,8 @@ for (const dim of selDims) {
   for (const [, a] of sub.get(dim)) for (const [ev, v] of a) if (v > (mm.get(ev) || 0)) mm.set(ev, v);
   maxOf[dim] = mm;
 }
+/* M5 已用 Kinch 均值编码（v 已含 EVSUM/N/evW），归一基准固定为 1 */
+if (maxOf['M5']) for (const ev of maxOf['M5'].keys()) maxOf['M5'].set(ev, 1);
 /* 汇总 pids */
 const pids = new Set();
 for (const dim of selDims) for (const pid of sub.get(dim).keys()) pids.add(pid);

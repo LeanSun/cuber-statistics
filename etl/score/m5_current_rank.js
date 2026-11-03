@@ -252,24 +252,26 @@ function pearson(xs, ys) {
     let a = byEt.get(k); if (!a) { a = []; byEt.set(k, a); }
     a.push(c);
   }
-  const CAL = new Map();    // ev|tr → {wr, p1, D0, n}
+  const CAL = new Map();    // ev|tr → {wr, n}
   for (const [k, a] of byEt) {
     a.sort((m, n) => m - n);
-    const wr = a[0];
-    const p1 = a[Math.max(0, Math.floor(a.length * CFG.PCT))];
-    CAL.set(k, { wr, p1, D0: p1 > 0 ? 1 - wr / p1 : 0, n: a.length });
+    CAL.set(k, { wr: a[0], n: a.length });
   }
-  /** M5-F3 形状函数：第1名=1000，第 PCT 分位=TARGET，之后 (D0/d)^TAIL_H 断崖衰减 */
-  const shapeScore = (cost, cal) => {
-    if (!cal || !(cost > 0) || !(cal.wr > 0) || !(cal.D0 > 0)) return 0;
-    const d = 1 - cal.wr / cost;
-    if (d <= 0) return 1000;
-    if (d <= cal.D0) return 1000 * (1 - (1 - CFG.TARGET / 1000) * (d / cal.D0));
-    return CFG.TARGET * Math.pow(cal.D0 / d, CFG.TAIL_H);
+  /** Kinch：单事件得分 = 100 × 世界纪录 / 个人最好（0..100，WR 持有者 = 100） */
+  const kinchScore = (cost, cal) => {
+    if (!cal || !(cost > 0) || !(cal.wr > 0)) return 0;
+    return Math.min(100, 100 * cal.wr / cost);
   };
   const calOf = (ev, tr) => CAL.get(ev + '|' + tr);
-  for (const x of ranks) x.sc = shapeScore(x.cost, calOf(x.ev, x.tr));
-  log('      已标定 (项目,轨) 组合:', num(CAL.size));
+  for (const x of ranks) x.sc = kinchScore(x.cost, calOf(x.ev, x.tr));
+  /* 忠实 Kinch 的分母 N：现役 (项目,轨道) 组合数（停办项目不计） */
+  const RETIRED_EV = RN.EV_RETIRED_DAY || {};
+  let N_COMBOS = 0;
+  for (const k of CAL.keys()) {
+    if (CFG.SKIP_RETIRED && RETIRED_EV[k.split('|')[0]] != null) continue;
+    N_COMBOS++;
+  }
+  log('      已标定 (项目,轨) 组合:', num(CAL.size), '；现役组合 N =', num(N_COMBOS));
 
   /* 需要追踪 PB 达成日的键：pid|ev|tr */
   const needPb = new Set();
@@ -406,11 +408,9 @@ function pearson(xs, ys) {
       const lc = lastByEv.get(x.pid + '|' + x.ev);
       const gap = lc == null ? 99 : yrs(lc);
       const gapP = pbGapOf(x.pid, x.ev, x.tr);
-      const dec = decCombo(gap, gapP);
-      const w = W[x.ev] == null ? FLOOR : W[x.ev];
-      const score = w * x.sc * dec * tw;
+      const score = x.sc;            // Kinch 单事件分（0..100），等权、无衰减
       if (score <= 0) continue;
-      scoreRows.push({ pid: x.pid, ev: x.ev, tr: x.tr, wr: x.wr, w, gap, gapP, dec, score, v: x.best });
+      scoreRows.push({ pid: x.pid, ev: x.ev, tr: x.tr, wr: x.wr, w: 1, gap, gapP, dec: 1, score, v: x.best });
     }
   }
 
@@ -438,6 +438,8 @@ function pearson(xs, ys) {
   /* 排序：主键 m5 降序，同分按姓名。⚠️ 旧代码写的是 `(b.m5 - a.m4 || 0) || (b.m5 - a.m5)`，
      其中 a.m4 是从 M4 复制来的字段（M5 的 perPlayer 没有 m4）→ NaN → 落到第二项。
      功能上等价于现在的写法，但会误导读者，已清理。 */
+  /* 忠实 Kinch：M5 = (1/N) × Σ 单事件分（没参赛的项目按 0 计，故分母恒为 N_COMBOS） */
+  if (N_COMBOS > 0) for (const p of perPlayer.values()) p.m5 /= N_COMBOS;
   const ranked = [...perPlayer.values()].sort((a, b) => (b.m5 - a.m5) || a.name.localeCompare(b.name));
   const total = ranked.reduce((a, p) => a + p.m5, 0);
   log('[5/7] 计分完成：', num(ranked.length), '人；总量', F(total),
@@ -514,798 +516,122 @@ function pearson(xs, ys) {
   const FOCUS = ['Feliks Zemdegs', 'Max Park', 'Tymon Kolasiński', 'Timofei Tarasenko',
     'Yiheng Wang (王艺衡)', 'Stanley Chapel'];
 
-  L.push('# M5 当前排名（Current World Rank）');
+  L.push('# M5 当前排名（Kinch）');
   L.push('');
   L.push('> 生成脚本 `etl/score/m5_current_rank.js`｜数据快照 **' + SNAPSHOT + '**｜WCA 导出 **v2.0.2 / v288**');
-  L.push('> 口径状态：**✅ 已定稿并封存（M5-F2，2026-10-28）**｜封存文件 `M5_封存_M5-F2_2026-10-28.md`');
-  L.push('> M5-F1 的双衰减口径已于同日下线，历史记录见 `M5_封存_2026-10-25.md`（不再作为回归基准）');
+  L.push('> 口径：**M5-KINCH（2026-11-04 定稿）** —— 全权替换旧 M5-F3 分段比值。');
   L.push('');
   L.push('## 0 一句话');
   L.push('');
-  L.push('**M5 = 你现在站在世界各项目榜单的什么位置上。**');
+  L.push('**M5 = 你在每个项目上「离世界纪录有多远」的平均值。**');
   L.push('');
-  L.push('M1–M4 全在回答「**过去做了多少**」；M5-F2 回答「**此刻你持有第几名**」。');
-  L.push('★ M5-F2（2026-10-28）砍掉全部时间衰减：**名称不变（仍叫「当前排名」），去掉时间旋钮**。');
-  L.push('  读数就是名次本身，不再自行引入「5 年 / 下限 0.2」这类魔法参数。');
-  L.push('  一个 2010 年退役的人若 PB 未被超越，他**确实仍持有**那个名次 —— M5 如实承认；');
-  L.push('  「守了多久」由 M1 表达，「压了对手多久」由 M4 表达，M5 不再重复表达时间。');
+  L.push('单事件得分 = 100 × 世界纪录 / 你的 PB（WR 持有者 = 100，慢一倍 = 50）；');
+  L.push('总分 = 所有现役 (项目,轨道) 组合的**算术平均**，没参赛的项目记 0。');
+  L.push('→ 理论满分 100（需全项目 WR），偏科者会被明显压低，是「全能榜」口径。');
   L.push('');
-
-  L.push('## 1 口径');
-  L.push('');
-  L.push('### 1.1 为什么不引入时间衰减（M5-F2 口径说明）');
-  L.push('');
-  L.push('> **旧口径 M5-F1 曾做两层新鲜度衰减**：decay(gapR) × decay(gapP)。');
-  L.push('> 2026-10-28 实测（`M5_去衰减对照探针.md`）后整体砍掉，理由两条：');
-  L.push('> ① **头部无感** —— 去掉后 Top5 只有 Max Park 与王艺衡互换一个身位，');
-  L.push('>    且与 §6.7「16 档衰减参数 Top5 全一致」同源，说明它在头部空转；');
-  L.push('> ② 为两个魔法参数（5 年 / 0.2）付掉了可解释性，却在长尾之外几乎不改变结论。');
-  L.push('> 下面的观测事实仍然成立（终身榜里确实躺着陈旧名次），但它是**定性说明，不进公式**。');
-  L.push('');
-  L.push('**WCA 的 `ranks_*.tsv` 不是「当前排名」，而是「按 PB 排序的终身榜」。**');
-  L.push('一个 2010 年就退役的人，只要他的 PB 没被超越，2026 年仍然显示第 5 名。');
-  L.push('');
-  L.push('实测（单次轨道，各项目 Top5 距末次参赛的年数）：');
-  L.push('');
-  L.push('| 项目 | Top5 的「距今参赛」 |');
-  L.push('|---|---|');
-  L.push('| `333mbo`（旧多盲） | #1 7.5年 / #2 8.5年 / #3 11.9年 / #4 0.2年 / #5 0.0年 |');
-  L.push('| `magic`（八板） | #1 10.9年 / #2 14.0年 / #2 13.5年 / #2 12.5年 / #2 1.0年 |');
-  L.push('| `mmagic`（十二板） | #1 10.9年 / #2 0.0年 / #3 18.7年 / #4 8.9年 / #4 0.4年 |');
-  L.push('| `333`（三阶） | #1~#5 全部 **0.0–0.1 年**（活跃） |');
-  L.push('');
-  L.push('即：**活跃项目的榜单是「当下」的，停办项目的榜单是「化石」的**。');
-  L.push('M5 用三条规则处理这件事：');
-  L.push('');
-  L.push('1. **停办项目整体不计入**（`EV_RETIRED_DAY` 有值的项目）—— 它们已经不存在了，「现在排名第几」没有意义；');
-  L.push('2. **参赛新鲜度** —— 距「该项目内末次参赛」的年数，一个 5 年没碰三阶的人，');
-  L.push('   他的三阶第 5 名只是历史残影，不该和天天在打的人同权；');
-  L.push('3. **名次新鲜度（★ M5-F1 的核心修正）** —— 距「该项目该轨道 PB 达成」的年数。');
-  L.push('');
-  L.push('> **第 3 条为什么必要**：第 2 条只惩罚「完全不参赛的人」，');
-  L.push('> **完全不惩罚「还在参赛、但名次是几年前刷出来的僵尸名次」**。');
-  L.push('> 实测深度 ≤100 的 3,346 条目里有 **617 条**属于此类（仍在活跃期，但 PB 已 ≥2 年未刷新），');
-  L.push('> 占 V0 口径总贡献的 **15.92%** —— 在 V0 里被当成「现役世界前 100」全额计分。');
-  L.push('');
-  L.push('### 1.2 公式');
+  L.push('## 1 公式');
   L.push('');
   L.push('```');
-  L.push((CFG.DECAY_MODE === 'none'
-    ? 'M5 = Σ_{e,t} w_e · g(rank_{e,t})   ← 纯名次，无时间项（M5-F2）'
-    : 'M5 = Σ_{e,t} w_e · g(rank_{e,t}) · ' + (CFG.DECAY_MODE === 'dual'
-      ? 'decay(gapR_{e,t}) · decay(gapP_{e,t})'
-      : CFG.DECAY_MODE === 'pb' ? 'decay(gapP_{e,t})' : 'decay(gapR_{e,t})')));
+  L.push('M5 = (1/N) × Σ_{e,t} 100 × WR_{e,t} / PB_{e,t}');
   L.push('');
-  L.push('  e,t      = 项目 × 轨道（single / average），共 ' + perEvent.size + ' 个有数据的组合');
-  L.push('  w_e      = EV_WEIGHT_V2（三阶 1.0000 全站最高）');
-  L.push('  g(rank)  = rank^-' + CFG.GAMMA + '          （第 1 名 = 1.0，第 10 名 = ' + Math.pow(10, -CFG.GAMMA).toFixed(3) + '，第 100 名 = ' + Math.pow(100, -CFG.GAMMA).toFixed(3) + '）');
-  L.push('  rank     = ' + (CFG.RANK_MODE === 'window'
-    ? '**近 ' + CFG.WINDOW_DAYS + ' 天窗口内实际最好成绩的重排名**（序号口径）'
-    : '官方 `world_rank`（终身 PB 榜）'));
-  L.push('  gapR     = 距「在该项目内」最后一次参赛的年数'
-    + (CFG.DECAY_MODE === 'none' ? '（**仅展示列，不进公式**）' : ''));
-  L.push('  gapP     = 距「在该项目该轨道内 PB 达成」的年数（PB 首次写下的那天）'
-    + (CFG.DECAY_MODE === 'none' ? '（**仅展示列，不进公式**）' : ''));
-  if (CFG.DECAY_MODE !== 'none') {
-    L.push('  decay    = max(' + CFG.DECAY_FLOOR.toFixed(1) + ', 1 - gap/' + CFG.DECAY_YEARS + ' × ' + (1 - CFG.DECAY_FLOOR).toFixed(1) + ')');
-    L.push('             线性衰减，第 ' + CFG.DECAY_YEARS + ' 年触底为 ' + CFG.DECAY_FLOOR.toFixed(1) + '（只衰减不归零）');
-  }
-  L.push('');
-  L.push('  轨道权重 = single ' + CFG.TRACK_WEIGHT.single + ' / average ' + CFG.TRACK_WEIGHT.average + '（双轨各计一次）');
-  L.push('  排名深度 = 只算世界前 ' + CFG.DEPTH + '（超出为 0 分）');
+  L.push('  e,t   = 项目 × 轨道（single / average，双轨各计一次）');
+  L.push('  WR    = 该 (项目,轨道) 的世界纪录（多盲按 decodeMulti 折成 cost）');
+  L.push('  PB    = 个人最好（多盲同口径）');
+  L.push('  N     = 现役 (项目,轨道) 组合数 = ' + N_COMBOS + '（停办项目不计）');
+  L.push('  缺项  = 该组合没成绩 → 计 0，但仍占分母 N');
   L.push('```');
   L.push('');
-  L.push('> **当前运行口径：`RANK_MODE = ' + CFG.RANK_MODE + '`，`DECAY_MODE = ' + CFG.DECAY_MODE + '`**');
-  L.push('> （`DECAY_MODE`：`none` = **不计衰减（M5-F2 定稿）**｜`retire` = 只乘 decay(gapR)｜`pb` = 只乘 decay(gapP)｜`dual` = 两者相乘（M5-F1，已废））');
-  L.push('> 四口径的完整实测对照见独立文档 `M5_去衰减对照探针.md`。');
+  L.push('- 停办项目（`333ft` / `magic` / `mmagic` / `333mbo`）整体不计分；');
+  L.push('- 多盲 `333mbf` 只有单次榜，`average` 组合不存在，N 自然不含它；');
+  L.push('- 与旧 M5-F3 的差别：旧版 1000 分制 + 按项目标定 D0 + 前1%拉伸/长尾压缩 + 加权求和；');
+  L.push('  新版 100 分制 + 纯 WR/PB 比值 + 全组合等权平均。');
   L.push('');
-  L.push('### 1.3 边界处理');
-  L.push('');
-  L.push('| 项 | 处理 |');
-  L.push('|---|---|');
-  L.push('| 停办项目（magic/mmagic/333mbo/333ft） | **整体不计分**（`CFG.SKIP_RETIRED`） |');
-  L.push('| 名次深度 > ' + CFG.DEPTH + ' | 不计分（避免 30 万长尾稀释头部） |');
-  L.push('| 并列名次 | 官方用同名次，直接采用（40 个组合里仅 `333fm|single` 出现 4 人并列 #1） |');
-  L.push('| PB 达成日 | 从 `results.tsv` 重建：更小的 v 刷新 PB 并改写达成日；相同 v 取**最早**达成日 |');
-  L.push('| multi（多盲）PB | 官方存编码值，须先 `decodeMulti` 折成 `cost` 才能比大小 |');
-  L.push('| `333mbf` / `333mbo` 的 average 轨道 | 官方无数据，自然为 0 |');
-  L.push('| `fto`（八面体） | 官方 ranks 表无数据，不计分 |');
-  L.push('| 取消的赛事（cancelled=1） | 不计入末次参赛日 |');
-  L.push('');
-
   L.push('## 2 数据规模');
   L.push('');
   L.push('- 全站有成绩的人：**' + num(lastAll.size) + '**');
-  L.push('- 官方排名条目：**' + num(ranks.length) + '**（40 个组合）');
-  L.push('- 重建出的 PB 达成日条目：**' + num(pbDay.size) + '**（名次 ≤ ' + CFG.MAX_DEPTH_SCAN + ' 的条目）');
+  L.push('- 官方排名条目：**' + num(ranks.length) + '**');
   L.push('- **M5 计分人数：' + num(ranked.length) + '**');
-  L.push('- M5 全站总量：**' + F(total) + '**');
-  L.push('- 超出深度 ' + CFG.DEPTH + ' 被剔除：' + num(skippedDeep) + ' 条；停办项目剔除：' + num(skippedRetired) + ' 条');
+  L.push('- 现役组合 N：**' + N_COMBOS + '**；停办项目剔除：' + num(skippedRetired) + ' 条');
+  L.push('- M5 全站总量（各人均值之和）：**' + F(total) + '**');
   L.push('');
-
-  L.push('## 3 正确性验证');
+  L.push('## 3 M5 榜 Top25');
   L.push('');
-  L.push('### 3.1 官方 ranks 的 best 值 = 我们从 results.tsv 重建的 PB');
-  L.push('');
-  L.push('| 项 | 值 |');
-  L.push('|---|---|');
-  L.push('| 可比组合（非 multi） | **1,957,073** 条 |');
-  L.push('| best 值不一致 | **0** 条 ✓ |');
-  L.push('| multi 组合（官方存编码值，口径不同，跳过比对） | 4,440 条 |');
-  L.push('| 仅官方有 / 仅重建有 | 2 / 0 |');
-  L.push('');
-  L.push('→ **官方 ranks 榜就是我们重建的 PB 排序，可以直接采信。**');
-  L.push('');
-  L.push('### 3.2 用重建 PB 重排 vs 官方 world_rank（各组合 Top50）');
-  L.push('');
-  L.push('名次**完全一致**的条目 **1,540 / 2,042（75.5%）**。');
-  L.push('剩余差异**全部来自并列成绩**（官方对同 PB 用同名次，重建序位按 pid 字典序），');
-  L.push('例如 `333fm|single` 最大名次差 33 —— 该项目并列极密集（12,397 人里 4 人并列 #1）。');
-  L.push('');
-  L.push('### 3.3 与 M4 的正交性（Spearman）');
-  L.push('');
-  {
-    const m4 = new Map();
-    if (fs.existsSync(path.join(__dirname, 'M4_seats.tsv'))) {
-      for (const ln of fs.readFileSync(path.join(__dirname, 'M4_seats.tsv'), 'utf8').trim().split('\n').slice(1)) {
-        const c = ln.split('\t'); m4.set(c[1], +c[2]);
-      }
-    }
-    const m2 = new Map();
-    if (fs.existsSync(path.join(__dirname, 'M2_ranking.tsv'))) {
-      for (const ln of fs.readFileSync(path.join(__dirname, 'M2_ranking.tsv'), 'utf8').trim().split('\n').slice(1)) {
-        const c = ln.split('\t'); m2.set(c[2], +c[3]);
-      }
-    }
-    const rhoWith = (src, limit) => {
-      const top = [...ranked].slice(0, limit);
-      const idx = top.map((x, i) => [x, i]); idx.sort((a, b) => b[0].m5 - a[0].m5);
-      const ra = new Map(); for (let i = 0; i < idx.length; i++) ra.set(idx[i][0].name, i + 1);
-      const srcArr = [...src.entries()].sort((a, b) => b[1] - a[1]).slice(0, limit);
-      const rb = new Map(); for (let i = 0; i < srcArr.length; i++) rb.set(srcArr[i][0], i + 1);
-      const names = top.map((x) => x.name).filter((n) => rb.has(n));
-      if (names.length < 3) return null;
-      return { n: names.length, rho: pearson(names.map((n) => ra.get(n)), names.map((n) => rb.get(n))) };
-    };
-    const s4 = rhoWith(m4, 100), s2 = rhoWith(m2, 100);
-    /* M6 对手强度：只输出 JSON（`m6_strength_out.json`），结构 [pid, score, n] */
-    let s6 = null;
-    try {
-      const p6 = path.join(ROOT, '.workbuddy/tmp/oc/m6_strength_out.json');
-      if (fs.existsSync(p6)) {
-        const j = JSON.parse(fs.readFileSync(p6, 'utf8'));
-        const m6 = new Map();
-        for (const row of j.Tglob || []) m6.set(pName.get(row[0]) || row[0], row[1]);
-        s6 = rhoWith(m6, 100);
-      }
-    } catch (e) { /* M6 输出缺失则跳过 */ }
-    const m4Top = [...m4.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map((x) => x[0]);
-    const m5Top = ranked.slice(0, 10).map((x) => x.name);
-    L.push('| 配对 | 样本 | ρ | 判定 |');
-    L.push('|---|---|---|---|');
-    L.push('| M5 当前排名 × M4 统治力 | ' + (s4 ? s4.n : '—') + ' | ' + (s4 ? F(s4.rho) : '—') + ' | **完全正交 ✓** |');
-    L.push('| M5 当前排名 × M2 融合领奖台 | ' + (s2 ? s2.n : '—') + ' | ' + (s2 ? F(s2.rho) : '—') + ' | 正交 ✓ |');
-    L.push('| M5 当前排名 × M6 对手强度 | ' + (s6 ? s6.n : '—') + ' | ' + (s6 ? F(s6.rho) : '—') + ' | ' + (s6 ? (Math.abs(s6.rho) < 0.7 ? '正交 ✓' : '需检视 ⚠') : 'M6 输出缺失') + ' |');
-    L.push('');
-    L.push('- **M5 Top10 与 M4 Top10 重合 ' + m5Top.filter((x) => m4Top.includes(x)).length + '/10**');
-    L.push('- **M5 Top10**：「' + m5Top.join(' | ') + '」');
-    L.push('- **M4 Top10**：「' + m4Top.join(' | ') + '」');
-    L.push('');
-    L.push('→ M5 与 M4 几乎零相关，是**真正独立的一维**。');
-    L.push('');
-  }
-
-  L.push('## 4 M5 榜 Top25');
-  L.push('');
-  L.push('| # | 选手 | M5 | 覆盖项目数 | 拿过 #1 的项目数 | 最好名次 | 末次参赛 | 距今 | 最旧 PB |');
-  L.push('|---|---|---:|---:|---:|---:|---|---:|---:|');
+  L.push('| # | 选手 | M5(Kinch) | 覆盖项目 | 组合数 | 最好名次 | 末次参赛 | 距今 |');
+  L.push('|---|---|---:|---:|---:|---:|---|---:|');
   ranked.slice(0, 25).forEach((p, i) => {
     const lc = lastAll.get(p.pid);
     const gap = lc == null ? '—' : ((SNAPSHOT_DAY - lc) / 365.25).toFixed(2);
     L.push('| ' + (i + 1) + ' | ' + p.name + ' | **' + F(p.m5) + '** | ' + p.evs.size +
-      ' | ' + p.rank1 + ' | #' + p.bestRank + ' | ' +
-      (lc == null ? '—' : new Date(lc * 86400000).toISOString().slice(0, 10)) + ' | ' + gap + 'y | ' +
-      (p.oldestPB >= 99 ? '—' : p.oldestPB.toFixed(2) + 'y `' + p.oldestPBEv + '`') + ' |');
+      ' | ' + p.parts.length + ' | #' + p.bestRank + ' | ' +
+      (lc == null ? '—' : new Date(lc * 86400000).toISOString().slice(0, 10)) + ' | ' + gap + 'y |');
   });
   L.push('');
-
-  L.push('### 4.1 头部选手拆解');
+  L.push('## 4 头部选手拆解');
   L.push('');
   for (const nm of FOCUS) {
     const p = ranked.find((x) => x.name === nm);
-    if (!p) { L.push('**' + nm + '** —— 不在 M5 榜内（未进任何项目世界前 ' + CFG.DEPTH + '）'); L.push(''); continue; }
-    const lc = lastAll.get(p.pid);
-    L.push('**' + nm + '**　M5 = **' + F(p.m5) + '**　（覆盖 ' + p.evs.size + ' 个项目，' +
-      p.parts.length + ' 个组合，' + p.rank1 + ' 个 #1）');
+    if (!p) { L.push('**' + nm + '** —— 不在 M5 榜内'); L.push(''); continue; }
+    L.push('**' + nm + '**　M5 = **' + F(p.m5) + '**　（覆盖 ' + p.evs.size + ' 个项目，' + p.parts.length + ' 个组合）');
     L.push('');
-    L.push('| 项目 | 轨道 | 世界名次 | w_e | gapR(年) | gapP(年) | 衰减 | 贡献 |');
-    L.push('|---|---|---:|---:|---:|---:|---:|---:|');
+    L.push('| 项目 | 轨道 | 世界名次 | Kinch 分 |');
+    L.push('|---|---|---:|---:|');
     const ps = [...p.parts].sort((a, b) => b.score - a.score);
-    for (const d of ps.slice(0, 8)) {
+    for (const d of ps.slice(0, 10)) {
       L.push('| ' + (EV_CN[d.ev] || d.ev) + ' | ' + (d.tr === 'single' ? '单次' : '平均') +
-        ' | #' + d.wr + ' | ' + F(d.w) + ' | ' + d.gap.toFixed(2) + ' | ' +
-        (d.gapP == null ? '—' : d.gapP.toFixed(2)) + ' | ' + F(d.dec) +
-        ' | ' + F(d.score) + ' |');
+        ' | #' + d.wr + ' | ' + F(d.score) + ' |');
     }
-    if (ps.length > 8) L.push('| … | | | | | | 其余 ' + (ps.length - 8) + ' 项合计 ' + F(ps.slice(8).reduce((a, b) => a + b.score, 0)) + ' |');
+    if (ps.length > 10) L.push('| … | | | 其余 ' + (ps.length - 10) + ' 项合计 ' + F(ps.slice(10).reduce((a, b) => a + b.score, 0)) + ' |');
     L.push('');
   }
-
-  L.push('## 5 单项目视图（当前各项目的世界第一）');
+  L.push('## 5 单项目世界第一（Kinch 视角）');
   L.push('');
-  L.push('| 项目 | 名称 | 现役世界第一 | 该项目内末次参赛 | 距今 |');
-  L.push('|---|---|---|---|---:|');
+  L.push('| 项目 | 名称 | 该项目世界第一 |');
+  L.push('|---|---|---|');
   {
-    const evList = [...perEvent.entries()].sort();
     const seen = new Set();
-    for (const [key, arr] of evList) {
+    for (const [key, arr] of [...perEvent.entries()].sort()) {
       const ev = key.split('|')[0];
       if (seen.has(ev)) continue;
       seen.add(ev);
       const top = arr.filter((x) => x.wr === 1).sort((a, b) => a.gap - b.gap)[0];
       if (!top) continue;
-      L.push('| `' + ev + '` | ' + (evName.get(ev) || ev) + ' | ' + top.name +
-        ' | ' + new Date(lastByEv.get(top.pid + '|' + ev) * 86400000).toISOString().slice(0, 10) +
-        ' | ' + top.gap.toFixed(2) + 'y |');
+      L.push('| `' + ev + '` | ' + (evName.get(ev) || ev) + ' | ' + top.name + ' |');
     }
   }
   L.push('');
-  L.push('> 注：`333fm` 的 #1 有 4 人并列，此处取其中**在该项目内最近参赛**的一位。');
-  L.push('');
-
-  L.push('## 6 口径实验记录（各选项的实际后果）');
-  L.push('');
-  L.push('### 6.1 排名深度上限');
-  L.push('');
-  L.push('> 下表统一按**定稿口径**（`DECAY_MODE = ' + CFG.DECAY_MODE + '`）计算。');
-  L.push('');
-  L.push('| 深度 | 计分人数 | 全站总量 | Top10 | ×M4 ρ | ×M2 ρ |');
-  L.push('|---:|---:|---:|---|---:|---:|');
-  const depthRows = [];
-  for (const cap of [50, 100, 200, 500, 1000]) {
-    const sc = new Map();
-    for (const x of ranks) {
-      if (x.wr > cap) continue;
-      if (RETIRED[x.ev] != null) continue;
-      const tw = CFG.TRACK_WEIGHT[x.tr]; if (!tw) continue;
-      const lc = lastByEv.get(x.pid + '|' + x.ev);
-      const gap = lc == null ? 99 : (SNAPSHOT_DAY - lc) / 365.25;
-      const gapP = pbGapOf(x.pid, x.ev, x.tr);
-      const w = W[x.ev] == null ? FLOOR : W[x.ev];
-      const v = w * x.sc * decCombo(gap, gapP) * tw;
-      sc.set(x.pid, (sc.get(x.pid) || 0) + v);
-    }
-    const arr = [...sc.entries()].map(([pid, s]) => ({ pid, s, name: pName.get(pid) || pid })).sort((a, b) => b.s - a.s);
-    const m4 = new Map();
-    for (const ln of fs.readFileSync(path.join(__dirname, 'M4_seats.tsv'), 'utf8').trim().split('\n').slice(1)) {
-      const c = ln.split('\t'); m4.set(c[1], +c[2]);
-    }
-    const m2 = new Map();
-    for (const ln of fs.readFileSync(path.join(__dirname, 'M2_ranking.tsv'), 'utf8').trim().split('\n').slice(1)) {
-      const c = ln.split('\t'); m2.set(c[2], +c[3]);
-    }
-    const rhoWith = (src, limit) => {
-      const idx = arr.slice(0, limit).map((x, i) => [x, i]); idx.sort((a, b) => b[0].s - a[0].s);
-      const ra = new Map(); for (let i = 0; i < idx.length; i++) ra.set(idx[i][0].name, i + 1);
-      const srcArr = [...src.entries()].sort((a, b) => b[1] - a[1]).slice(0, limit);
-      const rb = new Map(); for (let i = 0; i < srcArr.length; i++) rb.set(srcArr[i][0], i + 1);
-      const names = arr.slice(0, limit).map((x) => x.name).filter((n) => rb.has(n));
-      if (names.length < 3) return null;
-      return { n: names.length, rho: pearson(names.map((n) => ra.get(n)), names.map((n) => rb.get(n))) };
-    };
-    const s4 = rhoWith(m4, 100), s2 = rhoWith(m2, 100);
-    depthRows.push({ cap, n: arr.length, total: arr.reduce((a, b) => a + b.s, 0), arr, s4, s2 });
-    L.push('| ' + cap + ' | ' + num(arr.length) + ' | ' + F(arr.reduce((a, b) => a + b.s, 0)) +
-      ' | ' + arr.slice(0, 10).map((x) => x.name.split(' ')[0]).join(' ') +
-      ' | ' + (s4 ? F(s4.rho) : '—') + ' | ' + (s2 ? F(s2.rho) : '—') + ' |');
-  }
-  L.push('');
-  L.push('→ **深度 50 到 1000，Top10 几乎不动**（只有 500/1000 档把 Tommy Cherry 挤到第 10）。');
-  L.push('深度 ' + CFG.DEPTH + ' 是「头部清晰 + 长尾不稀释」的平衡点。');
-  L.push('');
-
-  L.push('### 6.2 衰减函数');
-  L.push('');
-  L.push('参赛新鲜度（gapR）与名次新鲜度（gapP）**共用同一个衰减函数**。');
-  L.push('');
-  L.push('| gap(年) | 线性→0.2（采用） | 线性→0.5 | 指数 0.5^(g/5) |');
-  L.push('|---:|---:|---:|---:|');
-  for (const g of [0, 0.5, 1, 2, 3, 4, 5, 7, 10]) {
-    L.push('| ' + g + ' | ' + F(Math.max(0.2, 1 - (g / 5) * 0.8)) + ' | ' +
-      F(Math.max(0.5, 1 - (g / 5) * 0.5)) + ' | ' + F(Math.pow(0.5, g / 5)) + ' |');
-  }
-  L.push('');
-  L.push('三种形态的 **Top5 完全相同**，总量差异 < 1% —— 衰减形态不是敏感参数。');
-  L.push('采用「线性衰减到 0.2、第 5 年触底」，因为它最直观：「5 年不参赛 → 只剩 20% 权重」。');
-  L.push('');
-
-  L.push('### 6.3 停办项目保留 vs 排除');
+  L.push('## 6 与 M4 的正交性');
   L.push('');
   {
-    const run = (skip) => {
-      const sc = new Map();
-      for (const x of ranks) {
-        if (x.wr > CFG.DEPTH) continue;
-        if (skip && RETIRED[x.ev] != null) continue;
-        const tw = CFG.TRACK_WEIGHT[x.tr]; if (!tw) continue;
-        const lc = lastByEv.get(x.pid + '|' + x.ev);
-        const gap = lc == null ? 99 : (SNAPSHOT_DAY - lc) / 365.25;
-        const gapP = pbGapOf(x.pid, x.ev, x.tr);
-        const w = W[x.ev] == null ? FLOOR : W[x.ev];
-        const v = w * x.sc * decCombo(gap, gapP) * tw;
-        sc.set(x.pid, (sc.get(x.pid) || 0) + v);
+    let m4 = null;
+    const f4 = path.join(__dirname, 'M4_seats.tsv');
+    if (fs.existsSync(f4)) {
+      m4 = new Map();
+      for (const ln of fs.readFileSync(f4, 'utf8').trim().split('\n').slice(1)) {
+        const c = ln.split('\t'); m4.set(c[1], +c[2]);
       }
-      return [...sc.entries()].map(([pid, s]) => ({ pid, s, name: pName.get(pid) || pid })).sort((a, b) => b.s - a.s);
-    };
-    const a = run(false), b = run(true);
-    L.push('| 口径 | 计分人数 | 全站总量 | Top8 |');
-    L.push('|---|---:|---:|---|');
-    L.push('| 保留停办项目 | ' + num(a.length) + ' | ' + F(a.reduce((x, y) => x + y.s, 0)) +
-      ' | ' + a.slice(0, 8).map((x) => x.name).join(' | ') + ' |');
-    L.push('| **排除停办项目（采用）** | ' + num(b.length) + ' | ' + F(b.reduce((x, y) => x + y.s, 0)) +
-      ' | ' + b.slice(0, 8).map((x) => x.name).join(' | ') + ' |');
-    L.push('');
-    L.push('Top8 完全相同，但保留会让 **370 个「化石榜」条目**进入计分（`333ft`/`magic`/`mmagic`/`333mbo` 的');
-    L.push('Top100 有 **100% 是僵尸** —— 全部 2 年以上没在该项目参赛）。');
-    L.push('排除更符合「当前排名」的语义：项目已经停办，不存在「现在」。');
-    L.push('');
-  }
-
-  L.push('### 6.4 单次 / 平均双轨');
-  L.push('');
-  L.push('| 轨道权重 | 计分人数 | 全站总量 | Top5 | ×M4 ρ |');
-  L.push('|---|---:|---:|---|---:|');
-  {
-    const m4 = new Map();
-    for (const ln of fs.readFileSync(path.join(__dirname, 'M4_seats.tsv'), 'utf8').trim().split('\n').slice(1)) {
-      const c = ln.split('\t'); m4.set(c[1], +c[2]);
     }
-    for (const tw of [{ single: 1, average: 1 }, { single: 1, average: 0 }, { single: 0, average: 1 }, { single: 1, average: 0.5 }]) {
-      const sc = new Map();
-      for (const x of ranks) {
-        if (x.wr > CFG.DEPTH) continue;
-        if (RETIRED[x.ev] != null) continue;
-        if (!tw[x.tr]) continue;
-        const lc = lastByEv.get(x.pid + '|' + x.ev);
-        const gap = lc == null ? 99 : (SNAPSHOT_DAY - lc) / 365.25;
-        const gapP = pbGapOf(x.pid, x.ev, x.tr);
-        const w = W[x.ev] == null ? FLOOR : W[x.ev];
-        const v = w * x.sc * decCombo(gap, gapP) * tw[x.tr];
-        sc.set(x.pid, (sc.get(x.pid) || 0) + v);
-      }
-      const arr = [...sc.entries()].map(([pid, s]) => ({ pid, s, name: pName.get(pid) || pid })).sort((a, b) => b.s - a.s);
-      const idx = arr.slice(0, 100).map((x, i) => [x, i]); idx.sort((a, b) => b[0].s - a[0].s);
-      const ra = new Map(); for (let i = 0; i < idx.length; i++) ra.set(idx[i][0].name, i + 1);
-      const srcArr = [...m4.entries()].sort((a, b) => b[1] - a[1]).slice(0, 100);
-      const rb = new Map(); for (let i = 0; i < srcArr.length; i++) rb.set(srcArr[i][0], i + 1);
-      const names = arr.slice(0, 100).map((x) => x.name).filter((n) => rb.has(n));
-      const r = names.length >= 3 ? pearson(names.map((n) => ra.get(n)), names.map((n) => rb.get(n))) : null;
-      L.push('| 单次 ' + tw.single + ' / 平均 ' + tw.average + ' | ' + num(arr.length) + ' | ' +
-        F(arr.reduce((x, y) => x + y.s, 0)) + ' | ' + arr.slice(0, 5).map((x) => x.name).join(', ') +
-        ' | ' + (r == null ? '—' : F(r)) + ' |');
+    if (m4) {
+      const limit = 100;
+      const ra = new Map(); ranked.slice(0, limit).forEach((x, i) => ra.set(x.name, i + 1));
+      const src = [...m4.entries()].sort((a, b) => b[1] - a[1]).slice(0, limit);
+      const rb = new Map(); src.forEach(([n], i) => rb.set(n, i + 1));
+      const names = ranked.slice(0, limit).map((x) => x.name).filter((n) => rb.has(n));
+      const rho = names.length >= 3 ? pearson(names.map((n) => ra.get(n)), names.map((n) => rb.get(n))) : null;
+      L.push('- M5(Kinch) Top100 × M4 统治力 ρ = **' + (rho == null ? '—' : F(rho)) + '**');
+      L.push('- M5 Top10：「' + ranked.slice(0, 10).map((x) => x.name).join(' | ') + '」');
+    } else {
+      L.push('- `M4_seats.tsv` 缺失，跳过。');
     }
   }
   L.push('');
-  L.push('→ **双轨（各 1.0）时与 M4 的相关性最低（0.0532）**，正交性最好，故采用。');
+  L.push('## 7 已知边界');
   L.push('');
-
-  L.push('### 6.5 「按项目内末次参赛」vs 「按选手全局末次参赛」');
-  L.push('');
-  {
-    const run = (useAll) => {
-      const sc = new Map();
-      for (const x of ranks) {
-        if (x.wr > CFG.DEPTH) continue;
-        if (RETIRED[x.ev] != null) continue;
-        const tw = CFG.TRACK_WEIGHT[x.tr]; if (!tw) continue;
-        const lc = useAll ? lastAll.get(x.pid) : lastByEv.get(x.pid + '|' + x.ev);
-        const gap = lc == null ? 99 : (SNAPSHOT_DAY - lc) / 365.25;
-        const gapP = pbGapOf(x.pid, x.ev, x.tr);
-        const w = W[x.ev] == null ? FLOOR : W[x.ev];
-        const v = w * x.sc * decCombo(gap, gapP) * tw;
-        sc.set(x.pid, (sc.get(x.pid) || 0) + v);
-      }
-      return [...sc.entries()].map(([pid, s]) => ({ pid, s, name: pName.get(pid) || pid })).sort((a, b) => b.s - a.s);
-    };
-    const a = run(false), b = run(true);
-    const s = new Set(a.slice(0, 25).map((x) => x.name));
-    L.push('- 按项目内衰减 Top8：' + a.slice(0, 8).map((x) => x.name + '(' + F(x.s) + ')').join(' | '));
-    L.push('- 按全局衰减 Top8：' + b.slice(0, 8).map((x) => x.name + '(' + F(x.s) + ')').join(' | '));
-    L.push('- Top25 重合：**' + b.slice(0, 25).filter((x) => s.has(x.name)).length + '/25**');
-    L.push('');
-    L.push('→ 差异极小，但**按项目内**才是正确语义：');
-    L.push('「我 5 年没碰三阶，但上个月刚打了四阶」——四阶的名次不该被三阶的停赛拖累。');
-    L.push('采用**按项目内末次参赛**。');
-    L.push('');
-  }
-
-  L.push('### 6.6 窗口重排名（F1）：官方终身榜 vs 近期实际表现');
-  L.push('');
-  L.push('**问题**：官方榜是「按 PB 排序的终身榜」。退役衰减只惩罚「不参赛的人」，');
-  L.push('**完全不惩罚「还在参赛、但名次是几年前刷出来的」**。');
-  L.push('');
-  L.push('**F1 方案**：用「近 N 天窗口内的实际最好成绩」重排名，退役者自动出局。');
-  L.push('完整对照见 `M5_F1窗口重排名对照.md`，此处只列结论：');
-  L.push('');
-  L.push('| 口径 | 计分人数 | 全站总量 | ×M4 ρ | ×M2 ρ | ×esum ρ | Top25 与现状重合 |');
-  L.push('|---|---:|---:|---:|---:|---:|---:|');
-  {
-    /* 用同一份 winBest 重算三种口径，保证可比。
-       注意：pearson() 返回的是**裸数字**，不是 {n, rho} 对象 —— 调用处必须直接用。 */
-    const wRho = (arr, src, limit) => {
-      const ra = new Map(); for (let i = 0; i < Math.min(limit, arr.length); i++) ra.set(arr[i].name, i + 1);
-      const srcArr = [...src.entries()].sort((a, b) => b[1] - a[1]).slice(0, limit);
-      const rb = new Map(); for (let i = 0; i < srcArr.length; i++) rb.set(srcArr[i][0], i + 1);
-      const names = arr.slice(0, limit).map((x) => x.name).filter((n) => rb.has(n));
-      if (names.length < 3) return null;
-      return pearson(names.map((n) => ra.get(n)), names.map((n) => rb.get(n)));
-    };
-    const m4m = new Map();
-    for (const ln of fs.readFileSync(path.join(__dirname, 'M4_seats.tsv'), 'utf8').trim().split('\n').slice(1)) {
-      const c = ln.split('\t'); m4m.set(c[1], +c[2]);
-    }
-    const m2m = new Map();
-    for (const ln of fs.readFileSync(path.join(__dirname, 'M2_ranking.tsv'), 'utf8').trim().split('\n').slice(1)) {
-      const c = ln.split('\t'); m2m.set(c[2], +c[3]);
-    }
-    /* esum 用**站点现行口径的忠实复刻**（siteEsum），不再用近似式 */
-    const esumM = siteEsum;
-    /* 注意：perPlayer 的元素字段是 m5（没有 m4 字段）——旧代码里
-       `b.m5 - a.m4` 是从 M4 复制来的残留，a.m4 为 undefined → NaN → 落到下一项。
-       这里统一改成 {pid, name, s} 形状。 */
-    const cur = [...perPlayer.values()].map((p) => ({ pid: p.pid, name: p.name, s: p.m5 }))
-      .sort((a, b) => b.s - a.s || a.name.localeCompare(b.name));
-    const curSet = new Set(cur.slice(0, 25).map((x) => x.name));
-    const variants = [];
-    // 现状
-    variants.push({ tag: '官方终身榜（现状）', arr: cur });
-    /* F1s / F1b —— 无论当前 RANK_MODE 是什么，都要能算出窗口口径做对照，
-       所以这里直接从 results.tsv 重扫一遍窗口成绩（winBest 只在 window 模式下填充）。 */
-    {
-      const wBest = new Map();
-      const wCut = SNAPSHOT_DAY - CFG.WINDOW_DAYS;
-      /* 复用 scanResults 的结果：若当前就是 window 模式，直接用已建的 winBest */
-      if (CFG.RANK_MODE === 'window') {
-        for (const [k, v] of winBest) wBest.set(k, v);
-      } else {
-        /* official 模式：需要重新扫 results.tsv 收集窗口成绩 */
-        await streamTsv('WCA_export_results.tsv', (r) => {
-          if (!r[8]) return;
-          const day = compDay.get(r[4]);
-          if (day === undefined || day <= wCut) return;
-          const pid = r[8], ev = r[6], isMulti = evFmt.get(ev) === 'multi';
-          for (const [tr, raw] of [['single', +r[2]], ['average', +r[3]]]) {
-            if (raw <= 0) continue;
-            const v = isMulti ? decodeMulti(raw).cost : raw;
-            const key = ev + '|' + tr;
-            let mm = wBest.get(key); if (!mm) { mm = new Map(); wBest.set(key, mm); }
-            const c = mm.get(pid);
-            if (c == null || v < c.v) mm.set(pid, { v, day });
-          }
-        });
-      }
-      for (const [tag, withDecay] of [['窗口 ' + CFG.WINDOW_DAYS + ' 天（无衰减）', false],
-                                      ['窗口 ' + CFG.WINDOW_DAYS + ' 天（+衰减）', true]]) {
-        const sc = new Map();
-        for (const [key, mm] of wBest) {
-          const ev = key.split('|')[0];
-          if (CFG.SKIP_RETIRED && RETIRED[ev] != null) continue;
-          const tr = key.split('|')[1], tw = CFG.TRACK_WEIGHT[tr]; if (!tw) continue;
-          const w = W[ev] == null ? FLOOR : W[ev];
-          const list = [...mm.entries()].map(([pid, o]) => ({ pid, v: o.v, day: o.day }));
-          list.sort((a, b) => a.v - b.v || a.day - b.day
-            || (pName.get(a.pid) || '').localeCompare(pName.get(b.pid) || ''));
-          const lim = Math.min(CFG.DEPTH, list.length);
-          for (let i = 0; i < lim; i++) {
-            const rank = i + 1;
-            let s = w * shapeScore(list[i].v, calOf(ev, tr)) * tw;
-            if (withDecay) {
-              const lc = lastByEv.get(list[i].pid + '|' + ev);
-              const gap = lc == null ? 99 : (SNAPSHOT_DAY - lc) / 365.25;
-              s *= decayOf(gap);
-            }
-            sc.set(list[i].pid, (sc.get(list[i].pid) || 0) + s);
-          }
-        }
-        const arr = [...sc.entries()].map(([pid, s]) => ({ pid, s, name: pName.get(pid) || pid }))
-          .sort((a, b) => b.s - a.s || a.name.localeCompare(b.name));
-        variants.push({ tag, arr });
-      }
-    }
-    for (const v of variants) {
-      const s4 = wRho(v.arr, m4m, 100), s2 = wRho(v.arr, m2m, 100), se = wRho(v.arr, esumM, 100);
-      L.push('| ' + v.tag + ' | ' + num(v.arr.length) + ' | ' +
-        F(v.arr.reduce((a, b) => a + b.s, 0)) + ' | ' +
-        (s4 == null ? '—' : F(s4)) + ' | ' + (s2 == null ? '—' : F(s2)) + ' | ' +
-        (se == null ? '—' : F(se)) + ' | ' +
-        v.arr.slice(0, 25).filter((x) => curSet.has(x.name)).length + '/25 |');
-    }
-    L.push('');
-    L.push('**三条结论**：');
-    L.push('');
-    L.push('1. **F1 修好了 P1 的核心病灶**：官方榜 #1 的「化石记录」问题得到纠正。');
-    L.push('   典型案例 `333fm|single`：官方 #1 Sebastiano Tronto 的 16 步跑出于 **2019 年**，');
-    L.push('   近 365 天窗口内他最好只到 19 步；而窗口内真正的最快是 17 步的一批人（官方名次仅 #5）。');
-    L.push('2. **必须用序号口径**：窗口内成绩并列极密集（`333fm|single` 3,276 人挤在约 14 个步数值上），');
-    L.push('   若沿用官方「同名次」规则，`DEPTH=100` 的截断会完全失效（实测 12,227 条 > 3,300 上限）。');
-    L.push('3. **F1 让 M5 更接近「纯现势快照」**，Top25 与现状重合 21/25、Top10 重合 10/10 —— 榜单稳定，');
-    L.push('   变动集中在「名次是几年前刷出来的」那批条目上。');
-    L.push('');
-  }
-
-  /* ── 6.7 ★ 定稿对照：两层新鲜度衰减（V0 / F2 / F3）───────────────── */
-  L.push('### 6.7 ★ 定稿对照：参赛新鲜度 × 名次新鲜度');
-  L.push('');
-  L.push('**这是 M5-F1 的核心决策实验。** 三个口径用**同一份数据**、**同一段代码**重算：');
-  L.push('');
-  L.push('- **V0（retire）**：`w · rank^-GAMMA · decay(gapR)` —— 旧口径，只罚「不参赛」；');
-  L.push('- **F2（pb）**：`w · rank^-GAMMA · decay(gapP)` —— 只罚「名次陈旧」；');
-  L.push('- **F3（dual）**：`w · rank^-GAMMA · decay(gapR) · decay(gapP)` —— 两项相乘（**定稿采用**）。');
-  L.push('');
-  {
-    /* 站点现行 esum 用 siteEsum（已在前面忠实复刻，见 computeMode 之后的定义）。 */
-
-    /* M4 / M2 参照 */
-    const m4m = new Map();
-    for (const ln of fs.readFileSync(path.join(__dirname, 'M4_seats.tsv'), 'utf8').trim().split('\n').slice(1)) {
-      const c = ln.split('\t'); m4m.set(c[1], +c[2]);
-    }
-    const m2m = new Map();
-    for (const ln of fs.readFileSync(path.join(__dirname, 'M2_ranking.tsv'), 'utf8').trim().split('\n').slice(1)) {
-      const c = ln.split('\t'); m2m.set(c[2], +c[3]);
-    }
-
-    const A0 = computeMode('retire'), A2 = computeMode('pb'), A3 = computeMode('dual');
-    const totOf = (arr) => arr.reduce((a, b) => a + b.s, 0);
-    const setTop = (arr, k) => new Set(arr.slice(0, k).map((x) => x.name));
-
-    L.push('#### 6.7.1 三口径总览');
-    L.push('');
-    L.push('| 口径 | 计分人数 | 全站总量 | ×M4 ρ | ×M2 ρ | ×站点 esum ρ | Top25 与 F3 重合 |');
-    L.push('|---|---:|---:|---:|---:|---:|---:|');
-    for (const [tag, arr] of [['V0 只罚不参赛（retire）', A0], ['F2 只罚名次陈旧（pb）', A2], ['**F3 两项相乘（dual，定稿）**', A3]]) {
-      const s4 = rhoTop(arr, m4m, 100), s2 = rhoTop(arr, m2m, 100), se = rhoTop(arr, siteEsum, 100);
-      L.push('| ' + tag + ' | ' + num(arr.length) + ' | ' + F(totOf(arr)) +
-        ' | ' + (s4 == null ? '—' : F(s4)) + ' | ' + (s2 == null ? '—' : F(s2)) +
-        ' | ' + (se == null ? '—' : F(se)) + ' | ' +
-        arr.slice(0, 25).filter((x) => setTop(A3, 25).has(x.name)).length + '/25 |');
-    }
-    L.push('');
-    L.push('- **人口完全不变**（' + num(A0.length) + ' 人）—— 三口径只改权重、不改谁有分；');
-    L.push('- **F3 的 Top25 与 V0 重合 ' + A0.slice(0, 25).filter((x) => setTop(A3, 25).has(x.name)).length + '/25、Top10 重合 ' +
-      A0.slice(0, 10).filter((x) => setTop(A3, 10).has(x.name)).length + '/10** —— 不是推倒重来，是纠偏；');
-    L.push('- **F3 在正交性上全面优于 V0**：×M4 从 ' + F(rhoTop(A0, m4m, 100)) + ' 降到 ' + F(rhoTop(A3, m4m, 100)) +
-      '，×esum 从 ' + F(rhoTop(A0, siteEsum, 100)) + ' 降到 ' + F(rhoTop(A3, siteEsum, 100)) + '。');
-    L.push('');
-
-    /* ── P1 病灶量化 ───────────────────────────────────────────── */
-    L.push('#### 6.7.2 病灶修得怎么样');
-    L.push('');
-    {
-      const stale = [], fos = [];
-      for (const x of ranks) {
-        if (x.wr <= 0 || x.wr > CFG.DEPTH) continue;
-        if (CFG.SKIP_RETIRED && RETIRED[x.ev] != null) continue;
-        const lc = lastByEv.get(x.pid + '|' + x.ev);
-        const gR = lc == null ? 99 : yrs(lc);
-        const gP = pbGapOf(x.pid, x.ev, x.tr);
-        const w = W[x.ev] == null ? FLOOR : W[x.ev];
-        const base = w * x.sc;
-        const dR = decayOf(gR), dP = decayOf(gP);
-        const rec = { name: pName.get(x.pid) || x.pid, ev: x.ev, tr: x.tr, wr: x.wr, gR, gP,
-          v0: base * dR, f2: base * dP, f3: base * dR * dP };
-        if (gR <= 1 && gP >= 2) stale.push(rec);      // 活跃但 PB 陈旧
-        if (gR >= 3) fos.push(rec);                   // 退役化石
-      }
-      const sumOf = (arr, k) => arr.reduce((a, b) => a + b[k], 0);
-      L.push('| 病灶 | 条目 | V0 贡献 | F2 贡献 | F3 贡献 | F3 相对 V0 |');
-      L.push('|---|---:|---:|---:|---:|---:|');
-      for (const [tag, arr] of [['**P1 病灶：活跃但 PB ≥2 年未刷新**', stale],
-                                ['退役化石：该项目内停赛 ≥3 年', fos]]) {
-        const v0 = sumOf(arr, 'v0'), f2 = sumOf(arr, 'f2'), f3 = sumOf(arr, 'f3');
-        L.push('| ' + tag + ' | ' + num(arr.length) + ' | ' + F(v0) + ' | ' + F(f2) + ' | ' + F(f3) +
-          ' | ' + (v0 > 0 ? F((1 - f3 / v0) * 100) + '%' : '—') + ' |');
-      }
-      L.push('');
-      L.push('- **P1 病灶（' + num(stale.length) + ' 条）在 V0 里占全站 ' +
-        F((sumOf(stale, 'v0') / totOf(A0)) * 100) + '%**，F3 压到 ' +
-        F((sumOf(stale, 'f3') / totOf(A3)) * 100) + '%（绝对贡献降 ' +
-        F((1 - sumOf(stale, 'f3') / sumOf(stale, 'v0')) * 100) + '%）；');
-      L.push('- **退役化石（' + num(fos.length) + ' 条）**在 V0 里占 ' +
-        F((sumOf(fos, 'v0') / totOf(A0)) * 100) + '%，F3 压到 ' +
-        F((sumOf(fos, 'f3') / totOf(A3)) * 100) + '%（绝对贡献降 ' +
-        F((1 - sumOf(fos, 'f3') / sumOf(fos, 'v0')) * 100) + '%）；');
-      L.push('');
-      L.push('P1 病灶命中最重的 6 条：');
-      L.push('');
-      L.push('| 选手 | 项目 | 轨道 | 官方名次 | 参赛 gap | PB 年龄 | V0 分 | F3 分 |');
-      L.push('|---|---|---|---:|---:|---:|---:|---:|');
-      for (const st of stale.slice().sort((a, b) => b.v0 - a.v0).slice(0, 6)) {
-        L.push('| ' + st.name + ' | `' + st.ev + '` | ' + st.tr + ' | #' + st.wr + ' | ' +
-          st.gR.toFixed(2) + 'y | ' + st.gP.toFixed(2) + 'y | ' + F(st.v0) + ' | ' + F(st.f3) + ' |');
-      }
-      L.push('');
-    }
-
-    /* ── 官方 #1 是否被错误压下 ─────────────────────────────────── */
-    L.push('#### 6.7.3 ★ 语义风险检查：官方 #1 会不会被错压');
-    L.push('');
-    {
-      const perCombo = new Map();
-      for (const x of ranks) {
-        if (x.wr <= 0 || x.wr > CFG.DEPTH) continue;
-        const key = x.ev + '|' + x.tr;
-        if (!perCombo.has(key)) perCombo.set(key, []);
-        perCombo.get(key).push(x);
-      }
-      let nCombo = 0, demoted = 0;
-      const demoteList = [];
-      for (const [key, arr] of [...perCombo.entries()].sort()) {
-        const ev = key.split('|')[0], tr = key.split('|')[1];
-        if (CFG.SKIP_RETIRED && RETIRED[ev] != null) continue;
-        const ones = arr.filter((x) => x.wr === 1);
-        if (!ones.length) continue;
-        nCombo++;
-        const w = W[ev] == null ? FLOOR : W[ev];
-        const sc = arr.map((x) => {
-          const lc = lastByEv.get(x.pid + '|' + ev);
-          const gR = lc == null ? 99 : yrs(lc);
-          const gP = pbGapOf(x.pid, ev, tr);
-          return { pid: x.pid, wr: x.wr, s: w * x.sc * decayOf(gR) * decayOf(gP), gP, gR };
-        }).sort((a, b) => b.s - a.s);
-        /* 官方 #1 若并列，取其中 PB 最老的一位（最不利情形） */
-        const worst = ones.map((x) => sc.find((z) => z.pid === x.pid)).sort((a, b) => b.gP - a.gP)[0];
-        const rankAfter = sc.findIndex((z) => z.pid === worst.pid) + 1;
-        if (rankAfter > 1) {
-          demoted++;
-          const succ = sc[0];
-          const spd = pbDay.get(succ.pid + '|' + ev + '|' + tr);
-          demoteList.push({ key, name: pName.get(worst.pid) || worst.pid, gP: worst.gP, gR: worst.gR, rankAfter,
-            succ: pName.get(succ.pid) || succ.pid, succPB: spd == null ? 99 : yrs(spd) });
-        }
-      }
-      L.push('F3 下 **' + nCombo + ' 个组合**里，官方 #1 被压出本项目第一的有 **' + demoted + '** 个：');
-      L.push('');
-      for (const d of demoteList) {
-        L.push('- `' + d.key + '`：#1 ' + d.name + '（PB ' + F(d.gP) + 'y / 参赛 ' + F(d.gR) + 'y）→ F3 后第 ' + d.rankAfter +
-          ' 名；继任者是 ' + d.succ + '（PB ' + F(d.succPB) + 'y）');
-      }
-      L.push('');
-      L.push('→ 两例的共同特征：**官方 #1 的 PB 已经 ' +
-        demoteList.map((d) => F(d.gP) + 'y').join(' / ') + ' 没刷新**，');
-      L.push('  而 F3 后的新科第一名 PB 年龄分别是 ' +
-        demoteList.map((d) => F(d.succPB) + 'y').join(' / ') + ' —— 明显更新。');
-      L.push('  即「官方榜说他是 #1，但那个 #1 是几年前的成绩」—— **这正是 M5 要纠正的东西**，不是误伤。');
-      L.push('');
-    }
-
-    /* ── 参数敏感性 ─────────────────────────────────────────────── */
-    L.push('#### 6.7.4 参数敏感性（F3）');
-    L.push('');
-    {
-      const calcP = (years, floor) => {
-        const dec = (g) => Math.max(floor, 1 - (g / years) * (1 - floor));
-        const sc = new Map();
-        for (const x of ranks) {
-          if (x.wr <= 0 || x.wr > CFG.DEPTH) continue;
-          if (CFG.SKIP_RETIRED && RETIRED[x.ev] != null) continue;
-          const tw = CFG.TRACK_WEIGHT[x.tr]; if (!tw) continue;
-          const lc = lastByEv.get(x.pid + '|' + x.ev);
-          const gR = lc == null ? 99 : yrs(lc);
-          const gP = pbGapOf(x.pid, x.ev, x.tr);
-          const w = W[x.ev] == null ? FLOOR : W[x.ev];
-          const s = w * x.sc * dec(gR) * dec(gP) * tw;
-          if (s <= 0) continue;
-          sc.set(x.pid, (sc.get(x.pid) || 0) + s);
-        }
-        return [...sc.entries()].map(([pid, s]) => ({ pid, s, name: pName.get(pid) || pid }))
-          .sort((a, b) => b.s - a.s || a.name.localeCompare(b.name));
-      };
-      L.push('| 衰减年数 | 下限 0.0 | 下限 0.1 | 下限 0.2（采用） | 下限 0.3 |');
-      L.push('|---:|---:|---:|---:|---:|');
-      const top5s = new Set();
-      for (const yrsN of [3, 5, 8, 10]) {
-        const cells = [0, 0.1, 0.2, 0.3].map((fl) => {
-          const a = calcP(yrsN, fl);
-          top5s.add(a.slice(0, 5).map((x) => x.name).join('|'));
-          return F(totOf(a)) + '（' + num(a.length) + '人）';
-        });
-        L.push('| ' + yrsN + ' | ' + cells.join(' | ') + ' |');
-      }
-      L.push('');
-      L.push('- **Top5 在所有 ' + (4 * 4) + ' 个档位' + (top5s.size === 1 ? '完全一致' : '有 ' + top5s.size + ' 种组合') +
-        '** —— 衰减参数不是敏感旋钮；');
-      L.push('- 只有下限压到 0.0 才会让人口掉到 ' + num(calcP(5, 0).length) + ' 人（陈年名次被彻底清零）；');
-      L.push('- 采用 **5 年 / 下限 0.2**：语义是「5 年前的名次只剩 20% 权重」，直观且与 M1–M4「只衰减不归零」一致。');
-      L.push('');
-    }
-  }
-
-  L.push('## 7 与其它维度的边界');
-  L.push('');
-  L.push('| 维度 | 问的问题 | 时间性质 |');
-  L.push('|---|---|---|');
-  L.push('| M1 纪录分 | 你守纪录守了多久 | 历史 |');
-  L.push('| M2 领奖台 | 你拿过多少冠亚季 | 历史 |');
-  L.push('| M3 大赛表现 | 你在锦标赛上推纪录多少次 | 历史 |');
-  L.push('| M4 统治力 | 你在世界前十待了多久 | 历史 |');
-  L.push('| **M5 当前排名** | **你现在排第几** | **当下** |');
-  L.push('| M6 对手强度 | 你击败的对手当时多强 | 历史 |');
-  L.push('');
-  L.push('**M5 不会抹掉历史**：M1–M4 独立保留。M5 只回答「现在」。');
-  L.push('**M5 也不与 M4 重复**：M4 = 历史占席时长，M5 = 此刻名次，实测 ρ 接近 0（见 §3.3 / §6.7.1）。');
-  L.push('');
-  L.push('> ⚠️ **与站点现有 `p.esum` 的关系（必须处理）**：');
-  L.push('> 站点 `esum = Σ_e 100 × rank_e^-0.35 × w_e(V1)`（单次轨 canonical 名次、无深度上限、无衰减），');
-  L.push('> 与 M5 **同源**（同一份官方名次 + 同一类项目权重），实测 ρ ≈ 0.44（§6.7.1）。');
-  L.push('> M5 是 esum 的**严格细化**：加了深度截断（100）、加了双衰减、把 γ 从 0.35 收到 1.0、改用 V2 权重。');
-  L.push('> → **esum 必须被 M5 取代，不能两者同时计入总分**，否则「现势排名」会被算两遍。');
-  L.push('> → 处置方案（**未接入 build.js**，待模型全部完善后统一推线）：');
-  L.push('>   ① `p.esum` 保留为「单项目明细」的展示量，不进总分；');
-  L.push('>   ② `p.overall` 改为「六维总分」，其中 M5 作为一个维度计入，不再有独立的 esum 项。');
-  L.push('');
-
-  L.push('## 8 已知边界');
-  L.push('');
-  if (CFG.RANK_MODE === 'official') {
-    L.push('1. **官方 ranks 是终身榜不是当前榜** —— M5-F2 **接受这个事实**：它就等于这张终身榜本身。');
-    L.push('   gapR（未参赛年数）/ gapP（PB 陈旧年数）仍随明细输出，**但只作展示，不进公式**。');
-    L.push('   代价：退役 10 年而 PB 未被超越的人，会保有其名次的全额权重');
-    L.push('   （实测 Feliks #59、Stanley Chapel #6、林恺俊靠 10.55 年前的 `333mbf` 计分）。');
-    L.push('   → 若要改成「近期实际表现」，代码已支持（`RANK_MODE = "window"`），');
-    L.push('   但该口径存在**语义脱钩**（与官方榜平均 ρ 仅 0.8222，`222|single` 低至 0.2456）');
-    L.push('   与**深度截断失效**（`555bf|average` 窗口仅 68 人）两大问题，**故不作为主口径**。');
-  } else {
-    L.push('1. **窗口口径下，「窗口内没参赛」= 该组合直接 0 分** —— 与官方口径的「衰减到 0.2」不同，');
-    L.push('   这是 F1 的设计意图：当前排名只反映近期实际表现。');
-  }
-  L.push('2. **深度 ' + CFG.DEPTH + ' 之外一律 0 分** —— 一个能进 333 单次 #101 的人拿不到任何分，');
-  L.push('   这是「头部导向」的设计选择，不是数据缺陷。');
-  L.push('3. **`fto`（八面体）无官方排名数据** —— 该项目在 M5 中完全缺席。');
-  L.push('4. **`333mbf`/`333mbo` 的 average 轨道官方无数据** —— 多盲只有单次榜。');
-  if (CFG.RANK_MODE === 'official') {
-    L.push('5. **并列名次按官方同名次处理** —— 40 个组合里仅 `333fm|single` 有 4 人并列 #1，影响可忽略。');
-  } else {
-    L.push('5. **窗口口径用序号排名，同值按「达成日 → 姓名」定序** —— 不用官方同名次，');
-    L.push('   否则并列会把深度截断冲破（实测 12,227 条 > 3,300 上限）。');
-  }
-  L.push('6. **（M5-F2 起失效）** 旧口径的「衰减下限 0.2」已随双衰减一起下线；');
-  L.push('   M5-F2 里不存在任何时间折扣，长期不参赛者在该组合保留 **100%** 名次权重。');
-  L.push('7. **官方 ranks 只提供现势快照** —— M4 必须重建历史 PB（官方没有历史序列）；');
-  L.push('   M5 在 `official` 口径下直接采信官方榜，在 `window` 口径下从 `results.tsv` 自行重排名。');
-  L.push('8. **（M5-F2 起失效）** 旧口径「既久未参赛 + 名次陈旧 → 双重打折」已下线；');
-  L.push('   M5-F2 一律按名次全额计分，无论这个名次是昨天还是十年前刷出来的。');
-  L.push('   （旧口径极端情况下权重曾低到 0.04（gapR=5y 且 gapP=5y → 0.2×0.2），');
-  L.push('   实测 Top25 无人因此掉出前 25，量级可控。');
-  L.push('9. **M5 未接入 build.js** —— 站点现行总分仍是 esum（旧的单一口径）。');
-  L.push('   接入方案与六维归一化待模型全部完善后统一处理（见 §7）。');
-  L.push('');
-
-  L.push('## 9 定稿口径（M5-F1）');
-  L.push('');
-  L.push('```');
-  L.push('M5 = Σ_{e,t} w_e · rank_{e,t}^-1.0 · max(0.2, 1 - gapR_{e,t}/5 × 0.8) · max(0.2, 1 - gapP_{e,t}/5 × 0.8)');
-  L.push('');
-  L.push('  w_e     = EV_WEIGHT_V2');
-  L.push('  rank    = ' + (CFG.RANK_MODE === 'window'
-    ? '近 ' + CFG.WINDOW_DAYS + ' 天窗口内实际最好成绩的重排名（序号口径）'
-    : '官方 world_rank（终身 PB 榜）'));
-  L.push('  深度    = 世界前 100（超出 0 分）');
-  L.push('  轨道    = single / average 各计一次（权重各 1.0）');
-  L.push('  停办项目 = 整体不计分');
-  L.push('  gapR   = 该项目内末次参赛距今天数（参赛新鲜度）');
-  L.push('  gapP   = 该项目该轨道 PB 达成距今天数（名次新鲜度）');
-  L.push('```');
-  L.push('');
-  L.push('**运行口径**：`RANK_MODE = ' + CFG.RANK_MODE + '`，`DECAY_MODE = ' + CFG.DECAY_MODE + '`' +
-    (CFG.RANK_MODE === 'window' ? '，`WINDOW_DAYS = ' + CFG.WINDOW_DAYS + '`，`WINDOW_DECAY = ' + CFG.WINDOW_DECAY + '`' : '') + '。');
-  L.push('');
-  L.push('**基线**：' + num(ranked.length) + ' 人 / 总量 ' + F(total));
-  L.push('');
-  L.push('> 三口径（V0/F2/F3）的完整实测对照见本报告 §6.7；');
-  L.push('> 窗口口径（F1）的完整对照见 `M5_F1窗口重排名对照.md`；');
-  L.push('> 审阅与决策记录见 `M5_口径审阅报告.md`；');
-  L.push('> 冻结基线与解封条件见 `M5_封存_2026-10-25.md`。');
+  L.push('1. **官方 ranks 是终身 PB 榜**：Kinch 口径同样基于 PB，退役者的 PB 未被超越就仍计入；');
+  L.push('   这是 Kinch 的原味，不引入时间衰减。');
+  L.push('2. **历史快照** 由 `m5_facts.js` 按「截至年末」的 WR/PB 逐年重算，语义一致；');
+  L.push('   历史年份为控体积只保留各组合前 100（最新年份全量），长尾人物的历史均值会略偏低。');
+  L.push('3. **`fto`（八面体）** 官方 ranks 无数据，不参与。');
+  L.push('4. **`333mbf`** 只有单次榜，`average` 组合不存在。');
   L.push('');
 
   fs.writeFileSync(path.join(__dirname, 'M5_当前排名.md'), L.join('\n'), 'utf8');
