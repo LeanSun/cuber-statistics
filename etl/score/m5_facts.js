@@ -13,11 +13,14 @@
  *       cost = 成绩（多盲解码为 cost，统一「越小越强」）
  *       WR   = 该年末世界最佳
  *       k    = 100 × WR / cost            ← 单事件 Kinch 分（0..100，WR 持有者 = 100）
- *     聚合（全组合平均、缺项=0）在 sixdim.js 里做：M5 = (1/N) × Σ k，N = 现役组合数。
+ *     **选轨（2026-11-04 改严格口径）**：每个项目只留一条轨 ——
+ *       多盲 333mbf / 四盲 / 五盲 → single；三盲 / 最少步 → 单次与平均取较优；其余 → avg。
+ *     输出 kind 固定写 `best`，sixdim 据此把分母算成「现役项目数」（17）。
+ *     聚合（项目等权平均、缺项=0）在 sixdim.js 里做：M5 = (1/17) × Σ k。
  *   · 旧 M5-F2（w_e × rank^-GAMMA）与 M5-F3（分段比值）均已废。
  *   · 深度：**最新年份全量**（站点取用的快照）；历史年份限前 100
  *     ——45 年 × 全量会膨胀到 ≈1GB，而 sixdim.js 是整表载入，会 OOM。
- *   · 停办项目（EV_RETIRED_DAY ≤ 年末）不计分；双轨各 1.0
+ *   · 停办项目（EV_RETIRED_DAY ≤ 年末）不计分。
  *
  *   ★ 查询语义（与累计维不同）：M5 是「此刻位置」，as-of=Y 取**最近快照**
  *     （year ≤ asOf 的最大 year），不是跨年求和。
@@ -145,32 +148,46 @@ async function main() {
       if (v < s.b || (v === s.b && d < s.bd)) { s.b = v; s.bd = d; }
       if (d > s.ld) s.ld = d;
     }
-    /* 快照 */
+    /* 快照：① 逐 (项目,轨道) 算 WR 与 k；② 按 Kinch 官方选轨合并成「每项目一个分」 */
+    const kByEv = new Map();          // ev → {single: Map(pi→k), avg: Map(pi→k)}
     for (const [ck, m] of state) {
       const ei = ck >> 1, kind = ck & 1;
       const ev = evArr[ei];
       const rd = RETIRED.get ? RETIRED.get(ev) : RETIRED[ev];
       if (rd != null && rd <= yEnd) continue;       // 停办项目不计分
-      const w = W[ev] == null ? (RN.WEIGHT_V2_CFG ? RN.WEIGHT_V2_CFG.floor : 1) : W[ev];
       const arr = [...m.entries()];
       arr.sort((a, b) => (a[1].b - b[1].b) || (a[1].bd - b[1].bd));
       /* Kinch 标定：该年末的世界最佳 cost（WR），逐 (项目,轨道) 各自取 */
       const wr = arr.length ? arr[0][1].b : 0;
+      if (!(wr > 0)) continue;
       /* 深度：仅最新年份全量（站点实际取用的快照）；历史年份限深以控体积
          ——45 年 × 全量会膨胀到 ≈1GB，sixdim.js 整表载入会 OOM */
       const take = (y === LAST_YEAR) ? arr.length : Math.min(deep, arr.length);
+      let slot = kByEv.get(ev);
+      if (!slot) { slot = { single: new Map(), avg: new Map() }; kByEv.set(ev, slot); }
+      const dst = kind === 0 ? slot.single : slot.avg;
       for (let rk = 1; rk <= take; rk++) {
         const [pi, s] = arr[rk - 1];
-        /* 衰减档保留仅供对照（定稿 'none' → dec = 1） */
-        let dec = 1;
-        if (CFG_DECAY_MODE !== 'none') {
-          const gapR = (yEnd - s.ld) / 365, gapP = (yEnd - s.bd) / 365;
-          const dR = Math.max(0.2, 1 - gapR / 5 * 0.8), dP = Math.max(0.2, 1 - gapP / 5 * 0.8);
-          dec = CFG_DECAY_MODE === 'dual' ? dR * dP : CFG_DECAY_MODE === 'pb' ? dP : dR;
-        }
-        const score = kinchScore(s.b, wr);
-        if (score <= 0) continue;
-        facts.push(`${y}\t${pidArr[pi]}\t${ev}\t${kind === 0 ? 'single' : 'avg'}\t${rk}\t${score.toFixed(6)}`);
+        const k = kinchScore(s.b, wr);
+        if (k > 0) dst.set(pi, k);
+      }
+    }
+    /* 选轨规则（与 kinchranking.com 一致）：多盲/四盲/五盲 → single；三盲/最少步 → 取较优；其余 → avg */
+    for (const [ev, slot] of kByEv) {
+      const rule = STRICT_SINGLE.has(ev) ? 'single' : STRICT_BEST.has(ev) ? 'best' : 'avg';
+      const chosen = new Map();       // pi → k
+      if (rule !== 'avg') for (const [pi, k] of slot.single) chosen.set(pi, k);
+      for (const [pi, k] of slot.avg) {
+        if (rule === 'single') continue;              // 只认单次榜的项目忽略 avg
+        if (rule === 'avg') { chosen.set(pi, k); continue; }
+        if (k > (chosen.get(pi) || 0)) chosen.set(pi, k);   // best：取较优
+      }
+      const rows = [...chosen.entries()].sort((a, b) => b[1] - a[1]);
+      const take = (y === LAST_YEAR) ? rows.length : Math.min(deep, rows.length);
+      for (let rk = 1; rk <= take; rk++) {
+        const [pi, k] = rows[rk - 1];
+        /* kind 固定写 'best'：一个项目只剩一条轨的分，sixdim 据此把分母算成「项目数」 */
+        facts.push(`${y}\t${pidArr[pi]}\t${ev}\tbest\t${rk}\t${k.toFixed(6)}`);
       }
     }
     if (y % 5 === 0) log(`… ${y} 快照完成 (${((Date.now() - t0) / 1000).toFixed(0)}s)`);
@@ -180,16 +197,13 @@ async function main() {
   console.log(`已写 M5_facts.tsv（${num(facts.length)} 行）耗时 ${((Date.now() - t0) / 1000).toFixed(0)}s`);
 }
 const CFG_DEPTH = 100;           // 仅**历史年份**的深度上限（最新年份全量，见 LAST_YEAR）
-const CFG_DECAY_MODE = 'none';   // M5-F2 定稿：'none'｜旧对照档 'retire' / 'pb' / 'dual'
-const CFG_GAMMA = 0.5;           // 【已废】M5-F2 名次权重指数；F3 起改用成绩比值，保留仅供对照
-/* ── M5-F3（2026-10-29）：成绩比值 · 按项目标定的分段函数（与 m5_current_rank.js 同参同式）─
- *   D0 = 1 − WR/P1（WR = 该年末世界最佳，P1 = 该年末第 1% 分位）  ← 逐项目、逐年标定
- *   d  = 1 − WR/cost
- *   d ≤ D0 : 1000 × (1 − (1−TARGET/1000)·d/D0)   ；  d > D0 : TARGET × (D0/d)^TAIL_H */
-const CFG_TARGET = 750;          // 第 1% 分位选手的分数（用户要求 700~800）
-const CFG_TAIL_H = 8;            // 长尾衰减指数
-const CFG_PCT = 0.01;            // 标定分位（前 1%）
 const LAST_YEAR = 2026;          // 最新年份**全量**输出（站点实际取用的快照）
+/* ── Kinch 官方选轨规则（与 kinchranking.com 一致；2026-11-04 起严格口径）──
+ *   多盲 / 四盲 / 五盲：只有单次榜 → single
+ *   三盲 / 最少步：单次与平均取较优
+ *   其余项目：取平均 */
+const STRICT_SINGLE = new Set(['333mbf', '444bf', '555bf']);
+const STRICT_BEST = new Set(['333bf', '333fm']);
 /* Kinch：单事件得分 = 100 × 世界纪录 / 个人最好（0..100，WR 持有者 = 100） */
 function kinchScore(cost, wr) {
   if (!(cost > 0) || !(wr > 0)) return 0;

@@ -264,14 +264,35 @@ function pearson(xs, ys) {
   };
   const calOf = (ev, tr) => CAL.get(ev + '|' + tr);
   for (const x of ranks) x.sc = kinchScore(x.cost, calOf(x.ev, x.tr));
-  /* 忠实 Kinch 的分母 N：现役 (项目,轨道) 组合数（停办项目不计） */
-  const RETIRED_EV = RN.EV_RETIRED_DAY || {};
-  let N_COMBOS = 0;
-  for (const k of CAL.keys()) {
-    if (CFG.SKIP_RETIRED && RETIRED_EV[k.split('|')[0]] != null) continue;
-    N_COMBOS++;
+
+  /* ── 3c. Kinch 官方选轨：每个项目只留一条轨（2026-11-04 改严格口径）──
+   *   多盲 / 四盲 / 五盲：只有单次榜 → single
+   *   三盲 / 最少步：单次与平均取较优
+   *   其余项目：取平均
+   * 与 kinchranking.com 同口径 → 分母是**现役项目数**（17），不是组合数（旧版 33）。 */
+  const STRICT_SINGLE = new Set(['333mbf', '444bf', '555bf']);
+  const STRICT_BEST = new Set(['333bf', '333fm']);
+  /* ⚠️ ranks 里的轨道名是 'single' / 'average'（不是 'avg'），返回值必须与之一致 */
+  const pickRule = (ev) => (STRICT_SINGLE.has(ev) ? 'single' : STRICT_BEST.has(ev) ? 'best' : 'average');
+  const pickedBest = new Map();          // pid|ev → {x, sc}
+  for (const x of ranks) {
+    if (!(x.sc > 0)) continue;
+    const rule = pickRule(x.ev);
+    if (rule !== 'best' && x.tr !== rule) continue;
+    const key = x.pid + '|' + x.ev;
+    const cur = pickedBest.get(key);
+    if (!cur || x.sc > cur.sc) pickedBest.set(key, { x, sc: x.sc });
   }
-  log('      已标定 (项目,轨) 组合:', num(CAL.size), '；现役组合 N =', num(N_COMBOS));
+  const picked = [...pickedBest.values()].map((o) => o.x);
+  const RETIRED_EV = RN.EV_RETIRED_DAY || {};
+  const evSeen = new Set();
+  for (const x of picked) {
+    if (CFG.SKIP_RETIRED && RETIRED_EV[x.ev] != null) continue;
+    evSeen.add(x.ev);
+  }
+  const N_COMBOS = evSeen.size;          // 严格 Kinch：分母恒为现役项目数
+  log('      已标定 (项目,轨) 组合:', num(CAL.size),
+    '；选轨后条目:', num(picked.length), '；现役项目 N =', num(N_COMBOS));
 
   /* 需要追踪 PB 达成日的键：pid|ev|tr */
   const needPb = new Set();
@@ -400,7 +421,8 @@ function pearson(xs, ys) {
       }
     }
   } else {
-    for (const x of ranks) {
+    /* 严格 Kinch：只走选轨后的条目（每项目一条轨），分数即 x.sc，等权无衰减 */
+    for (const x of picked) {
       if (x.wr > CFG.DEPTH) { skippedDeep++; continue; }
       if (CFG.SKIP_RETIRED && RETIRED[x.ev] != null) { skippedRetired++; continue; }
       const tw = CFG.TRACK_WEIGHT[x.tr];
@@ -526,37 +548,38 @@ function pearson(xs, ys) {
   L.push('**M5 = 你在每个项目上「离世界纪录有多远」的平均值。**');
   L.push('');
   L.push('单事件得分 = 100 × 世界纪录 / 你的 PB（WR 持有者 = 100，慢一倍 = 50）；');
-  L.push('总分 = 所有现役 (项目,轨道) 组合的**算术平均**，没参赛的项目记 0。');
+  L.push('总分 = 所有**现役 17 个项目**的**算术平均**，没参赛的项目记 0。');
   L.push('→ 理论满分 100（需全项目 WR），偏科者会被明显压低，是「全能榜」口径。');
   L.push('');
   L.push('## 1 公式');
   L.push('');
   L.push('```');
-  L.push('M5 = (1/N) × Σ_{e,t} 100 × WR_{e,t} / PB_{e,t}');
+  L.push('M5 = (1/N) × Σ_e 100 × WR_e / PB_e');
   L.push('');
-  L.push('  e,t   = 项目 × 轨道（single / average，双轨各计一次）');
-  L.push('  WR    = 该 (项目,轨道) 的世界纪录（多盲按 decodeMulti 折成 cost）');
+  L.push('  e     = 现役项目（每项目按 Kinch 官方规则只取一条轨，见下）');
+  L.push('  WR    = 该项目所选轨道的世界纪录（多盲按 decodeMulti 折成 cost）');
   L.push('  PB    = 个人最好（多盲同口径）');
-  L.push('  N     = 现役 (项目,轨道) 组合数 = ' + N_COMBOS + '（停办项目不计）');
-  L.push('  缺项  = 该组合没成绩 → 计 0，但仍占分母 N');
+  L.push('  N     = 现役项目数 = ' + N_COMBOS + '（停办项目不计）');
+  L.push('  缺项  = 该项目没成绩 → 计 0，但仍占分母 N');
   L.push('```');
   L.push('');
   L.push('- 停办项目（`333ft` / `magic` / `mmagic` / `333mbo`）整体不计分；');
-  L.push('- 多盲 `333mbf` 只有单次榜，`average` 组合不存在，N 自然不含它；');
+  L.push('- **选轨规则（与 kinchranking.com 一致）**：多盲 `333mbf` / 四盲 / 五盲只有单次榜 → 取 single；');
+  L.push('  三盲 / 最少步 → 单次与平均**取较优**；其余 12 项 → 取 average；');
   L.push('- 与旧 M5-F3 的差别：旧版 1000 分制 + 按项目标定 D0 + 前1%拉伸/长尾压缩 + 加权求和；');
-  L.push('  新版 100 分制 + 纯 WR/PB 比值 + 全组合等权平均。');
+  L.push('  新版 100 分制 + 纯 WR/PB 比值 + 每项目单轨等权平均（分母 17，不是旧双轨口径的 33）。');
   L.push('');
   L.push('## 2 数据规模');
   L.push('');
   L.push('- 全站有成绩的人：**' + num(lastAll.size) + '**');
   L.push('- 官方排名条目：**' + num(ranks.length) + '**');
   L.push('- **M5 计分人数：' + num(ranked.length) + '**');
-  L.push('- 现役组合 N：**' + N_COMBOS + '**；停办项目剔除：' + num(skippedRetired) + ' 条');
+  L.push('- 现役项目 N：**' + N_COMBOS + '**；停办项目剔除：' + num(skippedRetired) + ' 条');
   L.push('- M5 全站总量（各人均值之和）：**' + F(total) + '**');
   L.push('');
   L.push('## 3 M5 榜 Top25');
   L.push('');
-  L.push('| # | 选手 | M5(Kinch) | 覆盖项目 | 组合数 | 最好名次 | 末次参赛 | 距今 |');
+  L.push('| # | 选手 | M5(Kinch) | 覆盖项目 | 已计项目 | 最好名次 | 末次参赛 | 距今 |');
   L.push('|---|---|---:|---:|---:|---:|---|---:|');
   ranked.slice(0, 25).forEach((p, i) => {
     const lc = lastAll.get(p.pid);
@@ -571,7 +594,7 @@ function pearson(xs, ys) {
   for (const nm of FOCUS) {
     const p = ranked.find((x) => x.name === nm);
     if (!p) { L.push('**' + nm + '** —— 不在 M5 榜内'); L.push(''); continue; }
-    L.push('**' + nm + '**　M5 = **' + F(p.m5) + '**　（覆盖 ' + p.evs.size + ' 个项目，' + p.parts.length + ' 个组合）');
+    L.push('**' + nm + '**　M5 = **' + F(p.m5) + '**　（覆盖 ' + p.evs.size + ' 个项目，已计 ' + p.parts.length + ' 项）');
     L.push('');
     L.push('| 项目 | 轨道 | 世界名次 | Kinch 分 |');
     L.push('|---|---|---:|---:|');
@@ -631,7 +654,7 @@ function pearson(xs, ys) {
   L.push('2. **历史快照** 由 `m5_facts.js` 按「截至年末」的 WR/PB 逐年重算，语义一致；');
   L.push('   历史年份为控体积只保留各组合前 100（最新年份全量），长尾人物的历史均值会略偏低。');
   L.push('3. **`fto`（八面体）** 官方 ranks 无数据，不参与。');
-  L.push('4. **`333mbf`** 只有单次榜，`average` 组合不存在。');
+  L.push('4. **`333mbf`** 只有单次榜，按规则取单次。');
   L.push('');
 
   fs.writeFileSync(path.join(__dirname, 'M5_当前排名.md'), L.join('\n'), 'utf8');

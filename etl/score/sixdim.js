@@ -262,16 +262,17 @@ for (const dim of OPT.dims) {
       rows.push(c); if (y > bestYear) bestYear = y;
     }
     if (bestYear >= 0) {
-      /* 忠实 Kinch：M5 = (1/N) × Σ_{e,t} (k/100)，缺项按 0 计（分母恒为 N）。
+      /* 严格 Kinch：M5 = (1/N) × Σ_e (k/100)，N = 现役项目数（17），缺项按 0 计。
+         M5 已按项目选好唯一一条轨（facts 的 kind 恒为 'best'），故**不受 --track 影响**：
+         单次/平均两轨交付表里 M5 同值，这是口径本身使然（Kinch 没有「单次版/平均版」）。
          这里把 per-event 值编码成 v = EVSUM·(k/100)/N/evW(ev)，
          使下游既有公式仍成立：s5 = Σ_ev v·evW·FULL/Σw = EVSUM·(1/N)Σ(k/100)·FULL/Σw。
          （maxOf['M5'] 随后压成 1，见合成段） */
       const fr = rows.filter((c) => +c[0] === bestYear
-        && (OPT.track === 'both' || c[3] === OPT.track)
         && (!OPT.ev || c[2] === OPT.ev));
-      const combos = new Set(), evs = new Set();
-      for (const c of fr) { combos.add(c[2] + '|' + c[3]); evs.add(c[2]); }
-      const N = combos.size || 1;
+      const evs = new Set();
+      for (const c of fr) evs.add(c[2]);
+      const N = evs.size || 1;
       let EVSUM = 0;
       for (const ev of evs) EVSUM += evW(ev);
       for (const c of fr) {
@@ -280,7 +281,7 @@ for (const dim of OPT.dims) {
         const v = EVSUM * (k / 100) / N / evW(c[2]);
         put(c[1], c[2], v, isCross(c[1]) ? ctyOfYear(c[1], +c[0]) : null);
       }
-      console.log(`# M5 快照取 ${bestYear} 年末（Kinch 均值：N=${N} 组合，EVSUM=${EVSUM.toFixed(4)}）`);
+      console.log(`# M5 快照取 ${bestYear} 年末（严格 Kinch：N=${N} 个现役项目，EVSUM=${EVSUM.toFixed(4)}）`);
     }
   } else if (dim === 'M6') {
     for (const ln of load('M6_by_record.tsv').slice(1)) {
