@@ -321,24 +321,9 @@
     /* 「3 期滑动平滑」已按需求移除：它只在中间帧起作用，用户感知不到差别反而多一个开关。 */
     h += '</div>';
 
-    /* 动画速率自定义（仅分数竞速图需要）：默认 60 天/秒，滑杆 + 数字输入框双通道 */
-    if (view === 'race') {
-      h += '<div class="row tl-top tl-rate" style="margin-top:10px">';
-      h += '<span class="flabel">' + esc(t('tl.rate')) + '</span>';
-      [['jump', 'tl.rate.jump'], ['anim', 'tl.rate.anim'], ['fps', 'tl.rate.fps']].forEach(function (r) {
-        const mt = RATE_META[r[0]];
-        h += '<label class="rate-item"><span>' + esc(t(r[1])) + '</span>' +
-          '<input type="range" id="tlRate' + r[0] + 'Cap" min="' + mt.min + '" max="' + mt.max +
-          '" step="' + mt.step + '" value="' + rate[r[0]] + '" data-rate="' + r[0] + '">' +
-          '<input type="number" class="rate-num" id="tlRate' + r[0] + '" min="' + mt.min + '" max="' + mt.max +
-          '" step="' + mt.step + '" value="' + rate[r[0]] + '" data-rate="' + r[0] + '" aria-label="' + esc(t(r[1])) + '">' +
-          /* 重绘间隔为 0 时含义是「不节流、逐帧重绘」，显示 0ms 容易被读成「不重绘」 */
-          '<b>' + ((r[0] === 'fps' && rate[r[0]] === 0) ? esc(t('tl.rate.frame')) : (rate[r[0]] + esc(mt.unit()))) + '</b></label>';
-      });
-      h += '<button class="btn btn-ghost" id="tlRateReset">' + esc(t('tl.rate.reset')) + '</button>';
-      h += '<span class="tiny muted rate-hint">' + esc(t('tl.rate.step1')) + '</span>';
-      h += '</div>';
-    }
+    /* 动画速率自定义：2026-11-04 用户要求只保留「时间跳跃」一项，并且去掉滑杆
+       （只留数字输入），位置从独立一行收进上面的播放控件行 —— 它本来就只影响播放。
+       动画时长 / 重绘间隔不再开放调节，回落到 RATE_DEF 的内部默认值（100ms / 20ms）。 */
 
     /* 两个视图的说明文字（「纪录持有图：每个项目一条泳道…」/「分数竞速图：横向条形…」）
        已按用户 2026-11-01 第五轮要求整块删除 —— 图表直接贴着控件开始，少一层噪声。 */
@@ -359,6 +344,13 @@
         '<span class="tl-play-tx">' + esc(tx0) + '</span></button>';
       h += '<input type="range" id="tlRange" min="' + sl.min + '" max="' + sl.max + '" step="' + sl.step + '" value="' + sl.value + '">';
       h += '<span class="tl-year" id="tlYear">' + sl.label + '</span>';
+      /* 时间跳跃（天/秒）：只影响播放时每秒推进多少天。2026-11-04 起唯一保留的速率项，
+         去掉滑杆只留数字框，并挪进这一行贴着播放按钮 / 时间条，调它时不用再上下找。 */
+      h += '<label class="tl-jump" title="' + esc(t('tl.rate.jumpTip')) + '">' +
+        '<span>' + esc(t('tl.rate.jump')) + '</span>' +
+        '<input type="number" id="tlRatejump" min="' + RATE_META.jump.min + '" max="' + RATE_META.jump.max +
+        '" step="1" value="' + rate.jump + '" aria-label="' + esc(t('tl.rate.jump')) + '">' +
+        '<b>' + esc(RATE_META.jump.unit()) + '</b></label>';
       h += '</div>';
     }
 

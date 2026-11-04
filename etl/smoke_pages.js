@@ -1119,7 +1119,12 @@ console.log('== 默认值：停办项目计入 / 竞速图速率 ==');
 {
   const hR = tryRender('图表可视化（分数竞速图）', () => P.timeline(Object.assign({}, base, { tlView: 'race' })));
   ok(hR.indexOf('tlSmooth') < 0, '已删除「3 期滑动平滑」开关');
-  ok(hR.indexOf('tlRatejump') >= 0 && hR.indexOf('tlRatejumpCap') >= 0, '速率仍支持滑杆 + 数字输入双通道');
+  /* ★ 2026-11-04 用户要求：速率只保留「时间跳跃」，且删掉滑杆；动画时长 / 重绘间隔不再开放 */
+  ok(hR.indexOf('id="tlRatejump"') >= 0, '保留「时间跳跃」数字输入框');
+  ok(hR.indexOf('tlRatejumpCap') < 0, '时间跳跃的滑杆已删除（只留数字框）');
+  ok(hR.indexOf('tlRateanim') < 0 && hR.indexOf('tlRatefps') < 0, '动画时长 / 重绘间隔的调节项已删除');
+  ok(hR.indexOf('tl-jump') >= 0, '时间跳跃收进播放控件行（.tl-jump）');
+  ok(hR.indexOf('tlRateReset') < 0, '「恢复默认」按钮随三项调节一起删除');
   ok(hR.indexOf('msToast') >= 0, '重大事件有右下角弹出提示的容器');
   ok(/id="msPopBody" hidden/.test(hR), '重大事件弹窗默认收起');
   ok(P.tlMsCrossed && typeof P.tlMsCrossed === 'function', '提供「跨过事件日期」的查询接口');
@@ -1650,20 +1655,56 @@ if (P.sixdimTableHtml) {
     ]
   };
   ['total', 'M1', 'M2', 'M3', 'M4', 'M5', 'M6'].forEach(function (dim) {
-    const r = P.sixdimTableHtml(fake, { dim: dim, g: 'all', q: '', shown: 100 }, l);
+    const r = P.sixdimTableHtml(fake, { dim: dim, g: 'all', q: '', page: 1, per: 20 }, l);
     const thN = (r.head.match(/<th\b/g) || []).length;
     const per = r.body.split('<tr>').slice(1).map(function (x) { return (x.match(/<td\b/g) || []).length; });
     ok(thN === 9 && r.cols === 9 && per.length === 3 && per.every(function (n) { return n === 9; }),
       dim + ' 视图表头 9 列、每行 9 列（实得 ' + per.join('/') + '）');
-    const barCells = r.body.match(/<td[^>]*sd-cell[^>]*>\s*<span class="sd-bar"/g) || [];
-    ok(barCells.length === 3,
-      dim + ' 视图每行恰好 1 条色条，且都包在带 .sd-cell 的单元格内（定位上下文）');
-    ok((r.body.match(/class="sd-bar"/g) || []).length === 3,
-      dim + ' 视图没有多余的游离色条');
+    /* 分数条：与排行榜共用 .bar-row / .bar-track / .bar-grow / .ministack */
+    const bars = (r.body.match(/class="bar-grow"/g) || []).length;
+    ok(bars === 3, dim + ' 视图每行恰好 1 条分数条（实得 ' + bars + '）');
+    ok((r.body.match(/class="sd-bar"/g) || []).length === 0, dim + ' 视图不再有旧的 absolute 色块 .sd-bar');
+    /* 六维总分列是六色堆叠条（颜色与排名页一致），单维列是单一维度色 */
+    const stack = (r.body.match(/class="ministack"/g) || []).length;
+    ok(stack === 3, dim + ' 视图三条堆叠条（实得 ' + stack + '）');
+    if (dim === 'total') {
+      ok((r.body.match(/var\(--m[1-6]\)/g) || []).length >= 6, '六维总分列用 M1–M6 的六种维度色堆叠');
+    } else {
+      ok(r.body.indexOf('var(--' + dim.toLowerCase() + ')') >= 0, dim + ' 列的分数条用的就是该维自己的颜色');
+    }
   });
-  const r = P.sixdimTableHtml(fake, { dim: 'total', g: 'f', q: '', shown: 100 }, l);
+  /* ★ 2026-11-04：每页 20 人 + 底部分页 */
+  {
+    const many = { meta: fake.meta, rows: [] };
+    for (let i = 0; i < 45; i++) {
+      many.rows.push({ id: 'P' + i, n: 'P' + i, g: 'm', t: 1000 - i, M1: 10, M2: 10, M3: 10, M4: 10, M5: 1, M6: 10 });
+    }
+    ok(P.sixdimPer === 20, '每页固定 20 人（实得 ' + P.sixdimPer + '）');
+    const p1 = P.sixdimTableHtml(many, { dim: 'total', g: 'all', q: '', page: 1, per: 20 }, l);
+    const p2 = P.sixdimTableHtml(many, { dim: 'total', g: 'all', q: '', page: 2, per: 20 }, l);
+    const p3 = P.sixdimTableHtml(many, { dim: 'total', g: 'all', q: '', page: 3, per: 20 }, l);
+    ok(p1.rows === 20 && p2.rows === 20 && p3.rows === 5, '45 人分 3 页：20 / 20 / 5（实得 ' + [p1.rows, p2.rows, p3.rows].join('/') + '）');
+    ok(p1.pages === 3 && p2.page === 2 && p3.page === 3, '总页数与当前页正确');
+    ok(p2.body.indexOf('>21<') >= 0 && p2.body.indexOf('>40<') >= 0, '第 2 页的名次从 21 续到 40');
+    ok(p1.pager.indexOf('data-sdpage="2"') >= 0 && p1.pager.indexOf('class="on"') >= 0, '分页条有页码按钮且高亮当前页');
+    ok(p1.pager.indexOf('第 1–20 人 / 共 45 人') >= 0, '分页条写明「第 a–b 人 / 共 n 人」');
+    /* 页码越界要自动夹回，不能出现空白页（搜索后人数骤减就走这条） */
+    const over = P.sixdimPaging(45, { page: 99, per: 20 });
+    ok(over.page === 3 && over.from === 40 && over.to === 45, '页码越界夹到最后一页（实得 ' + over.page + '）');
+    const under = P.sixdimPaging(45, { page: -5, per: 20 });
+    ok(under.page === 1 && under.from === 0, '页码为负夹回第 1 页');
+    /* 只有一页时不渲染分页条（避免「1」这种无意义的分页） */
+    const one = P.sixdimTableHtml(fake, { dim: 'total', g: 'all', q: '', page: 1, per: 20 }, l);
+    ok(one.pager === '', '总人数不足一页时不渲染分页条');
+    /* 翻页时条长尺子不变：两页都按全站榜首归一 */
+    const w1 = (p1.body.match(/width:([\d.]+)%/) || [])[1];
+    ok(w1 === '100.0', '第 1 页条长满格 = 全站榜首（实得 ' + w1 + '）');
+    const w2 = (p2.body.match(/width:([\d.]+)%/) || [])[1];
+    ok(w2 === '98.0', '第 2 页首位按同一把尺子（实得 ' + w2 + '%，应 980/1000）');
+  }
+  const r = P.sixdimTableHtml(fake, { dim: 'total', g: 'f', q: '', page: 1, per: 20 }, l);
   ok(r.matched === 1 && r.rows === 1, '性别筛选生效（女 = 1 人）');
-  const r2 = P.sixdimTableHtml(fake, { dim: 'total', g: 'all', q: 'park', shown: 100 }, l);
+  const r2 = P.sixdimTableHtml(fake, { dim: 'total', g: 'all', q: 'park', page: 1, per: 20 }, l);
   ok(r2.matched === 1, '姓名 / WCA ID 搜索生效');
   const hPage = tryRender('六维分数细则子页面', () => P.sixdim(Object.assign({}, base)));
   ok(hPage.indexOf('id="sdRoot"') >= 0, '子页面含懒加载容器 #sdRoot');

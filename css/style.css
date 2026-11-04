@@ -62,6 +62,26 @@
   --gold:#f0c04a; --silver:#c9d2de; --bronze:#d99a6c;
 }
 
+/* ============ 深浅色切换的过渡（2026-11-04） ============
+   ① 支持 View Transitions 的浏览器：新旧两帧**不做**默认的交叉淡入（那样整页会糊一秒），
+      改为由 app.js 给 ::view-transition-new(root) 播一段「从顶栏按钮扩散的圆形揭示」，
+      这里只把默认动画关掉、把新帧压在上层。
+   ② 不支持时：给 <html> 挂 .theme-fade，0.4s 内把颜色插值过去（只过渡颜色类属性，
+      不碰 transform / 布局，避免整页重排）。 */
+::view-transition-old(root),::view-transition-new(root){animation:none;mix-blend-mode:normal}
+::view-transition-old(root){z-index:1}
+::view-transition-new(root){z-index:2}
+html.theme-fade,html.theme-fade *,html.theme-fade *::before,html.theme-fade *::after{
+  transition:background-color .4s ease,background-image .4s ease,color .4s ease,
+    border-color .4s ease,box-shadow .4s ease,fill .4s ease,stroke .4s ease!important;
+  transition-delay:0s!important;
+}
+/* 系统级「减少动效」：两种路径都直接换色，不做任何过渡 */
+@media (prefers-reduced-motion: reduce){
+  ::view-transition-old(root),::view-transition-new(root){animation:none!important}
+  html.theme-fade,html.theme-fade *,html.theme-fade *::before,html.theme-fade *::after{transition:none!important}
+}
+
 /* ============ Base ============ */
 *,*::before,*::after{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -935,7 +955,9 @@ tr:hover .pname .linkish,tr:hover .pname .pname-txt{
   padding:6px 11px;font-size:13px;width:220px;outline:none}
 .sd-q:focus{border-color:var(--accent)}
 .sd-count{margin-left:auto;color:var(--text-3);font-size:12.5px;white-space:nowrap}
-.sd-wrap{max-height:70vh;overflow:auto}
+/* 分页之后每页固定 20 行，不再需要内层滚动条（70vh 会把最后一行切成半截、
+   再叠一条内层滚动条）；改成整页滚动，和「历史地位排名」的表格一致 */
+.sd-wrap{max-height:none;overflow-x:auto}
 table.sd-table{min-width:820px;font-variant-numeric:tabular-nums}
 table.sd-table thead th{top:0;background:var(--bg-soft);cursor:default}
 table.sd-table thead th:hover{color:var(--text-2)}
@@ -947,15 +969,24 @@ table.sd-table tbody td{padding:7px 11px}
 .sd-off{color:var(--text-2);font-size:12.5px}
 .sd-cur{font-weight:700;font-size:14px}
 .sd-tot{color:var(--text);font-weight:700}
-/* ★ 单元格是色条的定位上下文；overflow:hidden 保证色条永不出格 */
-.sd-cell{position:relative;overflow:hidden}
-.sd-bar{position:absolute;left:0;top:50%;transform:translateY(-50%);height:15px;
-  border-radius:3px;opacity:.26;pointer-events:none;max-width:100%}
-.sd-val{position:relative;z-index:1}
+/* ★ 分数条单元格（2026-11-04 重做）：直接复用排行榜那一套
+   .bar-row / .bar-track / .bar-grow / .ministack —— 「条长 → 数字」的相对位置、
+   六维配色、悬停抬升全部与「历史地位排名」逐像素一致；
+   旧版是「absolute 定位的半透明色块 + 右对齐数字」，两者各在各的位置，看着像错位。 */
+/* 表格是 auto 布局，给 <td> 写 min-width 是无效的（表格布局会忽略），
+   必须让「画条那一列」的表头吃掉全部剩余宽度 —— 每个视图里恰好只有一列是 .sd-cur */
+.sd-table th.sd-cur{width:100%}
+.sd-cell{padding:0!important;vertical-align:middle;min-width:230px}
+.sd-cell .bar-row{height:100%;padding:7px 11px}
+/* 数字沿用排行榜 .bar-total 的样式（12.5px / --text-2 / 等宽数字），不再单独改色 */
+.sd-cell .bar-track{min-width:54px}
+/* 表格自己这一份要显式给高：.bars-full .ministack 的 18px 依赖 .bars-full 祖先，
+   这里的单元格没有那个类，不补就会退回 13px、条子明显偏细 */
+.sd-cell .ministack{height:18px}
 .sd-empty{text-align:center!important;color:var(--text-3);padding:24px!important}
-.sd-more{display:block;width:100%;margin:13px auto 0}
-/* .btn 自带 display:inline-flex，会压过 UA 的 [hidden] —— 必须显式补一条 */
-.sd-more[hidden]{display:none}
+/* 分页条：沿用 .pager 的按钮样式，只补上下间距与 [hidden] */
+.sd-pager{margin-top:14px}
+.sd-pager[hidden]{display:none!important}
 .sd-status[hidden]{display:none}
 .sd-status{margin-top:12px;color:var(--text-3);font-size:12.5px;text-align:center}
 .sd-status.err{color:var(--warn)}
@@ -1056,14 +1087,8 @@ table.sd-table tbody td{padding:7px 11px}
 .modal.open .modal-card{transform:none;opacity:1}
 .modal-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
 .modal-head h3{font-size:16px}
-.set-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--border);flex-wrap:wrap}
-.set-row label{font-size:13px;color:var(--text-2)}
-.set-row input[type=color]{width:44px;height:28px;padding:0;border:1px solid var(--border-2);border-radius:6px;background:none;cursor:pointer}
-.set-row input[type=range]{flex:1;min-width:120px;accent-color:var(--accent)}
-.set-row select{padding:5px 8px;border-radius:var(--r-md);border:1px solid var(--border-2);background:var(--bg-soft);color:var(--text);font-size:13px}
-.set-val{font-size:12px;font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums;min-width:38px;display:inline-block;text-align:right}
-.set-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
-.set-actions .btn{padding:7px 16px}
+/* 「自定义设置」面板（.set-row / .set-val / .set-actions）已于 2026-11-04 随入口一起删除，
+   相关样式一并移除；.modal 本体保留，其它弹层仍在用。 */
 
 /* ============================================================
    2026-10-19 需求批次：国旗 / 地区列 / 名字动效 / 多项目图例 /
@@ -1092,19 +1117,21 @@ td.tl:hover .fi, .region-cell:hover .fi{transform:scale(1.22)}
 .ministack.evstack span{min-width:2px}
 .bar-row.evmode .ministack{height:18px;border-radius:4px;background:rgba(127,127,127,.14)}
 
-/* 动画速率控制条 */
-.tl-rate{flex-wrap:wrap;gap:14px;align-items:center}
-.rate-hint{opacity:.8}
-.rate-item{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--text-2)}
-.rate-item input[type=range]{width:110px}
-/* 数字输入框：与滑杆并排，用于精确输入速率（如 45 天/秒） */
-.rate-num{width:64px;padding:3px 6px;font-size:11.5px;font-variant-numeric:tabular-nums;
+/* 时间跳跃（2026-11-04：动画时长 / 重绘间隔 / 滑杆全部删除，只留这一项）
+   收进播放控件行，做成贴在时间条右侧的小药丸：标签 + 数字框 + 单位，一眼看清
+   「每秒推进多少天」，不再占一整行。 */
+.tl-jump{display:inline-flex;align-items:center;gap:6px;flex:none;
+  font-size:12px;color:var(--text-2);white-space:nowrap;
+  padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:var(--bg-soft)}
+.tl-jump > span{font-weight:600;color:var(--text-2)}
+.tl-jump input{width:52px;padding:2px 4px;font-size:12px;font-variant-numeric:tabular-nums;
   text-align:center;border:1px solid var(--border-2);border-radius:7px;
-  background:var(--bg-elev);color:var(--text)}
-.rate-num:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 22%,transparent)}
-.rate-num::-webkit-outer-spin-button,.rate-num::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
-.rate-num[type=number]{-moz-appearance:textfield;appearance:textfield}
-.rate-item b{font-size:11.5px;color:var(--text);min-width:52px;font-variant-numeric:tabular-nums}
+  background:var(--bg-elev);color:var(--text);transition:border-color .16s ease,box-shadow .16s ease}
+.tl-jump input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 22%,transparent)}
+/* 原生上下箭头在窄药丸里太挤，收起（↑/↓ 键与滚轮仍可微调） */
+.tl-jump input::-webkit-outer-spin-button,.tl-jump input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.tl-jump input[type=number]{-moz-appearance:textfield;appearance:textfield}
+.tl-jump b{font-weight:600;color:var(--text);font-size:11.5px}
 
 /* 自定义重大事件：三输入框表单 */
 .ms-form{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}

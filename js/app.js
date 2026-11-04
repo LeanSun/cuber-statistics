@@ -214,12 +214,46 @@
     if (ic) ic.textContent = th === 'dark' ? '☾' : '☀';
     if (window.Charts) window.Charts.refresh();
   }
+  /* 深浅色切换（2026-11-04 用户要求「丝滑过渡」）：
+     优先走 View Transitions —— 以顶栏主题按钮为圆心扩散一个圆形揭示，
+     新主题像一层帘子从按钮铺满全屏（Chrome / Edge / Safari 18+ / Firefox 144+ 都支持）；
+     不支持或用户开了「减少动效」时，退回 CSS 过渡（<html> 挂 .theme-fade 约 0.4s），
+     同样不会有硬切。两条路径都不改布局，只换配色。 */
   function toggleTheme() {
     const cur = document.documentElement.getAttribute('data-theme');
     const next = cur === 'dark' ? 'light' : 'dark';
-    applyTheme(next);
-    try { localStorage.setItem('goat-theme', next); } catch (e) { }
-    render(true);
+    const root = document.documentElement;
+    const apply = function () {
+      applyTheme(next);
+      try { localStorage.setItem('goat-theme', next); } catch (e) { }
+      render(true);
+    };
+    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const btn = document.getElementById('themeBtn');
+    if (reduce || typeof document.startViewTransition !== 'function') {
+      root.classList.add('theme-fade');
+      apply();
+      clearTimeout(toggleTheme._fadeT);
+      toggleTheme._fadeT = setTimeout(function () { root.classList.remove('theme-fade'); }, 460);
+      return;
+    }
+    const r = btn ? btn.getBoundingClientRect() : null;
+    const x = r ? r.left + r.width / 2 : window.innerWidth - 36;
+    const y = r ? r.top + r.height / 2 : 26;
+    /* 半径取「按钮到最远角」的距离，保证圆能覆盖整屏 */
+    const rad = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y));
+    let vt = null;
+    try { vt = document.startViewTransition(apply); } catch (e) { apply(); return; }
+    if (!vt || !vt.ready) return;
+    vt.ready.then(function () {
+      document.documentElement.animate(
+        { clipPath: ['circle(0px at ' + x + 'px ' + y + 'px)', 'circle(' + rad + 'px at ' + x + 'px ' + y + 'px)'] },
+        {
+          duration: 560, easing: 'cubic-bezier(.22,.61,.36,1)', fill: 'both',
+          pseudoElement: '::view-transition-new(root)'
+        }
+      );
+    }).catch(function () { /* 动画被打断（快速连点）时静默忽略 */ });
   }
 
   /* ---------- 语言 ---------- */
@@ -878,51 +912,27 @@
         if (range) startPlay();
         else state.tlPlaying = false;   /* 切到纪录持有图：没有播放控件，直接停下 */
       } else if (tlRaf) { cancelAnimationFrame(tlRaf); tlRaf = 0; }
-      /* 动画速率自定义：时间跳跃（天/秒）/ 动画时长 / 刷新间隔。
-         滑杆（…Cap）与数字输入框共用同一份状态，互相同步；
-         数字框失焦或按回车时按 min/max 夹紧并回写，避免出现 0 天/秒这类无效值。 */
-      function syncRateUI(key, val) {
-        const cap = document.getElementById('tlRate' + key + 'Cap');
-        const num = document.getElementById('tlRate' + key);
-        if (cap) cap.value = val;
-        if (num && document.activeElement !== num) num.value = val;
-        const lab = cap ? cap.parentNode.querySelector('b') : null;
-        if (lab) {
-          const mt = (P.tlRateMeta && P.tlRateMeta[key]) || null;
-          lab.textContent = val + (mt ? mt.unit() : 'ms');
-        }
+      /* 时间跳跃（天/秒）：2026-11-04 起是唯一保留的速率项 —— 动画时长与重绘间隔
+         回落到内部默认（100ms / 20ms），不再暴露给用户，滑杆也一并去掉。
+         输入即生效（播放中下一帧就采用新值）；失焦 / 回车时按 min/max 夹紧并回写，
+         避免出现 0 天/秒或 999 天/秒这类无效值。 */
+      const jumpNum = document.getElementById('tlRatejump');
+      if (jumpNum) {
+        const applyJump = function (raw, force) {
+          const r = (P.tlRate ? P.tlRate() : { jump: 60 });
+          const val = (P.tlClampRate ? P.tlClampRate('jump', raw) : parseInt(raw, 10));
+          if (isNaN(val)) return;
+          r.jump = val;
+          try { localStorage.setItem('goat-tlrate-v1', JSON.stringify(r)); } catch (e) { }
+          if (force) jumpNum.value = val;
+          /* 立即重绘当前帧（播放时下一帧自然会用新值），不必手动刷新 */
+          if (box) P.drawTimeline(box);
+        };
+        jumpNum.addEventListener('input', function () { applyJump(jumpNum.value, false); });
+        jumpNum.addEventListener('change', function () { applyJump(jumpNum.value, true); });
+        jumpNum.addEventListener('blur', function () { applyJump(jumpNum.value, true); });
+        jumpNum.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); jumpNum.blur(); } });
       }
-      function applyRate(key, raw, fromNumber) {
-        const r = (P.tlRate ? P.tlRate() : { jump: 60, anim: 200, fps: 100 });
-        const val = (P.tlClampRate ? P.tlClampRate(key, raw) : parseInt(raw, 10));
-        if (isNaN(val)) return;
-        r[key] = val;
-        try { localStorage.setItem('goat-tlrate-v1', JSON.stringify(r)); } catch (e) { }
-        syncRateUI(key, val);
-        if (fromNumber) {
-          const num = document.getElementById('tlRate' + key);
-          if (num && document.activeElement === num) num.value = val;
-        }
-        /* 任一参数变化都立即重绘当前帧（播放时下一帧也会自然采用新参数），
-           不再需要手动刷新页面才生效 */
-        if (box) P.drawTimeline(box);
-      }
-      ['jump', 'anim', 'fps'].forEach(function (key) {
-        const cap = document.getElementById('tlRate' + key + 'Cap');
-        if (cap) cap.addEventListener('input', function () { applyRate(key, cap.value, false); });
-        const num = document.getElementById('tlRate' + key);
-        if (num) {
-          num.addEventListener('input', function () { applyRate(key, num.value, true); });
-          num.addEventListener('change', function () { applyRate(key, num.value, true); });
-          num.addEventListener('blur', function () { applyRate(key, num.value, true); });
-          num.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); num.blur(); } });
-        }
-      });
-      const rateReset = document.getElementById('tlRateReset');
-      if (rateReset) rateReset.addEventListener('click', function () {
-        try { localStorage.removeItem('goat-tlrate-v1'); } catch (e) { }
-        render(true);
-      });
       /* 重大事件弹窗：默认收起，点右下角标签展开/收起（状态跨渲染保持） */
       const msTab = document.getElementById('msPopTab');
       const msBody = document.getElementById('msPopBody');
@@ -1319,75 +1329,6 @@
   }
   function openColorPopup(opts) { ensureColorPopup()._open(opts); }
   function msSampleFill() { }
-
-  /* ---------- 自定义设置（速率 / 宽度 / 颜色） ---------- */
-  const SETTINGS_KEY = 'goat-settings';
-  const PALETTES = {
-    vibrant: ['#ed58a9', '#e54b52', '#ffa838', '#20b561', '#008fd2', '#a167f1', '#00a7a7'],
-    pastel: ['#f472b6', '#fbbf24', '#a3e635', '#34d399', '#38bdf8', '#a78bfa', '#fb7185'],
-    ocean: ['#0ea5e9', '#06b6d4', '#14b8a6', '#22c55e', '#3b82f6', '#6366f1', '#0d9488'],
-    sunset: ['#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#ec4899', '#d946ef']
-  };
-  const PALETTE_NAMES = { vibrant: '活力', pastel: '柔和', ocean: '海洋', sunset: '日落' };
-  let SET = loadSettings();
-  function loadSettings() { try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; } catch (e) { return {}; } }
-  function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(SET)); } catch (e) { } }
-  function applySettings(s) {
-    const root = document.documentElement;
-    if (s.accent) {
-      root.style.setProperty('--accent', s.accent);
-      root.style.setProperty('--accent-soft', 'color-mix(in srgb,' + s.accent + ' 16%,transparent)');
-      root.style.setProperty('--accent-2', s.accent);
-    }
-    /* 用户在评分系统里自定义过模块配色时，预置调色板不再覆盖 */
-    const hasCustom = (window.Params && window.Params.hasCustomColors) ? window.Params.hasCustomColors() : false;
-    if (s.palette && PALETTES[s.palette] && !hasCustom) {
-      PALETTES[s.palette].forEach(function (c, i) { root.style.setProperty('--m' + (i + 1), c); });
-    } else if (hasCustom && window.Params && window.Params.applyColors) {
-      window.Params.applyColors();
-    }
-    const barMax = (typeof s.barMax === 'number') ? s.barMax : 100;
-    const anim = (typeof s.anim === 'number') ? s.anim : 1;
-    root.style.setProperty('--bar-max', barMax + '%');
-    root.style.setProperty('--anim-rate', String(anim));
-    window.GOAT = window.GOAT || {};
-    window.GOAT.barMax = barMax; window.GOAT.anim = anim;
-  }
-  function openSettings() {
-    const modal = document.getElementById('settingsModal');
-    if (!modal) return;
-    const palSel = document.getElementById('setPalette');
-    if (palSel && !palSel.options.length) {
-      Object.keys(PALETTES).forEach(function (k) {
-        const o = document.createElement('option');
-        o.value = k; o.textContent = PALETTE_NAMES[k] || k;
-        palSel.appendChild(o);
-      });
-    }
-    const a = document.getElementById('setAccent'); if (a) a.value = SET.accent || '#2f6feb';
-    const p = document.getElementById('setPalette'); if (p) p.value = SET.palette || 'vibrant';
-    const b = document.getElementById('setBar'); if (b) { b.value = (typeof SET.barMax === 'number') ? SET.barMax : 100; const v = document.getElementById('setBarVal'); if (v) v.textContent = b.value + '%'; }
-    const an = document.getElementById('setAnim'); if (an) { an.value = (typeof SET.anim === 'number') ? SET.anim : 1; const v = document.getElementById('setAnimVal'); if (v) v.textContent = an.value + '×'; }
-    modal.hidden = false; requestAnimationFrame(function () { modal.classList.add('open'); });
-  }
-  function closeSettings() {
-    const modal = document.getElementById('settingsModal');
-    if (!modal) return;
-    modal.classList.remove('open');
-    setTimeout(function () { modal.hidden = true; }, 180);
-  }
-  function bindSettings() {
-    const a = document.getElementById('setAccent');
-    const p = document.getElementById('setPalette');
-    const b = document.getElementById('setBar');
-    const an = document.getElementById('setAnim');
-    if (a) a.addEventListener('input', function () { SET.accent = a.value; applySettings(SET); saveSettings(); });
-    if (p) p.addEventListener('change', function () { SET.palette = p.value; applySettings(SET); saveSettings(); });
-    if (b) b.addEventListener('input', function () { SET.barMax = +b.value; const v = document.getElementById('setBarVal'); if (v) v.textContent = b.value + '%'; applySettings(SET); saveSettings(); });
-    if (an) an.addEventListener('input', function () { SET.anim = +an.value; const v = document.getElementById('setAnimVal'); if (v) v.textContent = an.value + '×'; applySettings(SET); saveSettings(); });
-    const reset = document.querySelector('[data-setreset]');
-    if (reset) reset.addEventListener('click', function () { SET = {}; localStorage.removeItem(SETTINGS_KEY); applySettings(SET); if (a) a.value = '#2f6feb'; if (p) p.value = 'vibrant'; if (b) { b.value = 100; const v = document.getElementById('setBarVal'); if (v) v.textContent = '100%'; } if (an) { an.value = 1; const v = document.getElementById('setAnimVal'); if (v) v.textContent = '1×'; } toast(t('f.reset')); });
-  }
 
   /* ---------- 全局事件委托 ---------- */
   /* ⚠ 这里少一个选择器，对应的按钮就「点了没反应」——2026-10-27 的六维筛选按钮
@@ -1909,12 +1850,9 @@
 
   document.getElementById('themeBtn').addEventListener('click', toggleTheme);
   document.getElementById('langBtn').addEventListener('click', toggleLang);
-  const sb = document.getElementById('settingsBtn');
-  if (sb) sb.addEventListener('click', openSettings);
-  document.addEventListener('click', function (e) {
-    const cm = e.target.closest ? e.target.closest('[data-closemodal]') : null;
-    if (cm) closeSettings();
-  });
+  /* 「自定义设置」面板已按用户 2026-11-04 要求整块删除（右上角 ⚙ 与 #settingsModal）：
+     主题强调色 / 模块配色 / 柱宽 / 动画倍速四项随之退役，配色统一走参数设置页的
+     Params.applyColors()，其余回到 css 里的默认值。 */
   document.getElementById('navToggle').addEventListener('click', function () {
     const open = navEl.classList.toggle('open');
     this.setAttribute('aria-expanded', open ? 'true' : 'false');
@@ -1961,10 +1899,7 @@
   }
 
   /* ---------- 启动 ---------- */
-  SET = loadSettings();
-  applySettings(SET);   /* 先应用配色，initTheme 的渐变彩蛋才能读到自定义色 */
   if (window.Params && window.Params.applyColors) window.Params.applyColors();
-  bindSettings();
   initTheme();
   initLang();
   applyDataMode();

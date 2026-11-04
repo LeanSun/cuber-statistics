@@ -41,9 +41,10 @@
       sub: 'Per-player scores for M1–M6 and the weighted total. Switch a dimension to re-sort, filter by gender, or search by name / WCA ID.',
       tabDoc: 'Model & parameters', tabThis: 'Score breakdown',
       total: 'Total', all: 'All', male: 'Male', female: 'Female',
-      search: 'Search name / WCA ID…', more: 'Load more (100 per page)',
+      search: 'Search name / WCA ID…',
       empty: 'No matching players',
-      count: '{n} matched · showing top {m}',
+      count: '{n} matched',
+      range: 'Rows {a}–{b} of {n}', rowLabel: 'Player',
       loading: 'Loading six-dimension scores (about 7 MB)…',
       fail: 'Could not load the score data. Please check your connection and refresh.',
       rank: '#', player: 'Player', totalCol: 'Weighted total',
@@ -58,9 +59,10 @@
       sub: '逐人查看 M1–M6 各维得分与六维加权总分。可切换维度排序、按性别筛选、按姓名或 WCA ID 搜索。',
       tabDoc: '参数设置', tabThis: '六维分数细则',
       total: '六维总分', all: '全部', male: '男', female: '女',
-      search: '搜索选手姓名 / WCA ID…', more: '加载更多（每页 100 人）',
+      search: '搜索选手姓名 / WCA ID…',
       empty: '无匹配选手',
-      count: '{n} 人符合 · 显示前 {m}',
+      count: '{n} 人符合',
+      range: '第 {a}–{b} 人 / 共 {n} 人', rowLabel: '选手',
       loading: '正在加载六维分数数据（约 7 MB）…',
       fail: '分数数据加载失败，请检查网络后刷新重试。',
       rank: '#', player: '选手', totalCol: '六维总分',
@@ -100,6 +102,9 @@
     return cols;
   }
 
+  /* 每页固定 20 人（2026-11-04 用户要求；原先是「加载更多，每次 +100」） */
+  const PER_PAGE = 20;
+
   function fmt(v) {
     const x = Number(v) || 0;
     return x >= 1 ? x.toFixed(2) : x.toFixed(3);
@@ -117,12 +122,73 @@
     return { arr: arr, key: key };
   }
 
-  /* 纯函数：生成表头与表体 HTML。抽出供冒烟测试直接校验「列数一致」。 */
+  /* 页码与切片的统一来源（纯函数，便于冒烟直接校验边界）：
+     页码越界（搜索后结果变少、切维度后人数变化）会自动夹回有效区间，不会出现空白页。 */
+  function pagingOf(total, st) {
+    const per = Math.max(1, parseInt(st && st.per, 10) || PER_PAGE);
+    const pages = Math.max(1, Math.ceil(total / per));
+    let page = parseInt(st && st.page, 10) || 1;
+    page = Math.min(Math.max(1, page), pages);
+    return { per: per, pages: pages, page: page, from: (page - 1) * per, to: Math.min(page * per, total) };
+  }
+
+  /* 单元格里的分数条：与「历史地位排名」共用 .bar-row / .bar-track / .bar-grow /
+     .ministack 这一整套结构与配色 —— 之前是「一条 absolute 定位的半透明色块 + 右对齐数字」，
+     条与数字各在各的位置、看着像两个不相干的元素，而且条长被硬压到 70%，才显得又短又错位。
+     ★ 现在：条长 = 本列分数 ÷ 全站榜首（翻页时尺子不变），数字紧贴条尾；
+       「六维总分」列是六色堆叠条（段宽 = 该维加权贡献 ÷ 总分），颜色与排名页逐段一致。 */
+  function barRow(r, key, mx, color, weights, labels, l) {
+    const val = Number(r[key]) || 0;
+    const w = mx > 0 ? Math.max(1.6, Math.min(100, val / mx * 100)) : 0;
+    let inner;
+    if (key === 't') {
+      const parts = DIMS.map(function (d) {
+        return { d: d, v: (Number(weights[d]) || 0) * (Number(r[d]) || 0) };
+      });
+      let sum = 0;
+      parts.forEach(function (p) { sum += p.v; });
+      const den = sum > 0 ? sum : 1;
+      const segs = parts.filter(function (p) { return p.v > 0; }).map(function (p) {
+        return '<span style="width:' + (p.v / den * 100).toFixed(2) + '%;background:' + COLOR[p.d] + '"' +
+          ' title="' + esc(dimName(p.d, l, labels)) + ' ' + fmt(p.v) + '"></span>';
+      }).join('');
+      inner = '<span class="ministack">' +
+        (segs || '<span style="width:100%;background:' + COLOR.total + '"></span>') + '</span>';
+    } else {
+      inner = '<span class="ministack"><span style="width:100%;background:' + color + '"></span></span>';
+    }
+    return '<div class="bar-row"><div class="bar-track"><div class="bar-grow" style="width:' + w.toFixed(1) + '%">' +
+      inner + '</div></div><span class="bar-total">' + fmt(val) + '</span></div>';
+  }
+
+  /* 底部分页条：结构 / 类名与榜单页的 .pager 完全一致（« ‹ 1 2 3 › » + 「第 a–b 人 / 共 n 人」） */
+  function pagerHtml(total, pg, l) {
+    if (pg.pages <= 1) return '';
+    const from = Math.max(1, Math.min(pg.page - 2, pg.pages - 4));
+    const to = Math.min(pg.pages, from + 4);
+    let nums = '';
+    for (let i = from; i <= to; i++) {
+      nums += '<button type="button" data-sdpage="' + i + '"' + (i === pg.page ? ' class="on"' : '') + '>' + i + '</button>';
+    }
+    const a = total ? pg.from + 1 : 0, b = pg.to;
+    return '<button type="button" data-sdpage="1"' + (pg.page === 1 ? ' disabled' : '') + ' aria-label="first">«</button>' +
+      '<button type="button" data-sdpage="' + (pg.page - 1) + '"' + (pg.page === 1 ? ' disabled' : '') + ' aria-label="prev">‹</button>' +
+      '<div class="pages">' + nums + '</div>' +
+      '<button type="button" data-sdpage="' + (pg.page + 1) + '"' + (pg.page === pg.pages ? ' disabled' : '') + ' aria-label="next">›</button>' +
+      '<button type="button" data-sdpage="' + pg.pages + '"' + (pg.page === pg.pages ? ' disabled' : '') + ' aria-label="last">»</button>' +
+      '<span class="info">' + esc(l.range.replace('{a}', String(a)).replace('{b}', String(b)).replace('{n}', String(total))) + '</span>';
+  }
+
+  /* 纯函数：生成表头与表体 HTML。抽出供冒烟测试直接校验「列数一致 / 分页边界」。 */
   function tableHtml(D, st, l) {
-    const cols = colsFor(st.dim, l, D.meta && D.meta.labels);
+    const labels = (D.meta && D.meta.labels) || {};
+    const weights = (D.meta && D.meta.weights) || {};
+    const cols = colsFor(st.dim, l, labels);
     const v = view(D, st);
-    const show = v.arr.slice(0, st.shown);
-    const mx = show.length ? (Number(show[0][v.key]) || 1) : 1;
+    const pg = pagingOf(v.arr.length, st);
+    const show = v.arr.slice(pg.from, pg.to);
+    /* 尺子取「全站榜首」而不是本页第一行：翻页时条长不会忽大忽小 */
+    const mx = v.arr.length ? (Number(v.arr[0][v.key]) || 1) : 1;
     const color = COLOR[st.dim] || COLOR.total;
 
     const head = cols.map(function (c) {
@@ -130,23 +196,18 @@
     }).join('');
 
     const body = show.map(function (r, i) {
+      const no = pg.from + i + 1;
       return '<tr>' + cols.map(function (c) {
         if (c.key === 'rk') {
-          return '<td class="sd-rk tl' + (i < 3 ? ' sd-top3' : '') + '">' + (i + 1) + '</td>';
+          return '<td class="sd-rk tl' + (no <= 3 ? ' sd-top3' : '') + '">' + no + '</td>';
         }
         if (c.key === 'nm') {
           return '<td class="sd-nm tl"><b>' + esc(r.n) + '</b><small>' + esc(r.id) + '</small></td>';
         }
-        const val = Number(r[c.key]) || 0;
-        if (!c.bar) {
-          return '<td class="' + c.cls + '">' + fmt(val) + '</td>';
+        if (c.bar) {
+          return '<td class="' + c.cls + ' sd-cell">' + barRow(r, c.key, mx, color, weights, labels, l) + '</td>';
         }
-        /* 色条宽度按本列榜首归一；单元格是定位上下文且 overflow:hidden，
-           色条绝不会溢出到表格之外（旧 bug 的根因）。 */
-        const w = Math.min(96, Math.max(0, val / mx * 70));
-        return '<td class="' + c.cls + ' sd-cell">' +
-          '<span class="sd-bar" style="width:' + w.toFixed(2) + '%;background:' + color + '"></span>' +
-          '<span class="sd-val">' + fmt(val) + '</span></td>';
+        return '<td class="' + c.cls + '">' + fmt(Number(r[c.key]) || 0) + '</td>';
       }).join('') + '</tr>';
     }).join('');
 
@@ -156,7 +217,10 @@
       cols: cols.length,
       rows: show.length,
       matched: v.arr.length,
-      more: v.arr.length > st.shown
+      per: pg.per,
+      page: pg.page,
+      pages: pg.pages,
+      pager: pagerHtml(v.arr.length, pg, l)
     };
   }
 
@@ -189,7 +253,8 @@
     h += '</div>';
     h += '<div class="table-wrap sd-wrap"><table class="data sd-table">' +
       '<thead><tr id="sdHead"></tr></thead><tbody id="sdBody"></tbody></table></div>';
-    h += '<button type="button" class="btn sd-more" id="sdMore" hidden>' + esc(l.more) + '</button>';
+    /* 分页条（原先是「加载更多」按钮）：每页固定 20 人，页码由 tableHtml 一并算出 */
+    h += '<div class="pager sd-pager" id="sdPager" hidden></div>';
     h += '<div class="sd-note"><b>' + esc(l.noteTitle) + '</b>：' + esc(l.noteBody) + '<br>' + esc(l.noteStatic) + '</div>';
     h += '<div class="sd-status" id="sdStatus">' + esc(l.loading) + '</div>';
     h += '</div>';
@@ -231,7 +296,8 @@
     root.__sdMounted = true;
     const l = L();
     const status = document.getElementById('sdStatus');
-    const st = { dim: 'total', g: 'all', q: '', shown: 100 };
+    /* page 每页 20 人（PER_PAGE）；换维度 / 换性别 / 改搜索词一律回到第 1 页 */
+    const st = { dim: 'total', g: 'all', q: '', page: 1, per: PER_PAGE };
 
     const dimsEl = document.getElementById('sdDims');
     const gEl = document.getElementById('sdG');
@@ -239,7 +305,7 @@
     const headEl = document.getElementById('sdHead');
     const bodyEl = document.getElementById('sdBody');
     const cntEl = document.getElementById('sdCount');
-    const moreEl = document.getElementById('sdMore');
+    const pagerEl = document.getElementById('sdPager');
     const chipsEl = document.getElementById('sdChips');
 
     function paint(D) {
@@ -267,8 +333,11 @@
       const res = tableHtml(D, st, l);
       if (headEl) headEl.innerHTML = res.head;
       if (bodyEl) bodyEl.innerHTML = res.body;
-      if (cntEl) cntEl.textContent = l.count.replace('{n}', String(res.matched)).replace('{m}', String(res.rows));
-      if (moreEl) { moreEl.hidden = !res.more; }
+      if (cntEl) cntEl.textContent = l.count.replace('{n}', String(res.matched));
+      if (pagerEl) {
+        pagerEl.innerHTML = res.pager;
+        pagerEl.hidden = res.pages <= 1;   /* 只有一页时不显示（避免「1 1」这种无意义的分页条） */
+      }
     }
 
     function rerender() { ensureData(paint); }
@@ -276,21 +345,34 @@
     if (dimsEl) dimsEl.addEventListener('click', function (e) {
       const b = e.target.closest ? e.target.closest('[data-sddim]') : null;
       if (!b) return;
-      st.dim = b.getAttribute('data-sddim'); st.shown = 100;
+      st.dim = b.getAttribute('data-sddim'); st.page = 1;
       dimsEl.querySelectorAll('.sd-dim').forEach(function (x) { x.classList.toggle('on', x === b); });
       rerender();
     });
     if (gEl) gEl.addEventListener('click', function (e) {
       const b = e.target.closest ? e.target.closest('[data-sdg]') : null;
       if (!b) return;
-      st.g = b.getAttribute('data-sdg'); st.shown = 100;
+      st.g = b.getAttribute('data-sdg'); st.page = 1;
       gEl.querySelectorAll('[data-sdg]').forEach(function (x) { x.classList.toggle('on', x === b); });
       rerender();
     });
     if (qEl) qEl.addEventListener('input', function () {
-      st.q = String(qEl.value || '').trim().toLowerCase(); st.shown = 100; rerender();
+      st.q = String(qEl.value || '').trim().toLowerCase(); st.page = 1; rerender();
     });
-    if (moreEl) moreEl.addEventListener('click', function () { st.shown += 100; rerender(); });
+    /* 分页：点页码只重画表体 / 表头 / 分页条，不重新加载数据（数据已在内存里） */
+    if (pagerEl) pagerEl.addEventListener('click', function (e) {
+      const b = e.target.closest ? e.target.closest('[data-sdpage]') : null;
+      if (!b || b.disabled) return;
+      const n = parseInt(b.getAttribute('data-sdpage'), 10);
+      if (!n || n === st.page) return;
+      st.page = n;
+      rerender();
+      /* 翻页后把表格卷回顶部，并让表头留在视野里（20 行不会一屏放不下） */
+      const wrap = root.querySelector('.sd-wrap');
+      if (wrap) wrap.scrollTop = 0;
+      const rb = root.getBoundingClientRect();
+      if (rb.top < 0) root.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    });
 
     rerender();
   };
@@ -299,4 +381,6 @@
   P.sixdimCols = colsFor;
   P.sixdimTableHtml = tableHtml;
   P.sixdimLabels = L;
+  P.sixdimPaging = pagingOf;
+  P.sixdimPer = PER_PAGE;
 })();
