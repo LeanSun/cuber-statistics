@@ -5,7 +5,7 @@
    问题（2026-11-02 用户反馈）：图表可视化页的「维度」筛选选中某一维后，
    竞速图里的人员与起始时间不对：
      · 统治力（M4）：有人在自己的首次参赛年之前就已经出现；
-     · 当前排名（M5）：2003 年就有一整屏「当前排名」高分选手（其实那批人 2020 年代才出道）；
+     · 纪录比（M5）：2003 年就有一整屏「纪录比」高分选手（其实那批人 2020 年代才出道）；
      · 根因是旧实现拿**通用年度曲线**（p.yearly＝领奖台 + 纪录次数）当所有维度的进度，
        并且在这条曲线为空时直接把 ratio 记成 1 —— 于是「快照型 / 席位型」维度
        从 2003 年起就顶着最终分站在原地。
@@ -94,7 +94,7 @@ function stream(file, onRow) {
     .then(() => stream('M3_facts.tsv', (c) => put('m3', c[0], +c[5], +c[6] || 0)))
     /* M4 统治力：pid,ev,track,year,contrib */
     .then(() => stream('M4_facts.tsv', (c) => put('m4', c[0], +c[3], +c[4] || 0)))
-    /* M5 当前排名：year,pid,ev,kind,rank,score —— 快照型，逐 (年, 人) 求和即为当年读数 */
+    /* M5 纪录比：year,pid,ev,kind,rank,score —— 快照型，逐 (年, 人) 求和即为当年读数 */
     .then(() => stream('M5_facts.tsv', (c) => put('m5', c[1], +c[0], +c[5] || 0)))
     /* M6 突破幅度：pid,event,kind,date,…,final_norm（第 11 列，别再退回 capped_gain） */
     .then(() => stream('M6_by_record.tsv', (c) => put('m6', c[0], +String(c[3]).slice(0, 4), +c[10] || 0)));

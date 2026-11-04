@@ -1054,7 +1054,7 @@
   /* ================= 六维各自的年度曲线（ETL 下发 p.sy[dim]） =================
      p.sy[dim] = "2009:0,2010:82,2011:302,…"，值是「占本人该维最终分的千分比」。
      来源是六维引擎自己的事实现表（M1 纪录持有 / M2 领奖台 / M3 大赛表现 /
-     M4 统治力 / M5 当前排名 / M6 突破幅度），所以每一维的起始年、人员构成、
+     M4 统治力 / M5 纪录比 / M6 突破幅度），所以每一维的起始年、人员构成、
      增长节奏都跟着这一维的事实走 —— 不再拿「领奖台 + 纪录次数」的通用年度曲线去套。
      缺这条曲线（旧数据包 / 该维没有事实）时返回 null，调用方退回旧算法。 */
   function dimCurve(p, dim) {
@@ -1216,7 +1216,7 @@
           if (smooth) cf = (seriesCum(evSer, fy) + seriesCum(evSer, fy - 1) + seriesCum(evSer, fy - 2)) / 3;
           ratio = Math.max(0, Math.min(1, cf / evAll));
         } else {
-          /* 该项目上没有任何领奖台 / 纪录（例如只靠「当前排名」拿分的人）：
+          /* 该项目上没有任何领奖台 / 纪录（例如只靠「纪录比」拿分的人）：
              按生涯进度长出来，而不是从 2003 年起就满值站着。 */
           ratio = careerRamp(p, fy);
         }
@@ -1225,7 +1225,7 @@
       /* ★ 单维模式：走**该维度自己的年度曲线**（ETL 下发的 p.sy[dim]）。
          旧实现拿 p.yearly（领奖台 + 纪录次数）当所有维度的进度曲线，
          该曲线为空时还直接给 ratio=1 —— 结果「统治力」在首次参赛前就冒出来，
-         「当前排名」2003 年的画面里坐满 2020 年代才出道的选手。 */
+         「纪录比」2003 年的画面里坐满 2020 年代才出道的选手。 */
       if (dimMode) {
         const sv = sixOfTrack(p);
         const base0 = sv ? (sv[dim] || 0) : 0;
@@ -2381,9 +2381,9 @@
       f: ['$$t=\\sum_{d}w_{d}\\,s_{d},\\qquad s_{d}=1000\\cdot\\frac{x_{d}}{\\max_{p}x_{d}},\\qquad \\sum_{d}w_{d}=1$$',
         '$$w=(\\underbrace{0.45}_{M1},\\underbrace{0.20}_{M3},\\underbrace{0.15}_{M2},\\underbrace{0.15}_{M4},\\underbrace{0.04}_{M6},\\underbrace{0.01}_{M5})$$'],
       detail: [
-        ['六个维度回答六个不同的问题：M1 纪录持有（刷新了多少次纪录，守得久再加分）、M3 大赛表现（锦标赛上突破的加成）、M2 领奖台（拿过多少冠亚季军）、M4 统治力（保持在世界前十有多久）、M6 突破幅度（破纪录瞬间把人类前沿推远多少）、M5 当前排名（此刻站在世界各榜什么位置）。',
-          'The six dimensions answer six different questions: M1 record ownership (how many times records were broken, plus a holding bonus), M3 championship performance, M2 podiums, M4 dominance (time spent inside the world top ten), M6 breakthrough margin (how far a record pushed the human frontier), M5 current ranking.'],
-        ['维度分先按各维自己的归一基准映射到站点刻度（FULL=1000）再加权，是为了让六个量纲完全不同的维度（M2 原始量级上万、M6 只有几十）能放在同一把尺子上相加。M5 当前排名用 Kinch 绝对刻度 k=100×WR/成绩；方案 A（2026-11-04）起把整维满分压回 1000，即 s5=10×Kinch均值，不再比其他维高一个量级，权重才具有可读的含义。',
+        ['六个维度回答六个不同的问题：M1 纪录持有（刷新了多少次纪录，守得久再加分）、M3 大赛表现（锦标赛上突破的加成）、M2 领奖台（拿过多少冠亚季军）、M4 统治力（保持在世界前十有多久）、M6 突破幅度（破纪录瞬间把人类前沿推远多少）、M5 纪录比（最好成绩离世界纪录有多近：100×WR/PB，17 项等权平均）。',
+          'The six dimensions answer six different questions: M1 record ownership (how many times records were broken, plus a holding bonus), M3 championship performance, M2 podiums, M4 dominance (time spent inside the world top ten), M6 breakthrough margin (how far a record pushed the human frontier), M5 WR ratio (how close your PB is to the WR: 100 x WR / PB, equally averaged over 17 events).'],
+        ['维度分先按各维自己的归一基准映射到站点刻度（FULL=1000）再加权，是为了让六个量纲完全不同的维度（M2 原始量级上万、M6 只有几十）能放在同一把尺子上相加。M5 纪录比用 Kinch 绝对刻度 k=100×WR/成绩；方案 A（2026-11-04）起把整维满分压回 1000，即 s5=10×Kinch均值，不再比其他维高一个量级，权重才具有可读的含义。',
           'Each dimension is mapped onto the site scale (FULL=1000) before weighting so that dimensions with wildly different raw magnitudes (M2 in the tens of thousands, M6 in the tens) can be summed on one ruler. M5 uses the absolute Kinch scale k = 100 x WR / PB; since Plan A (2026-11-04) its full mark is back to 1000 (s5 = 10 x mean Kinch), no longer an order of magnitude above the other dimensions, so the weights mean what they say.'],
         ['跨维相关性已逐对审查（只在两维都非零的人身上算）：目前有两对超过 0.7 — M1 × M6 = 0.769（仅 281 人，且 M6 权重只有 4%）、M1 × M4 = 0.732。二者都是语义近邻（刷新纪录 ⇔ 打得狠 / 长期在世界前十），分年代桶内不降，判定为真实机制而非时代混杂，处置方式是标注并在权重上压制。',
           'All 15 dimension pairs were checked on players non-zero in both: two pairs now exceed 0.7 - M1 x M6 = 0.769 (only 281 players, M6 weighted just 4%) and M1 x M4 = 0.732. Both are semantic neighbours (breaking records vs. raw margin / long top-ten tenure), stable inside decade buckets, so they are documented and discounted by weight.']
@@ -2442,15 +2442,15 @@
       ]
     },
     {
-      id: 'm5', h: ['M5 · 当前排名（权重 1%）', 'M5 · Current ranking (1%)'], g: 'm5',
-      simple: ['唯一一个「此刻」的维度：你现在站在世界各榜的什么位置。为了保证它真的是「现在」，名次分与新鲜度双衰减同时生效 —— 久未参赛、PB 早已过期都会扣分。',
-        'The only "right now" dimension: where you stand on the world boards today. A double freshness decay applies - both inactivity and a stale personal best discount the score.'],
-      f: ['$$M_{5}=\\sum_{e}w_{e}\\,r^{-1.0}\\,\\max\\!\\left(0.2,\\,1-\\frac{\\text{gap}_{R}}{5}\\times0.8\\right)\\,\\max\\!\\left(0.2,\\,1-\\frac{\\text{gap}_{P}}{5}\\times0.8\\right)$$'],
+      id: 'm5', h: ['M5 · 纪录比（权重 1%）', 'M5 · WR ratio (1%)'], g: 'm5',
+      simple: ['唯一用「绝对刻度」的维度：你的最好成绩离世界纪录有多近。每个项目按 k = 100 × WR ÷ PB 打分，世界纪录本人 100 分、慢一倍 50 分；17 个现役项目等权平均，没打过的项目记 0。',
+        'The only dimension on an absolute scale: how close your personal best is to the world record. Each event scores k = 100 x WR / PB (WR holder = 100, twice as slow = 50); the 17 active events are averaged equally, and events you never entered count as zero.'],
+      f: ['$$K=\\frac{1}{17}\\sum_{e=1}^{17}k_{e},\\qquad k_{e}=100\\times\\frac{WR_{e}}{PB_{e}},\\qquad s_{5}=10\\,K$$'],
       detail: [
-        ['gap<sub>R</sub> 是该项目末次参赛距今年数，gap<sub>P</sub> 是该轨道 PB 距今的年数，五年衰减到 0.2 的地板。深度取前 100 名，单次轨与平均轨各计 1.0。',
-          'gap_R is years since the last appearance in that event, gap_P years since that track personal best; both decay to a floor of 0.2 over five years. Depth is the top 100, single and average tracks each count 1.0.'],
-        ['注意 WCA 官方的 ranks 表是按 PB 排序的「终身榜」，退役十年的人仍可能显示第 5 名 —— 正因为如此，M5 才必须叠一层新鲜度衰减，而 M4 必须自建历史 PB。',
-          'WCA ranks are lifetime boards sorted by PB, so a player retired for ten years can still show No. 5 - which is exactly why M5 needs the freshness decay and M4 rebuilds historical PBs.']
+        ['选轨对齐 kinchranking.com：多盲 / 四盲 / 五盲取单次，三盲 / 最少步取单次与平均的较优值，其余 12 项取平均。成绩口径切到「单次 / 平均」时，本站用对应轨重算，但分母始终是 17 个现役项目，避免缺项把分数抬高。',
+          'Track selection follows kinchranking.com: 333mbf / 444bf / 555bf use single, 333bf / 333fm use the better of single and average, the other 12 use average. Switching the site to Single / Average recomputes M5 from that track alone, while the denominator stays at 17 active events so missing events cannot inflate the score.'],
+        ['k 是相对世界纪录的绝对刻度，不按本站榜首归一；站点分 s₅ = 10 × K（整维满分 1000），显示值除以 10 就能与官方 0–100 的 Kinch 核对。本站用 2026-10-15 的 WCA 导出，比参考站新约 10 个月，WR 变动会带来 1 分左右的正常漂移。',
+          'k is absolute relative to the WR, not normalised against the site leader. The site score s5 = 10 x K (full mark 1000), so dividing by 10 reproduces the official 0-100 Kinch scale. This site uses the 2026-10-15 WCA export, about ten months newer than the reference site, so WR movement causes a normal drift of roughly one point.']
       ]
     },
     {
@@ -2508,7 +2508,7 @@
     /* 六维权重 / 六维名称：被下方的「六维占比自定义」与「预设」复用，必须在使用前定义。
        注意：原先附带的「总分口径（现行）」卡片已按需求删除，这里只保留两个常量声明。 */
     const SW = (P.util.sixW && P.util.sixW()) || (M.meta && M.meta.sixWeights) || { m1: 0.45, m2: 0.15, m3: 0.20, m4: 0.15, m5: 0.01, m6: 0.04 };
-    const SN = (M.meta && M.meta.sixNames) || { m1: '纪录持有', m2: '领奖台', m3: '大赛表现', m4: '统治力', m5: '当前排名', m6: '突破幅度' };
+    const SN = (M.meta && M.meta.sixNames) || { m1: '纪录持有', m2: '领奖台', m3: '大赛表现', m4: '统治力', m5: '纪录比', m6: '突破幅度' };
 
     /* ---- 六维占比自定义：每行「滑杆 + 数字框」，全站榜单立即重排 ----
        旧版是六根竖柱 + 上下拖动柱顶调高度：柱子只有 40 来像素高，

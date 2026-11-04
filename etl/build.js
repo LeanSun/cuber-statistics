@@ -46,7 +46,7 @@ const SIX = new Map();
 /* ---------- 六维「年度曲线」（sixyear.tsv，etl/score/sixyear.js 产出）----------
    每个维度各自的年度演进（占本人该维最终分的千分比），供图表可视化页的「维度」
    筛选使用 —— 旧实现拿 p.yearly（领奖台 + 纪录次数）当所有维度的进度曲线，
-   于是「统治力」在首次参赛前就冒出来、「当前排名」2003 年就有一整屏当代选手。
+   于是「统治力」在首次参赛前就冒出来、「纪录比」2003 年就有一整屏当代选手。
    缺表时前端退回旧曲线（p.yearly），不会报错。 */
 const SIXY = new Map();      // pid → { m1:'2009:0,2010:82', ..., m2s, m2a }
 (function loadSixYear() {
@@ -1598,7 +1598,7 @@ function buildEventMilestones() {
     esumMax: ESUM_MAX,
     /* 六维（当前模型）：权重与维度中文名，供前端贡献表 / 图例使用 */
     sixWeights: SIX_W,
-    sixNames: { m1: '纪录持有', m2: '领奖台', m3: '大赛表现', m4: '统治力', m5: '当前排名', m6: '突破幅度' },
+    sixNames: { m1: '纪录持有', m2: '领奖台', m3: '大赛表现', m4: '统治力', m5: '纪录比', m6: '突破幅度' },
     sixCovered: SIX.size,
     evGamma: EV_GAMMA,
     /* 项目 → 该项目最后一天（YYYYMMDD）。前端竞速图选到停办项目时把时间轴截到这一天；

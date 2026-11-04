@@ -9,7 +9,7 @@
  *   对每个年末 Y、每个 (ev, track)：
  *     rank = 按「截至 Y 的历史最好成绩」升序名次（并列按达成日先者居前）
  *
- *   ★ M5-KINCH（2026-11-04 用户拍板：全权替换为 Kinch 排名），与 m5_current_rank.js 同式：
+ *   ★ M5-KINCH（2026-11-04 用户拍板：全权替换为 Kinch 公式，维度现名「纪录比」），与 m5_current_rank.js 同式：
  *       cost = 成绩（多盲解码为 cost，统一「越小越强」）
  *       WR   = 该年末世界最佳
  *       k    = 100 × WR / cost            ← 单事件 Kinch 分（0..100，WR 持有者 = 100）

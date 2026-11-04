@@ -166,7 +166,7 @@
     h += '<span class="tag" title="' + esc(tt('你参加过的 WCA 比赛总场次', 'Total WCA competitions you have entered')) + '">' + esc(t('player.comps')) + ' ' + p.comps + '</span>';
     h += '<span class="tag" title="' + esc(tt('你参加过的 WCA 项目数量', 'Number of distinct WCA events you have entered')) + '">' + esc(t('player.events')) + ' ' + p.events.length + '</span>';
     h += '</div>';
-    /* 次级分数：两个最能说明「状态」的维度分（M4 统治力 / M5 当前排名）。
+    /* 次级分数：两个最能说明「状态」的维度分（M4 统治力 / M5 纪录比）。
        旧模型的「生涯 / 巅峰 / 均衡」三档已随七模块停用。 */
     h += '<div class="pcard-sub">';
     h += '<div class="sc-row">';

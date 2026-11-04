@@ -4,7 +4,7 @@
 (function () {
   const t = window.I18N, U = window.U, M = window.MOCK, Ic = window.Icons, Pm = window.Params;
   /* 当前模型 = 六维：M1 纪录持有 / M3 大赛表现 / M2 领奖台 / M4 统治力 /
-     M6 突破幅度 / M5 当前排名。旧七模块（含 M7）仅作描述性统计保留，不参与总分。 */
+     M6 突破幅度 / M5 纪录比。旧七模块（含 M7）仅作描述性统计保留，不参与总分。 */
   const MOD = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'];
   const MODC = { m1: 'var(--m1)', m2: 'var(--m2)', m3: 'var(--m3)', m4: 'var(--m4)', m5: 'var(--m5)', m6: 'var(--m6)' };
   /* 六维色的「可计算」十六进制版本。ECharts 是画在 canvas 上的，不认识 CSS 变量
@@ -72,7 +72,7 @@
   /* 实力条（0.02~1）：改由六维的 M4 统治力维驱动（榜首=1），不再用旧 Elo 峰值。 */
   function strength(p) { return Math.max(0.02, Math.min(1, (p.six ? (p.six.m4 || 0) : 0) / 100)); }
   /* 成绩口径：总计 / 单次 / 平均 —— 模块明细里只替换 M1 纪录分；
-     六维向量（含 M5 当前排名）由下方 sixVec 按 p.sixS / p.sixA 整体切换。 */
+     六维向量（含 M5 纪录比）由下方 sixVec 按 p.sixS / p.sixA 整体切换。 */
   function modsOf(p, tab, rt) {
     const mods = tab === 'peak' ? p.pk : p.m;
     if (rt !== 'single' && rt !== 'avg') return mods;
@@ -93,7 +93,7 @@
        rt==='single' → 单次档 p.sixS（ETL 用 sixdim.js --track single 跑出）
        rt==='avg'    → 平均档 p.sixA
        其它（'all'/空/未传）→ 合并档 p.six
-     三套同源同结构 {m1..m6,t}，仅维度分因口径不同而异（M1 纪录分、M5 当前排名受单次/平均影响最大）。 */
+     三套同源同结构 {m1..m6,t}，仅维度分因口径不同而异（M1 纪录分、M5 纪录比受单次/平均影响最大）。 */
   function sixVec(p, rt) {
     if (!p) return null;
     if (rt === 'single') return p.sixS || p.six || null;
