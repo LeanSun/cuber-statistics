@@ -685,7 +685,8 @@ console.log('== 选手页排名数字 / 参数设置页 ==');
   /* 需求：颜色修改的 16 进制输入框集成到「点击色块后弹出的取色菜单」中（RGB 下方 + 取消/确认） */
   const hM = tryRender('参数设置页', () => P.model(base));
   ok(hM.indexOf('data-cmod') >= 0, '模块配色色块存在（点击弹出取色菜单）');
-  ok(hM.indexOf('data-ccmod') >= 0, '国家配色色块存在（点击弹出取色菜单）');
+  /* 2026-11-04 晚：国家配色板块按用户要求整块删除 */
+  ok(hM.indexOf('data-ccmod') < 0 && hM.indexOf('mdCountryColors') < 0, '国家配色板块已删除');
   /* 需求变更（2026-10-27）：六维占比自定义由「可拖拽柱状图」改为
      「每行一根滑杆 + 一个数字输入框」——柱子只有 40 来像素高，拖 1px 就是 2 个点，
      拖不准也点不中，触屏还会误触页面滚动。滑杆行程长、可点轨道跳位、键盘可微调。 */
@@ -704,8 +705,33 @@ console.log('== 选手页排名数字 / 参数设置页 ==');
   const iLayout = hM.indexOf('class="md-layout"');
   ok(iLayout > 0, '参数页有两栏布局容器 md-layout');
   ok(hM.indexOf('id="mdColors"') > iLayout, '模块配色卡片已移到页面最下方（在md-layout之后）');
-  ok(hM.indexOf('id="mdCountryColors"') > iLayout, '国家配色卡片已移到页面最下方（在md-layout之后）');
-  ok(hM.indexOf('id="mdCountryColors"') > hM.indexOf('id="mdColors"'), '两个颜色卡片都在最下方且顺序为 维度色 → 国家色');
+  /* 2026-11-04 晚：国家配色卡片已删除，不再有第二张颜色卡 */
+  ok(hM.indexOf('id="mdCountryColors"') < 0, '国家配色卡片已移除');
+  /* 第十三轮新增「外观与交互」：四个偏好项 + 恢复默认 */
+  ok(hM.indexOf('id="pzPrefs"') >= 0, '新增「外观与交互」卡片');
+  ['theme', 'density', 'motion', 'perPage'].forEach(function (k) {
+    ok(hM.indexOf('data-pref="' + k + '"') >= 0, '外观偏好多出调节项：' + k);
+  });
+  ok(hM.indexOf('id="prefReset"') >= 0, '外观偏好有「恢复默认」');
+  ok((hM.match(/class="pz-chip"/g) || []).length >= 5, '预设方案改为 chips（不再是 select）');
+  ok(hM.indexOf('id="presetSel"') < 0, '旧的预设下拉框已移除');
+  /* 偏好模块（Prefs）：默认值 / 校验 / 持久化 */
+  ok(win.Prefs && typeof win.Prefs.set === 'function', 'Prefs 偏好模块已加载');
+  if (win.Prefs) {
+    ok(win.Prefs.defaults.theme === 'auto', '主题默认「跟随系统」（实得 ' + win.Prefs.defaults.theme + '）');
+    ok(win.Prefs.defaults.perPage === 20, '每页行数默认 20');
+    const saveAll = win.Prefs.all();
+    win.Prefs.set('density', 'compact');
+    ok(win.Prefs.get('density') === 'compact', '密度偏好可写入');
+    win.Prefs.set('density', 'weird-value');
+    ok(win.Prefs.get('density') === 'compact', '非法取值被拒绝（保持原值）');
+    win.Prefs.set('perPage', 50);
+    ok(win.Prefs.get('perPage') === 50, '每页行数可改为 50');
+    win.Prefs.reset();
+    ok(win.Prefs.get('density') === 'cozy' && win.Prefs.get('perPage') === 20, '恢复默认生效');
+    void saveAll;
+  }
+  ok(/Prefs/.test(fs.readFileSync(path.join(ROOT, 'js/pages-core.js'), 'utf8')), '榜单每页行数读偏好');
   /* 占改权重必须真的改变榜单（不能直接读 ETL 预置的 p.six.t） */
   {
     const before = P.filtered(Object.assign({}, base)).slice(0, 1)[0];
@@ -1124,6 +1150,34 @@ console.log('== 默认值：停办项目计入 / 竞速图速率 ==');
   ok(hR.indexOf('tlRatejumpCap') < 0, '时间跳跃的滑杆已删除（只留数字框）');
   ok(hR.indexOf('tlRateanim') < 0 && hR.indexOf('tlRatefps') < 0, '动画时长 / 重绘间隔的调节项已删除');
   ok(hR.indexOf('tl-jump') >= 0, '时间跳跃收进播放控件行（.tl-jump）');
+  /* ★ 2026-11-04 晚（第十三轮）：时间轴换成自绘轨道 + 进度填充 + 年份刻度，
+     与上方筛选项之间用 .tl-ctl 的 margin-top 拉开距离 */
+  ok(hR.indexOf('class="tl-rail"') >= 0, '时间轴用自绘轨道 .tl-rail（不再是裸 range）');
+  ok(hR.indexOf('id="tlRailFill"') >= 0, '轨道带强调色进度填充 .tl-rail-fill');
+  ok(hR.indexOf('class="tl-rail-ticks"') >= 0, '轨道下方有年份刻度');
+  ok((hR.match(/class="tl-tick"/g) || []).length >= 2, '刻度至少有 2 个 5 年标记');
+  ok(hR.indexOf('tl.railHint') >= 0 || hR.indexOf('快进 1 年') >= 0, '轨道上方提示左右键可快进');
+  {
+    const css = fs.readFileSync(path.join(ROOT, 'css/style.css'), 'utf8');
+    ok(/\.tl-ctl\{[^}]*margin:20px 0 14px/.test(css), '播放控件行与上方筛选项拉开间距（margin-top 20px）');
+    ok(/\.tl-rail-slot input\[type="range"\]::-webkit-slider-thumb/.test(css), '滑块拇指自绘');
+  }
+  {
+    const appSrc = fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8');
+    ok(/__tlArrowHandler/.test(appSrc), '左右方向键监听已接入（且每次挂载替换旧监听）');
+    ok(/ArrowRight' ?\? ?365 ?: ?-365/.test(appSrc), '方向键步长为 365 天（1 年）');
+    ok(/wasPlaying/.test(appSrc) && /startPlay\(\)/.test(appSrc), '按键后沿用原播放状态');
+    ok(/theme-anim/.test(appSrc) && appSrc.indexOf('startViewTransition') < 0,
+      '深浅色切换改为颜色插值（不再用 View Transitions 截图扫过）');
+    ok(/canAnimateVars/.test(appSrc) && /theme-fade/.test(appSrc),
+      '主题切换有主路径 + 老浏览器回退路径');
+    const css2 = fs.readFileSync(path.join(ROOT, 'css/style.css'), 'utf8');
+    ok(/@property --bg\{syntax:"<color>"/.test(css2), '主题色变量注册为 <color>，可以自身插值');
+    ok(/html\.theme-anim\{[\s\S]{0,400}?transition-property:--bg/.test(css2),
+      '切换动画由 :root 上的变量过渡承担（一组动画而非逐元素）');
+    ok(/html\.theme-fade,[\s\S]{0,200}?transition-property:background-color/.test(css2),
+      '回退路径逐元素过渡颜色属性');
+  }
   ok(hR.indexOf('tlRateReset') < 0, '「恢复默认」按钮随三项调节一起删除');
   ok(hR.indexOf('msToast') >= 0, '重大事件有右下角弹出提示的容器');
   ok(/id="msPopBody" hidden/.test(hR), '重大事件弹窗默认收起');
@@ -1279,20 +1333,17 @@ console.log('== 模块配色自定义 ==');
 {
   const hM = tryRender('评分原理', () => P.model(Object.assign({}, base, { mdSection: 'overview' })));
   ok(hM.indexOf('data-cmod') >= 0, '模块配色自定义控件存在');
-  ok(hM.indexOf('data-ccmod') >= 0, '国家配色自定义控件存在（逐国可改）');
-  const cc = hM.match(/data-ccmod="CN"[^>]*style="background:([^"]+)"/);
-  ok(!!cc, '中国配色控件存在');
-  const cn = cc ? cc[1].toLowerCase() : '';
-  /* 中国红必须与国旗红（#de2910）明显区分开 */
-  ok(cn && cn !== '#de2910', '中国配色已加深，不再等于国旗红: ' + cn);
-  const setFn = P.setCountryColor;
-  ok(typeof setFn === 'function', '国家配色可写入并持久化');
-  if (typeof setFn === 'function') {
-    const before = P.countryColor('CN');
-    setFn('CN', '#123456');
-    ok(P.countryColor("CN") === "#123456", "自定义颜色立即生效");
-    P.resetCountryColors();
-    ok(P.countryColor("CN") === before, "恢复默认后回到原色");
+  /* 国家配色板块已按用户要求删除（2026-11-04 晚）；取色能力仍在（countryColor 按国码自动生成） */
+  ok(hM.indexOf('data-ccmod') < 0, '国家配色控件已删除');
+  ok(typeof P.countryColor === 'function', '国家取色仍由 countryColor() 自动生成');
+  const setC = Params.setColor;
+  ok(typeof setC === 'function', '模块配色可写入并持久化');
+  if (typeof setC === 'function') {
+    const before = Params.colors().m1;
+    setC('m1', '#123456');
+    ok(Params.colors().m1.toLowerCase() === '#123456', '自定义颜色立即生效');
+    Params.resetColors();
+    ok(Params.colors().m1 === before, '恢复默认后回到原色');
   }
 }
 
@@ -1645,6 +1696,7 @@ console.log('== 登顶时长 ==');
 console.log('== 六维分数细则子页面 ==');
 if (P.sixdimTableHtml) {
   const l = P.sixdimLabels();
+  const DIMS_ALL = ['M1', 'M2', 'M3', 'M4', 'M5', 'M6'];
   const fake = {
     meta: { generated: '2026-11-04', count: 3, weights: { M1: .45, M2: .15, M3: .2, M4: .15, M5: .01, M6: .04 },
       labels: { M1: '纪录持有', M2: '领奖台', M3: '大赛表现', M4: '统治力', M5: '纪录比', M6: '突破幅度' } },
@@ -1660,18 +1712,17 @@ if (P.sixdimTableHtml) {
     const per = r.body.split('<tr>').slice(1).map(function (x) { return (x.match(/<td\b/g) || []).length; });
     ok(thN === 9 && r.cols === 9 && per.length === 3 && per.every(function (n) { return n === 9; }),
       dim + ' 视图表头 9 列、每行 9 列（实得 ' + per.join('/') + '）');
-    /* 分数条：与排行榜共用 .bar-row / .bar-track / .bar-grow / .ministack */
-    const bars = (r.body.match(/class="bar-grow"/g) || []).length;
-    ok(bars === 3, dim + ' 视图每行恰好 1 条分数条（实得 ' + bars + '）');
-    ok((r.body.match(/class="sd-bar"/g) || []).length === 0, dim + ' 视图不再有旧的 absolute 色块 .sd-bar');
-    /* 六维总分列是六色堆叠条（颜色与排名页一致），单维列是单一维度色 */
-    const stack = (r.body.match(/class="ministack"/g) || []).length;
-    ok(stack === 3, dim + ' 视图三条堆叠条（实得 ' + stack + '）');
-    if (dim === 'total') {
-      ok((r.body.match(/var\(--m[1-6]\)/g) || []).length >= 6, '六维总分列用 M1–M6 的六种维度色堆叠');
-    } else {
-      ok(r.body.indexOf('var(--' + dim.toLowerCase() + ')') >= 0, dim + ' 列的分数条用的就是该维自己的颜色');
-    }
+    /* 2026-11-04 晚（第十三轮）：分数条整块删除 —— 单元格里只有数字，颜色即维度 */
+    ok((r.body.match(/class="bar-grow"/g) || []).length === 0, dim + ' 视图已无分数条（.bar-grow）');
+    ok((r.body.match(/class="sd-bar"/g) || []).length === 0, dim + ' 视图无旧的 absolute 色块 .sd-bar');
+    ok((r.body.match(/class="ministack"/g) || []).length === 0, dim + ' 视图无堆叠条 .ministack');
+    /* 每行 7 个数字（M1–M6 + 六维总分），各自带该维度颜色 */
+    const nums = (r.body.match(/class="[^"]*sd-num"/g) || []).length;
+    ok(nums === 21, dim + ' 视图每行 7 个着色数字（3 行共 21，实得 ' + nums + '）');
+    DIMS_ALL.forEach(function (d) {
+      ok(r.body.indexOf('var(--' + d.toLowerCase() + ')') >= 0, dim + ' 视图的 ' + d + ' 数字用该维主色');
+    });
+    ok(r.body.indexOf('var(--accent)') >= 0, dim + ' 视图的六维总分数字用强调色');
   });
   /* ★ 2026-11-04：每页 20 人 + 底部分页 */
   {
@@ -1696,11 +1747,6 @@ if (P.sixdimTableHtml) {
     /* 只有一页时不渲染分页条（避免「1」这种无意义的分页） */
     const one = P.sixdimTableHtml(fake, { dim: 'total', g: 'all', q: '', page: 1, per: 20 }, l);
     ok(one.pager === '', '总人数不足一页时不渲染分页条');
-    /* 翻页时条长尺子不变：两页都按全站榜首归一 */
-    const w1 = (p1.body.match(/width:([\d.]+)%/) || [])[1];
-    ok(w1 === '100.0', '第 1 页条长满格 = 全站榜首（实得 ' + w1 + '）');
-    const w2 = (p2.body.match(/width:([\d.]+)%/) || [])[1];
-    ok(w2 === '98.0', '第 2 页首位按同一把尺子（实得 ' + w2 + '%，应 980/1000）');
   }
   const r = P.sixdimTableHtml(fake, { dim: 'total', g: 'f', q: '', page: 1, per: 20 }, l);
   ok(r.matched === 1 && r.rows === 1, '性别筛选生效（女 = 1 人）');

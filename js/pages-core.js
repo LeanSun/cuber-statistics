@@ -803,7 +803,8 @@
     /* 仅统计前 1000 名（排序已在 filtered 内完成，这里截断） */
     const rowsAll = allRows.length > RANK_TOP ? allRows.slice(0, RANK_TOP) : allRows;
     const rt = state.recType || 'all';
-    const per = 20;
+    /* 每页行数：默认 20，可在「参数设置 → 外观与交互 → 榜单每页行数」改成 50 / 100 */
+    const per = (window.Prefs && parseInt(window.Prefs.get('perPage'), 10)) || 20;
     const evMode = rowsAll.length ? (rowsAll[0].ev || '') : '';
     const firstRow = rowsAll[0] || null;
     const multiMode = !!(firstRow && firstRow.evs && firstRow.evs.length >= 2);

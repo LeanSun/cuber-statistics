@@ -56,7 +56,6 @@
 ```
 cuber-statistics/
 ├─ index.html            外壳：导航 / 筛选条 / 页脚 / WCA 版权声明（站点根，GitHub Pages 直接托管）
-├─ sixdim.html           六维分数细则旧入口：自动跳转到「参数设置 → 六维分数细则」子页面
 ├─ css/style.css         主题变量（深浅双主题）+ 组件 + 响应式 + 动效
 ├─ vendor/echarts.min.js 本地 ECharts（离线可用）
 ├─ js/

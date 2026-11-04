@@ -62,25 +62,94 @@
   --gold:#f0c04a; --silver:#c9d2de; --bronze:#d99a6c;
 }
 
-/* ============ 深浅色切换的过渡（2026-11-04） ============
-   ① 支持 View Transitions 的浏览器：新旧两帧**不做**默认的交叉淡入（那样整页会糊一秒），
-      改为由 app.js 给 ::view-transition-new(root) 播一段「从顶栏按钮扩散的圆形揭示」，
-      这里只把默认动画关掉、把新帧压在上层。
-   ② 不支持时：给 <html> 挂 .theme-fade，0.4s 内把颜色插值过去（只过渡颜色类属性，
-      不碰 transform / 布局，避免整页重排）。 */
-::view-transition-old(root),::view-transition-new(root){animation:none;mix-blend-mode:normal}
-::view-transition-old(root){z-index:1}
-::view-transition-new(root){z-index:2}
-html.theme-fade,html.theme-fade *,html.theme-fade *::before,html.theme-fade *::after{
-  transition:background-color .4s ease,background-image .4s ease,color .4s ease,
-    border-color .4s ease,box-shadow .4s ease,fill .4s ease,stroke .4s ease!important;
+/* ============ 深浅色切换的过渡（2026-11-04 晚第十三轮重做） ============
+   上一版是 View Transitions 的圆形揭示：把新主题渲染成一张**静态截图**从按钮处扫过去，
+   边界是一条硬圆，扫过瞬间整页定型 —— 观感是「唰一下」，用户反馈「还是很生硬」。
+   这一版改成**真正的颜色插值**，分两条路径：
+
+   ① 主路径（支持 CSS @property）：把主题用到的颜色变量注册成 <color> 类型，
+      于是它们自己可以过渡。切换时只在 :root 上跑一段 0.62s 的变量过渡，
+      全站元素每帧按新变量重新解析颜色 —— 只有 ONE 组动画，
+      实测掉帧 13 → 0（同一台无头 Chrome、同一个榜单页）。
+   ② 回退路径（Safari < 16.4 / Firefox < 128）：给 <html> 挂 .theme-fade，
+      逐元素过渡 background-color / color / border-color / fill / stroke。
+      代价是高一些，但保证老浏览器也不是硬切。
+
+   两条路径都**不碰** transform / opacity / 尺寸：那些属于交互与布局，
+   混进来会让按钮的 hover 变钝、页面抖动。阴影与渐变不参与插值（代价大且几乎看不出）。 */
+@property --bg{syntax:"<color>";inherits:true;initial-value:#f6f8fb}
+@property --bg-elev{syntax:"<color>";inherits:true;initial-value:#ffffff}
+@property --bg-soft{syntax:"<color>";inherits:true;initial-value:#eef2f7}
+@property --bg-soft-2{syntax:"<color>";inherits:true;initial-value:#e4eaf2}
+@property --text{syntax:"<color>";inherits:true;initial-value:#141a22}
+@property --text-2{syntax:"<color>";inherits:true;initial-value:#57647a}
+@property --text-3{syntax:"<color>";inherits:true;initial-value:#8b96a8}
+@property --border{syntax:"<color>";inherits:true;initial-value:#e2e8f0}
+@property --border-2{syntax:"<color>";inherits:true;initial-value:#c8d2de}
+@property --accent{syntax:"<color>";inherits:true;initial-value:#2f6feb}
+@property --accent-2{syntax:"<color>";inherits:true;initial-value:#1e4fb0}
+@property --accent-soft{syntax:"<color>";inherits:true;initial-value:#e8f0fe}
+@property --warn{syntax:"<color>";inherits:true;initial-value:#b4531a}
+@property --warn-soft{syntax:"<color>";inherits:true;initial-value:#fdf1e5}
+@property --ok{syntax:"<color>";inherits:true;initial-value:#0f7a52}
+@property --ok-soft{syntax:"<color>";inherits:true;initial-value:#e3f6ec}
+@property --m1{syntax:"<color>";inherits:true;initial-value:#ed58a9}
+@property --m2{syntax:"<color>";inherits:true;initial-value:#e54b52}
+@property --m3{syntax:"<color>";inherits:true;initial-value:#ffa838}
+@property --m4{syntax:"<color>";inherits:true;initial-value:#20b561}
+@property --m5{syntax:"<color>";inherits:true;initial-value:#008fd2}
+@property --m6{syntax:"<color>";inherits:true;initial-value:#a167f1}
+@property --gold{syntax:"<color>";inherits:true;initial-value:#e0a20b}
+@property --silver{syntax:"<color>";inherits:true;initial-value:#b6bfcc}
+@property --bronze{syntax:"<color>";inherits:true;initial-value:#c07845}
+
+/* ① 主路径：只在切换的那 0.62s 里让变量自己过渡 */
+html.theme-anim{
+  transition-property:--bg,--bg-elev,--bg-soft,--bg-soft-2,--text,--text-2,--text-3,
+    --border,--border-2,--accent,--accent-2,--accent-soft,--warn,--warn-soft,--ok,--ok-soft,
+    --m1,--m2,--m3,--m4,--m5,--m6,--gold,--silver,--bronze;
+  transition-duration:.62s;
+  transition-timing-function:cubic-bezier(.4,0,.2,1);
+  transition-delay:0s;
+}
+/* ② 回退路径：老浏览器逐元素过渡颜色属性 */
+html.theme-fade,
+html.theme-fade *,
+html.theme-fade *::before,
+html.theme-fade *::after{
+  transition-property:background-color,color,border-color,fill,stroke!important;
+  transition-duration:.62s!important;
+  transition-timing-function:cubic-bezier(.4,0,.2,1)!important;
   transition-delay:0s!important;
 }
-/* 系统级「减少动效」：两种路径都直接换色，不做任何过渡 */
+/* 图表重绘那一帧：颜色过渡结束后 canvas 要重建，给容器补一段极短的淡入把「啪」那一下盖掉 */
+@keyframes chartSettle{from{opacity:.35}to{opacity:1}}
+.theme-settle .chart-box,.theme-settle .ec{animation:chartSettle .3s ease both}
+/* 系统级「减少动效」：直接换色，不做任何过渡（偏好里的「减弱」用 .motion-reduced，见下） */
 @media (prefers-reduced-motion: reduce){
-  ::view-transition-old(root),::view-transition-new(root){animation:none!important}
-  html.theme-fade,html.theme-fade *,html.theme-fade *::before,html.theme-fade *::after{transition:none!important}
+  html.theme-anim,html.theme-fade,
+  html.theme-fade *,html.theme-fade *::before,html.theme-fade *::after{transition:none!important}
+  .theme-settle .chart-box,.theme-settle .ec{animation:none!important}
 }
+
+/* ============ 界面偏好（参数设置 → 外观与交互） ============
+   ① 界面密度：紧凑模式压缩表格行高与卡片留白，一屏能多看几行；
+   ② 动效减弱：把过渡与动画压到几乎为 0（等价于系统 reduced-motion，但可单独开）。 */
+html[data-density="compact"] .card{padding:12px 14px}
+html[data-density="compact"] table.data tbody td{padding:4px 9px}
+html[data-density="compact"] table.data thead th{padding:6px 9px}
+html[data-density="compact"] .sd-table tbody td{padding:5px 9px}
+html[data-density="compact"] .page-head{margin-bottom:14px}
+html[data-density="compact"] .rank-row,html[data-density="compact"] .prow{padding-top:4px;padding-bottom:4px}
+html.motion-reduced,
+html.motion-reduced *,
+html.motion-reduced *::before,
+html.motion-reduced *::after{
+  transition-duration:.01ms!important;
+  animation-duration:.01ms!important;
+  animation-iteration-count:1!important;
+}
+html.motion-reduced{scroll-behavior:auto}
 
 /* ============ Base ============ */
 *,*::before,*::after{box-sizing:border-box}
@@ -810,7 +879,57 @@ tr:hover .pname .linkish,tr:hover .pname .pname-txt{
 /* ============ 动态可视化 ============ */
 .tl-top{align-items:flex-end;gap:12px 18px}
 /* 视图说明块（.tl-desc）已按用户 2026-11-01 第五轮要求整块删除，样式一并移除 */
-.tl-ctl{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+/* ---- 播放控制台（2026-11-04 晚第十三轮重做） ----
+   以前这一行直接贴在筛选项下面：浏览器原生 range 一根灰细线，上下都没有边界，
+   和「图表切换 / 六维筛选」挤在一起看着像同一组控件。
+   现在做成一块独立的软底色托盘：与上方筛选项拉开 20px、自己带边框和圆角，
+   里面分为「播放按钮 / 时间轴 / 时间跳跃」三段。 */
+.tl-ctl{display:flex;gap:16px;align-items:center;flex-wrap:wrap;
+  margin:20px 0 14px;padding:12px 16px;
+  background:var(--bg-soft);border:1px solid var(--border);border-radius:14px}
+/* 托盘底色是 --bg-soft，时间跳跃药丸改用 --bg-elev，否则会糊成一片 */
+.tl-ctl .tl-jump{background:var(--bg-elev);padding:5px 10px}
+/* ---- 时间轴：自绘轨道 + 进度填充 + 大号日期 + 5 年刻度 ---- */
+.tl-rail{flex:1;min-width:220px;display:flex;flex-direction:column;gap:1px}
+.tl-rail-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:0 1px}
+.tl-year{font-size:21px;font-weight:750;line-height:1.2;letter-spacing:-.3px;
+  font-variant-numeric:tabular-nums;color:var(--accent)}
+.tl-rail-hint{font-size:11.5px;color:var(--text-3);white-space:nowrap}
+.tl-rail-slot{position:relative;height:24px;display:flex;align-items:center}
+.tl-rail-track{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);
+  height:6px;border-radius:999px;background:var(--border-2);overflow:hidden}
+.tl-rail-fill{display:block;height:100%;width:0;border-radius:999px;
+  background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 50%,transparent),var(--accent))}
+.tl-rail-slot input[type="range"]{-webkit-appearance:none;appearance:none;position:relative;z-index:2;
+  width:100%;height:24px;margin:0;padding:0;background:transparent;cursor:pointer}
+.tl-rail-slot input[type="range"]::-webkit-slider-runnable-track{height:6px;background:transparent;border:0}
+.tl-rail-slot input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;
+  width:16px;height:16px;margin-top:-5px;border-radius:50%;
+  background:var(--bg-elev);border:3px solid var(--accent);
+  box-shadow:0 1px 6px rgba(16,24,40,.26);
+  transition:transform .14s ease,box-shadow .14s ease}
+.tl-rail-slot input[type="range"]:hover::-webkit-slider-thumb{transform:scale(1.1)}
+.tl-rail-slot input[type="range"]:active::-webkit-slider-thumb{
+  transform:scale(1.18);box-shadow:0 0 0 6px color-mix(in srgb,var(--accent) 16%,transparent)}
+.tl-rail-slot input[type="range"]::-moz-range-track{height:6px;background:transparent;border:0}
+.tl-rail-slot input[type="range"]::-moz-range-thumb{width:13px;height:13px;border-radius:50%;
+  background:var(--bg-elev);border:3px solid var(--accent);box-shadow:0 1px 6px rgba(16,24,40,.26)}
+.tl-rail-ticks{position:relative;height:16px;font-size:10.5px;color:var(--text-3);
+  font-variant-numeric:tabular-nums;user-select:none}
+.tl-rail-ticks .tl-tick{position:absolute;top:3px;transform:translateX(-50%);font-style:normal;white-space:nowrap}
+.tl-rail-ticks .tl-tick::before{content:"";position:absolute;left:50%;top:-4px;width:1px;height:3px;background:var(--border-2)}
+.tl-rail-end{position:absolute;top:3px;font-weight:600;color:var(--text-2)}
+.tl-rail-end.l{left:0}
+.tl-rail-end.r{right:0}
+@media (max-width:900px){
+  /* 窄屏轨道只剩 300–400px，5 年刻度会挤成「20032005」，只留首尾两个年份 */
+  .tl-rail-ticks .tl-tick{display:none}
+}
+@media (max-width:720px){
+  .tl-ctl{gap:10px;padding:10px 12px;margin-top:16px}
+  .tl-rail{order:3;flex-basis:100%}
+  .tl-rail-hint{display:none}
+}
 /* ---- 播放 / 暂停 / 重播（YouTube 同款：▶ 与 ❙❙ 是同一枚形状在插值，不是换图） ----
    图标本体是一块被 clip-path 裁出来的方块（颜色跟随 currentColor），
    「两条竖杠」与「半个三角形 + 半个三角形」用**同样 10 个顶点**描述，
@@ -839,8 +958,7 @@ tr:hover .pname .linkish,tr:hover .pname .pname-txt{
 @media (prefers-reduced-motion:reduce){
   .tl-pp,.tl-rp{transition:opacity .01s linear}
 }
-.tl-ctl input[type="range"]{flex:1;min-width:160px;accent-color:var(--accent)}
-.tl-year{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;min-width:66px;color:var(--accent)}
+/* 时间轴的轨道与滑块已在上面的 .tl-rail-* 里自绘（原生 range 只留可交互的拇指） */
 .chart-box{width:100%;min-height:120px;position:relative}
 .ec{width:100%}
 /* 图表绘制失败时的可读提示（替代此前「一片空白、控制台无线索」的表现） */
@@ -883,7 +1001,6 @@ tr:hover .pname .linkish,tr:hover .pname .pname-txt{
 .king-card .ev-ic{width:28px;height:28px;font-size:28px;color:var(--accent)}
 
 /* ============ 评分原理 ============ */
-.md-preset{margin-bottom:14px}
 .md-layout{display:grid;grid-template-columns:230px 1fr;gap:16px;align-items:start}
 .md-side{position:sticky;top:calc(var(--topbar-h) + 12px);padding:14px}
 .md-side-title{font-size:12px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px}
@@ -930,10 +1047,11 @@ tr:hover .pname .linkish,tr:hover .pname .pname-txt{
 @keyframes flash{0%,100%{box-shadow:var(--shadow)}20%{box-shadow:0 0 0 3px var(--accent-soft),var(--shadow-lg)}}
 
 /* ============ 六维分数细则（参数设置子页面） ============
-   2026-11-04 由独立实验页迁入。★ 两条结构性修复：
+   2026-11-04 由独立实验页迁入。★ 三条结构性修复：
    ① 表头与表体由同一份 colsFor(dim) 生成，列数恒等，不再出现 15 列 vs 9 列错位；
-   ② 色条 .sd-bar 的绝对定位被 .sd-cell（position:relative + overflow:hidden）关在
-      单元格内，不会再堆到表格外变成「莫名其妙的条状物」。 */
+   ② 分数条整块删除（用户 2026-11-04 晚要求）：每格只留数字，数字本身用该维度的主色，
+      M1 玫粉 / M2 红 / M3 金 / M4 绿 / M5 蓝 / M6 紫，六维总分用强调色；
+   ③ 表头不再有「吃掉剩余宽度」的条列，列宽按内容自适应，整表更紧凑。 */
 .sd-subtabs{display:flex;gap:4px;margin:0 0 16px;border-bottom:1px solid var(--border);overflow-x:auto;scrollbar-width:none}
 .sd-subtabs::-webkit-scrollbar{display:none}
 .sd-subtab{flex:none;padding:9px 15px;font-size:13.5px;color:var(--text-2);border-bottom:2px solid transparent;white-space:nowrap}
@@ -958,31 +1076,26 @@ tr:hover .pname .linkish,tr:hover .pname .pname-txt{
 /* 分页之后每页固定 20 行，不再需要内层滚动条（70vh 会把最后一行切成半截、
    再叠一条内层滚动条）；改成整页滚动，和「历史地位排名」的表格一致 */
 .sd-wrap{max-height:none;overflow-x:auto}
-table.sd-table{min-width:820px;font-variant-numeric:tabular-nums}
+table.sd-table{min-width:640px;font-variant-numeric:tabular-nums}
 table.sd-table thead th{top:0;background:var(--bg-soft);cursor:default}
 table.sd-table thead th:hover{color:var(--text-2)}
+/* 数字列右对齐 → 表头也跟着右对齐，否则「纪录持有」这类长标题会把列推歪 */
+table.sd-table thead th.sd-off,table.sd-table thead th.sd-cur,table.sd-table thead th.sd-tot{text-align:right}
 table.sd-table tbody td{padding:7px 11px}
 .sd-rk{width:46px;color:var(--text-3)}
 .sd-rk.sd-top3{color:var(--accent);font-weight:800}
 .sd-nm{font-weight:600;max-width:250px;overflow:hidden;text-overflow:ellipsis}
 .sd-nm small{display:inline-block;margin-left:7px;color:var(--text-3);font-size:11px;font-weight:400}
 .sd-off{color:var(--text-2);font-size:12.5px}
-.sd-cur{font-weight:700;font-size:14px}
-.sd-tot{color:var(--text);font-weight:700}
-/* ★ 分数条单元格（2026-11-04 重做）：直接复用排行榜那一套
-   .bar-row / .bar-track / .bar-grow / .ministack —— 「条长 → 数字」的相对位置、
-   六维配色、悬停抬升全部与「历史地位排名」逐像素一致；
-   旧版是「absolute 定位的半透明色块 + 右对齐数字」，两者各在各的位置，看着像错位。 */
-/* 表格是 auto 布局，给 <td> 写 min-width 是无效的（表格布局会忽略），
-   必须让「画条那一列」的表头吃掉全部剩余宽度 —— 每个视图里恰好只有一列是 .sd-cur */
-.sd-table th.sd-cur{width:100%}
-.sd-cell{padding:0!important;vertical-align:middle;min-width:230px}
-.sd-cell .bar-row{height:100%;padding:7px 11px}
-/* 数字沿用排行榜 .bar-total 的样式（12.5px / --text-2 / 等宽数字），不再单独改色 */
-.sd-cell .bar-track{min-width:54px}
-/* 表格自己这一份要显式给高：.bars-full .ministack 的 18px 依赖 .bars-full 祖先，
-   这里的单元格没有那个类，不补就会退回 13px、条子明显偏细 */
-.sd-cell .ministack{height:18px}
+.sd-cur{font-weight:700;font-size:14.5px}
+.sd-tot{font-weight:700}
+/* ★ 分数数字（2026-11-04 晚）：颜色由 HTML 内联给出（var(--m1..m6) / var(--accent)），
+   这里只管排版 —— 等宽数字、右对齐，翻页时同位列的数字位数对齐成一条直线。 */
+.sd-num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.sd-cur.sd-num{font-weight:800}
+.sd-tot.sd-num,.sd-table td.sd-cur.sd-num{letter-spacing:-.2px}
+/* 非当前排序列稍微压一点透明度：颜色仍可辨，但不会盖过被选中的那一列 */
+.sd-off.sd-num{opacity:.82}
 .sd-empty{text-align:center!important;color:var(--text-3);padding:24px!important}
 /* 分页条：沿用 .pager 的按钮样式，只补上下间距与 [hidden] */
 .sd-pager{margin-top:14px}
@@ -1151,9 +1264,49 @@ td.tl:hover .fi, .region-cell:hover .fi{transform:scale(1.22)}
 }
 .ms-del:hover{color:#ff5c6c}
 
-/* 模块配色自定义 */
-.md-colors{margin-bottom:14px}
-.md-colors-body{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+/* ============ 参数设置页（2026-11-04 晚第十三轮重排） ============
+   页面顺序：六维权重 → 外观与交互 → 模型说明（左目录 + 右详情）→ 模块配色。
+   所有卡片共用 .pz-card：统一的标题行（图标 + 标题 + 说明 + 右侧徽标）、
+   统一的虚线底栏（按钮都沉底，不再散落在卡片各处）。 */
+.pz-card{padding:18px 20px;margin-bottom:16px}
+.pz-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+.pz-h-main{min-width:0}
+.pz-title{display:flex;align-items:center;gap:8px;font-size:16.5px;font-weight:650;margin:0}
+.pz-title .ic{width:18px;height:18px;color:var(--accent);flex:none}
+.pz-desc{margin:5px 0 0;font-size:12.5px;color:var(--text-3);line-height:1.6;max-width:660px}
+.pz-sum{flex:none;font-variant-numeric:tabular-nums}
+/* 预设 chips：原先是 <select>，展开才看得到选项，且与本页其他控件风格不统一 */
+.pz-presets{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:0 0 14px;
+  padding:9px 11px;background:var(--bg-soft);border:1px solid var(--border);border-radius:11px}
+.pz-lab{font-size:12px;color:var(--text-3);flex:none;margin-right:2px}
+.pz-chip{font-size:12.5px;padding:5px 12px;border-radius:999px;cursor:pointer;
+  border:1px solid var(--border-2);background:var(--bg-elev);color:var(--text-2);
+  transition:background .15s ease,color .15s ease,border-color .15s ease,transform .12s ease}
+.pz-chip:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+.pz-chip:active{transform:scale(.97)}
+.pz-foot{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:16px;
+  padding-top:13px;border-top:1px dashed var(--border)}
+.pz-note{min-width:0}
+/* 外观与交互：自适应网格，每格「标题 + 说明 + 分段控件」 */
+.pz-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(235px,1fr));gap:12px}
+.pz-item{padding:13px 14px;border:1px solid var(--border);border-radius:12px;background:var(--bg-soft)}
+.pz-item-t{font-size:13.5px;font-weight:650;margin-bottom:3px}
+.pz-item-d{margin:0 0 10px;font-size:12px;color:var(--text-3);line-height:1.55;min-height:2.4em}
+.pz-seg{display:flex;gap:2px;background:var(--bg-elev);border:1px solid var(--border-2);
+  border-radius:9px;padding:2px;width:100%}
+.pz-seg button{flex:1;padding:6px 4px;font-size:12.5px;border-radius:7px;border:0;
+  background:transparent;color:var(--text-2);white-space:nowrap;cursor:pointer}
+.pz-seg button.on{background:var(--accent);color:#fff;font-weight:600;box-shadow:0 1px 3px rgba(16,24,40,.18)}
+/* 模块配色：色块 + 名称 + 色值（比一排光秃秃的圆圈容易认） */
+.pz-swatches{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:10px}
+.pz-sw{display:flex;align-items:center;gap:10px;padding:8px 10px;
+  border:1px solid var(--border);border-radius:11px;background:var(--bg-soft)}
+.pz-sw .swatch{width:32px;height:32px;border-radius:9px}
+.pz-sw-t{display:flex;flex-direction:column;min-width:0;line-height:1.35}
+.pz-sw-t b{font-size:12.5px;font-weight:600}
+.pz-sw-t small{font-size:10.5px;color:var(--text-3);font-family:var(--mono);letter-spacing:.02em}
+@media (max-width:640px){.pz-card{padding:14px}.pz-grid{grid-template-columns:1fr}}
+/* 模块配色自定义（.crow 仍被取色弹窗的锚点复用） */
 .crow{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--text-2);
   background:var(--bg-soft);border:1px solid var(--border);border-radius:10px;padding:5px 10px}
 .crow input[type=color]{width:26px;height:26px;padding:0;border:0;background:none;cursor:pointer}
@@ -1164,11 +1317,7 @@ td.tl:hover .fi, .region-cell:hover .fi{transform:scale(1.22)}
   font-size:11.5px;letter-spacing:.02em;text-transform:lowercase}
 .hex-in:focus{outline:none;border-color:var(--accent);
   box-shadow:0 0 0 2px var(--accent-soft)}
-/* 国家配色：国旗 + 国名 + 取色器 */
-.md-colors-body.cc-body{gap:10px}
-.crow.cc-row{padding:4px 9px}
-.cc-row .cc-flag{width:20px;height:14px;border-radius:2px;flex:none;background-size:cover}
-.cc-row .cc-flag.fi{background-color:var(--bg-soft-2)}
+/* 国家配色板块已按用户要求删除（2026-11-04 晚），.cc-body / .cc-row 样式一并清理 */
 
 /* 展开详情 v2：左身份卡 + 右模块表 */
 .exp-inner.exp-v2{display:grid;grid-template-columns:minmax(220px,280px) 1fr;gap:16px;align-items:start}
@@ -1757,14 +1906,18 @@ button.exp-v3-wca.pid-copy:hover{color:var(--accent)}
 .wrow-name{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--text-2);min-width:0}
 .wrow-name .wdot{width:9px;height:9px}
 .wrow .wrange{-webkit-appearance:none;appearance:none;width:100%;height:22px;background:none;cursor:pointer}
-.wrow .wrange::-webkit-slider-runnable-track{height:6px;border-radius:999px;background:var(--bg-soft-2);
+/* 2026-11-04 晚：轨道左侧按当前占比填充成该维度的主色（--p / --wc 由渲染时内联写入，
+   拖动后由 app.js 的 syncWdim 同步），一眼能看出「这一维占了多少」。 */
+.wrow .wrange::-webkit-slider-runnable-track{height:6px;border-radius:999px;
+  background:linear-gradient(90deg,var(--wc,var(--accent)) 0 var(--p,0%),var(--bg-soft-2) var(--p,0%) 100%);
   border:1px solid var(--border)}
 .wrow .wrange::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:16px;height:16px;
-  margin-top:-6px;border-radius:50%;background:var(--accent);border:2px solid var(--bg-elev);
+  margin-top:-6px;border-radius:50%;background:var(--wc,var(--accent));border:2px solid var(--bg-elev);
   box-shadow:0 1px 4px rgba(0,0,0,.22)}
-.wrow .wrange::-moz-range-track{height:6px;border-radius:999px;background:var(--bg-soft-2);
+.wrow .wrange::-moz-range-track{height:6px;border-radius:999px;
+  background:linear-gradient(90deg,var(--wc,var(--accent)) 0 var(--p,0%),var(--bg-soft-2) var(--p,0%) 100%);
   border:1px solid var(--border)}
-.wrow .wrange::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:var(--accent);
+.wrow .wrange::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:var(--wc,var(--accent));
   border:2px solid var(--bg-elev)}
 .wrow .wnum{width:100%;padding:4px 6px;border-radius:8px;text-align:right;
   border:1px solid var(--border-2);background:var(--bg-elev);color:var(--text);

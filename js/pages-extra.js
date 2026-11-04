@@ -342,8 +342,40 @@
           '<svg class="tl-rp" viewBox="0 0 24 24"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>' +
         '</span>' +
         '<span class="tl-play-tx">' + esc(tx0) + '</span></button>';
-      h += '<input type="range" id="tlRange" min="' + sl.min + '" max="' + sl.max + '" step="' + sl.step + '" value="' + sl.value + '">';
-      h += '<span class="tl-year" id="tlYear">' + sl.label + '</span>';
+
+      /* ---- 时间轴（2026-11-04 晚第十三轮重做） ----
+         旧版就是一根浏览器原生 range：灰细线 + 小圆点，夹在播放按钮与年份之间，
+         和上面的筛选项贴着、没有边界，看不出「这是一条时间轴」。
+         现在改成一条独立的「传送带」：
+           · 外层 .tl-ctl 做成软底色托盘 + 与上方筛选项拉开间距；
+           · 轨道自绘（6px 圆角 + 强调色进度填充 + 更大的圆形滑块）；
+           · 当前日期用等宽大号字放在轨道上方左侧，右侧提示「← → 快进一年」；
+           · 轨道下方按 5 年一格标刻度，刻度位置按真实日序号折算成百分比，
+             所以选了停办项目（终点提前）时刻度也跟着重排。 */
+      const railMax = Math.max(1, sl.max);
+      let tk = '';
+      for (let y = 2005; y <= 2035; y += 5) {
+        const i = P.tlDateToIdx ? P.tlDateToIdx(y + '-01-01') : 0;
+        const p = i / railMax * 100;
+        if (!i || p < 8 || p > 92) continue;   /* 太靠两端的刻度会与首尾年份叠字，直接丢掉 */
+        tk += '<i class="tl-tick" style="left:' + p.toFixed(2) + '%">' + y + '</i>';
+      }
+      h += '<div class="tl-rail">' +
+        '<div class="tl-rail-top">' +
+          '<span class="tl-year" id="tlYear">' + sl.label + '</span>' +
+          '<span class="tl-rail-hint">' + esc(t('tl.railHint')) + '</span>' +
+        '</div>' +
+        '<div class="tl-rail-slot">' +
+          '<div class="tl-rail-track" aria-hidden="true"><i class="tl-rail-fill" id="tlRailFill"></i></div>' +
+          '<input type="range" id="tlRange" min="' + sl.min + '" max="' + sl.max + '" step="' + sl.step + '" value="' + sl.value + '" aria-label="' + esc(t('tl.title')) + '">' +
+        '</div>' +
+        '<div class="tl-rail-ticks" aria-hidden="true">' +
+          '<span class="tl-rail-end l">2003</span>' + tk +
+          /* 终点用 floor：11 月的日期四舍五入会显示成下一年，与上方「2026-11-04」对不上 */
+          '<span class="tl-rail-end r">' + Math.floor(P.tlEndFy ? P.tlEndFy() : 2026) + '</span>' +
+        '</div>' +
+        '</div>';
+
       /* 时间跳跃（天/秒）：只影响播放时每秒推进多少天。2026-11-04 起唯一保留的速率项，
          去掉滑杆只留数字框，并挪进这一行贴着播放按钮 / 时间条，调它时不用再上下找。 */
       h += '<label class="tl-jump" title="' + esc(t('tl.rate.jumpTip')) + '">' +
@@ -2510,39 +2542,84 @@
        拖 1 像素就是 2 个多百分点，根本拖不准，触屏上还会误触页面滚动。
        现在换成横向滑杆（行程长、可直接点轨道跳位、键盘方向键可微调）
        加上一个数字输入框（精确到 0.5%），两者双向同步。
-       改某一维时其余各维按原比例自动缩放，六维合计恒为 100%。 */
+       改某一维时其余各维按原比例自动缩放，六维合计恒为 100%。
+
+       ★ 2026-11-04 晚（第十三轮）页面重排：预设从「一行 select + 两个按钮」的窄条
+         收进权重卡片，做成 chips；恢复默认 / 平均分配 / 恢复全部 统一放到卡片底栏。
+         整页顺序：六维权重 → 外观与交互 → 模型说明（目录）→ 模块配色。 */
     const CW = (P.util.sixW ? P.util.sixW() : null) || SW;
     let wsum = 0;
     MOD.forEach(function (k) { wsum += (CW[k] || 0); });
-    h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('md.weightsCustom')) + '</h2>' +
-      '<span class="tag acc" id="wSum">' + esc(t('md.weightsSum', { s: U.fmt(wsum * 100, 1) })) + '</span></div>' +
-      '<p class="tiny muted" style="margin-bottom:10px">' + esc(t('md.weightsHint')) + '</p>' +
-      '<div class="wslider" id="wChart">';
+
+    h += '<section class="card reveal pz-card pz-weights">' +
+      '<div class="pz-head"><div class="pz-h-main">' +
+      '<h2 class="pz-title">' + Ic.glyph('sliders') + ' ' + esc(t('md.weightsCustom')) + '</h2>' +
+      '<p class="pz-desc">' + esc(t('pz.weightsSub')) + '</p></div>' +
+      '<span class="tag acc pz-sum" id="wSum">' + esc(t('md.weightsSum', { s: U.fmt(wsum * 100, 1) })) + '</span></div>';
+
+    /* 预设方案：chips（原先是 select，展开才能看到选项，且与页面其他控件风格不一致） */
+    h += '<div class="pz-presets"><span class="pz-lab">' + esc(t('md.preset')) + '</span>';
+    Object.keys(Pm.presets).forEach(function (k) {
+      h += '<button type="button" class="pz-chip" data-preset="' + k + '">' + esc(Pm.presets[k][en ? 1 : 0]) + '</button>';
+    });
+    h += '</div>';
+
+    h += '<div class="wslider" id="wChart">';
     MOD.forEach(function (k) {
       const pct = (CW[k] || 0) * 100;
       const nm = SN[k] || modName(k);
       h += '<div class="wrow" data-wrow="' + k + '">' +
         '<span class="wrow-name"><i class="wdot" style="background:' + MODC[k] + '"></i>' + esc(nm) + '</span>' +
+        /* --p / --wc：轨道左侧的进度填充宽度与该维主色，让「占比」一眼可读 */
         '<input type="range" class="wrange" data-wdim="' + k + '" min="0" max="100" step="0.5" ' +
+        'style="--p:' + U.fmt(pct, 1) + '%;--wc:' + MODC[k] + '" ' +
         'value="' + U.fmt(pct, 1) + '" aria-label="' + esc(nm) + ' ' + esc(t('player.weight')) + '">' +
         '<input type="number" class="wnum" data-wdim="' + k + '" min="0" max="100" step="0.5" ' +
         'value="' + U.fmt(pct, 1) + '" aria-label="' + esc(nm) + ' ' + esc(t('player.weight')) + '">' +
         '<span class="wrow-unit">%</span>' +
         '</div>';
     });
-    h += '</div>' +
-      '<div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap">' +
-      '<button class="btn btn-ghost" id="wReset">' + esc(t('md.resetDefault')) + '</button>' +
-      '<button class="btn btn-ghost" id="wEven">' + esc(t('md.weightsEven')) + '</button>' +
-      '<span class="tiny muted">' + esc(t('md.weightsNote')) + '</span></div></div>';
+    h += '</div>';
 
-    /* 预设卡片：仅做预设切换；参数已分散到各章节（不再有单一聚合块） */
-    h += '<div class="card reveal md-preset"><div class="row" style="gap:10px;flex-wrap:wrap;align-items:center">';
-    h += '<select id="presetSel"><option value="">' + esc(t('md.preset')) + '</option>' +
-      Object.keys(Pm.presets).map(function (k) { return '<option value="' + k + '">' + esc(Pm.presets[k][en ? 1 : 0]) + '</option>'; }).join('') +
-      '</select>';
-    h += '<button class="btn" id="pReset">' + esc(t('md.resetDefault')) + '</button>';
-    h += '<span class="tiny muted">' + esc(t('md.paramsHint')) + '</span></div></div>';
+    h += '<div class="pz-foot">' +
+      '<button class="btn btn-ghost" id="wReset">' + esc(t('pz.wReset')) + '</button>' +
+      '<button class="btn btn-ghost" id="wEven">' + esc(t('md.weightsEven')) + '</button>' +
+      '<button class="btn btn-ghost" id="pReset">' + esc(t('pz.resetAll')) + '</button>' +
+      '<span class="tiny muted pz-note">' + esc(t('md.weightsNote')) + '</span></div>' +
+      '</section>';
+
+    /* ---- 外观与交互（第十三轮新增）----
+       四个偏好项，全部即时生效、存 localStorage、只影响显示不改模型：
+       主题 / 界面密度 / 动效 / 榜单每页行数。 */
+    const PF = window.Prefs || null;
+    const pv = function (k, d) { try { return PF ? PF.get(k) : d; } catch (e) { return d; } };
+    const segHtml = function (id, key, opts) {
+      const cur = pv(key, opts[0][0]);
+      return '<div class="seg pz-seg" id="' + id + '" data-pref="' + key + '" role="group">' +
+        opts.map(function (o) {
+          return '<button type="button" data-pv="' + o[0] + '" class="' + (cur === o[0] ? 'on' : '') + '">' + esc(o[1]) + '</button>';
+        }).join('') + '</div>';
+    };
+    const item = function (title, desc, ctrl) {
+      return '<div class="pz-item"><div class="pz-item-t">' + esc(title) + '</div>' +
+        '<p class="pz-item-d">' + esc(desc) + '</p>' + ctrl + '</div>';
+    };
+    h += '<section class="card reveal pz-card pz-prefs" id="pzPrefs">' +
+      '<div class="pz-head"><div class="pz-h-main">' +
+      '<h2 class="pz-title">' + Ic.glyph('lab') + ' ' + esc(t('pz.appear')) + '</h2>' +
+      '<p class="pz-desc">' + esc(t('pz.appearSub')) + '</p></div></div>' +
+      '<div class="pz-grid">' +
+      item(t('pz.theme'), t('pz.themeD'), segHtml('prefTheme', 'theme',
+        [['auto', t('pz.theme.auto')], ['light', t('pz.theme.light')], ['dark', t('pz.theme.dark')]])) +
+      item(t('pz.density'), t('pz.densityD'), segHtml('prefDensity', 'density',
+        [['cozy', t('pz.density.cozy')], ['compact', t('pz.density.compact')]])) +
+      item(t('pz.motion'), t('pz.motionD'), segHtml('prefMotion', 'motion',
+        [['full', t('pz.motion.full')], ['reduced', t('pz.motion.reduced')]])) +
+      item(t('pz.perPage'), t('pz.perPageD'), segHtml('prefPerPage', 'perPage',
+        [[20, '20'], [50, '50'], [100, '100']])) +
+      '</div>' +
+      '<div class="pz-foot"><button class="btn btn-ghost" id="prefReset">' + esc(t('pz.reset')) + '</button>' +
+      '<span class="tiny muted pz-note">' + esc(t('pz.saved')) + '</span></div></section>';
 
     /* ---- 两栏：左目录 + 右详情（一次只展示一个章节） ---- */
     h += '<div class="md-layout">';
@@ -2558,44 +2635,21 @@
     h += mdSectionHtml(s, en, state);
     h += '</div></div>';
 
-    /* ===== 颜色类设置统一放在页面最下方（按需求：所有颜色设置沉底） ===== */
-    /* 模块配色：六个维度的主色可自定义，实时生效并本地保存 */
+    /* ===== 颜色设置统一放在页面最下方 =====
+       2026-11-04 晚：国家配色整块删除（用户要求），只保留六维模块配色，
+       并改成「色块 + 名称 + 色值」的卡片式网格，比原来一排圆圈更容易认。 */
     const C = Pm.colors();
-    h += '<div class="card reveal md-colors" id="mdColors"><div class="md-params-title">' + Ic.glyph('sliders') + ' ' +
-      esc(t('md.colors')) + '</div>' +
-      '<p class="tiny muted" style="margin:6px 0 10px">' + esc(t('md.colorsHint')) + '</p><div class="md-colors-body">';
+    h += '<section class="card reveal pz-card pz-colors" id="mdColors">' +
+      '<div class="pz-head"><div class="pz-h-main">' +
+      '<h2 class="pz-title">' + Ic.glyph('record') + ' ' + esc(t('md.colors')) + '</h2>' +
+      '<p class="pz-desc">' + esc(t('md.colorsHint')) + '</p></div></div>' +
+      '<div class="pz-swatches">';
     MOD.forEach(function (k) {
-      /* 颜色色块：点击弹出取色菜单（RGB 滑杆 + 16 进制输入框 + 取消/确认），不再把 16 进制框直接铺在行内 */
-      h += '<div class="crow"><button type="button" class="swatch" data-cmod="' + k + '" data-cmod-label="' + esc(modName(k)) +
+      h += '<div class="pz-sw"><button type="button" class="swatch" data-cmod="' + k + '" data-cmod-label="' + esc(modName(k)) +
         '" style="background:' + esc(C[k]) + '" aria-label="' + esc(modName(k)) + ' 配色"></button>' +
-        '<span class="cr-name">' + esc(modName(k)) + '</span></div>';
+        '<div class="pz-sw-t"><b>' + esc(modName(k)) + '</b><small>' + esc(String(C[k]).toUpperCase()) + '</small></div></div>';
     });
-    h += '<button class="btn btn-ghost" id="mColorReset">' + esc(t('md.resetDefault')) + '</button>';
-    h += '</div></div>';
-
-    /* 国家配色：竞速图 / 泳道图按国籍取色，逐国可自定义 */
-    const CC = P.countryColorDefaults || {};
-    /* 国家配色列表此前只列 COUNTRY_COLORS 里预置的 38 国，用户反馈「有的国家没有显示」。
-       这里改为合并「预置国 + 数据里实际出现过的全部国家（M.countryList）」，
-       按本地化国名排序；未预置的国家仍由 countryColor() 按国码稳定自动取色，可在此逐个改。 */
-    const ccSet = {};
-    Object.keys(CC).forEach(function (k) { ccSet[k] = 1; });
-    (M.countryList || []).forEach(function (k) { if (k) ccSet[k] = 1; });
-    const ccKeys = Object.keys(ccSet).sort(function (a, b) {
-      return String(countryName(a) || a).localeCompare(String(countryName(b) || b), 'zh');
-    });
-    h += '<div class="card reveal md-colors" id="mdCountryColors"><div class="md-params-title">' + Ic.glyph('flag') + ' ' +
-      esc(t('md.countryColors')) + '</div>' +
-      '<p class="tiny muted" style="margin:6px 0 10px">' + esc(t('md.countryColorsHint')) + '</p>' +
-      '<div class="md-colors-body cc-body" id="ccBody">';
-    ccKeys.forEach(function (iso) {
-      h += '<div class="crow cc-row"><button type="button" class="swatch" data-ccmod="' + iso + '" style="background:' + esc(countryColor(iso)) +
-        '" aria-label="' + esc(countryName(iso) || iso) + ' 配色"></button>' +
-        '<span class="cc-flag fi fi-' + iso.toLowerCase() + '"></span>' +
-        '<span class="cr-name">' + esc(countryName(iso) || iso) + '</span></div>';
-    });
-    h += '</div><div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap">' +
-      '<button class="btn btn-ghost" id="ccReset">' + esc(t('md.resetDefault')) + '</button></div></div>';
+    h += '</div><div class="pz-foot"><button class="btn btn-ghost" id="mColorReset">' + esc(t('md.resetDefault')) + '</button></div></section>';
 
     return h;
   };

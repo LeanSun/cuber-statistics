@@ -200,13 +200,36 @@
   let lastRoute = '';
   let lastScroll = 0;
 
-  /* ---------- 主题 ---------- */
+  /* ---------- 主题 ----------
+     主题有三个来源：用户在「参数设置 → 外观与交互」里选的偏好（Prefs.theme：auto/light/dark）、
+     系统 prefers-color-scheme、以及首轮上线时留下的 goat-theme（仅作迁移兜底）。
+     auto 模式下监听系统切换，白天/夜里自动跟随。 */
+  function sysDark() { return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches); }
+  function themePref() {
+    try { if (window.Prefs) return Prefs.get('theme') || 'auto'; } catch (e) { }
+    return 'auto';
+  }
+  function effectiveTheme() {
+    const p = themePref();
+    return (p === 'light' || p === 'dark') ? p : (sysDark() ? 'dark' : 'light');
+  }
   function initTheme() {
-    let th = null;
-    try { th = localStorage.getItem('goat-theme'); } catch (e) { }
-    if (!th) th = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
-    applyTheme(th);
+    /* 老版本只存了 goat-theme（没有偏好体系）：升级后第一次进来把它迁移成显式偏好，
+       否则原本设成深色的用户会突然变成「跟随系统」。之后就以 Prefs 为准。 */
+    try {
+      if (window.Prefs && !localStorage.getItem('goat-prefs-v1')) {
+        const old = localStorage.getItem('goat-theme');
+        if (old === 'light' || old === 'dark') Prefs.set('theme', old);
+      }
+    } catch (e) { }
+    applyTheme(effectiveTheme());
     applyGradientEgg();
+    if (window.matchMedia) {
+      const mq = window.matchMedia('(prefers-color-scheme: dark)');
+      const onSys = function () { if (themePref() === 'auto') switchTheme(sysDark() ? 'dark' : 'light', true); };
+      if (mq.addEventListener) mq.addEventListener('change', onSys);
+      else if (mq.addListener) mq.addListener(onSys);
+    }
   }
   function applyTheme(th) {
     document.documentElement.setAttribute('data-theme', th);
@@ -214,47 +237,100 @@
     if (ic) ic.textContent = th === 'dark' ? '☾' : '☀';
     if (window.Charts) window.Charts.refresh();
   }
-  /* 深浅色切换（2026-11-04 用户要求「丝滑过渡」）：
-     优先走 View Transitions —— 以顶栏主题按钮为圆心扩散一个圆形揭示，
-     新主题像一层帘子从按钮铺满全屏（Chrome / Edge / Safari 18+ / Firefox 144+ 都支持）；
-     不支持或用户开了「减少动效」时，退回 CSS 过渡（<html> 挂 .theme-fade 约 0.4s），
-     同样不会有硬切。两条路径都不改布局，只换配色。 */
-  function toggleTheme() {
-    const cur = document.documentElement.getAttribute('data-theme');
-    const next = cur === 'dark' ? 'light' : 'dark';
+  /* 是否要「不动画」：偏好里选了减弱，或系统开了减少动效 */
+  function prefersReduce() {
+    try { if (window.Prefs && Prefs.get('motion') === 'reduced') return true; } catch (e) { }
+    return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  }
+  /* ★ 深浅色切换（2026-11-04 晚第十三轮重做，用户反馈「还是很生硬」）
+     上一版是 View Transitions 的圆形揭示：本质是把新主题渲染成**一张静态截图**，
+     从按钮处扫过去，边界是一条硬圆，扫过的瞬间整页定型 —— 看着像「唰」地盖了一层，
+     而且图表（canvas）整体跳色。所以这一版不再用截图，改成**真正的颜色插值**：
+       · 给 <html> 挂 .theme-anim 约 0.62s，期间所有元素只过渡颜色类属性
+         （背景 / 文字 / 边框 / 阴影 / SVG 填充），颜色沿时间轴连续变化，没有任何硬边界；
+       · 页面结构一行不动，不重排、不重挂载，图标与文字位置纹丝不动；
+       · 图表是 canvas，CSS 过渡管不到它 → 等颜色过渡结束后再重绘一次，
+         并给图表容器补一段很短的淡入，把「重绘那一帧」盖掉。
+     关掉动效时（系统 reduced-motion 或偏好选了减弱）直接换色，不做过渡。 */
+  const THEME_MS = 620;
+  /* 能否让「变量本身」过渡：支持 CSS @property 的浏览器可以，
+     此时全站只需一组动画（:root 上的 --bg/--text/...），不掉帧；
+     不支持的退回逐元素过渡（.theme-fade），慢一点但同样不是硬切。 */
+  let varAnimOK = null;
+  function canAnimateVars() {
+    if (varAnimOK !== null) return varAnimOK;
+    try { varAnimOK = !!(window.CSS && typeof window.CSS.registerProperty === 'function'); }
+    catch (e) { varAnimOK = false; }
+    return varAnimOK;
+  }
+  /* 参数设置页的分段控件与真实偏好对齐。
+     顶栏 ☀/☾ 按钮改主题时也会写偏好，如果不同步，参数页上的「主题」还高亮着旧选项。 */
+  function syncPrefSegs() {
+    if (!window.Prefs) return;
+    document.querySelectorAll('.pz-seg[data-pref]').forEach(function (seg) {
+      const key = seg.getAttribute('data-pref');
+      const cur = String(Prefs.get(key));
+      seg.querySelectorAll('[data-pv]').forEach(function (b) {
+        b.classList.toggle('on', b.getAttribute('data-pv') === cur);
+      });
+    });
+  }
+  function switchTheme(next, animate) {
     const root = document.documentElement;
+    const cur = root.getAttribute('data-theme');
+    if (cur === next && !animate) return;
     const apply = function () {
       applyTheme(next);
       try { localStorage.setItem('goat-theme', next); } catch (e) { }
-      render(true);
+      syncPrefSegs();
     };
-    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const btn = document.getElementById('themeBtn');
-    if (reduce || typeof document.startViewTransition !== 'function') {
-      root.classList.add('theme-fade');
+    const cls = canAnimateVars() ? 'theme-anim' : 'theme-fade';
+    if (!animate || prefersReduce()) {
+      /* 无动画：先摘掉可能残留的过渡类，再直接换色 */
+      root.classList.remove('theme-anim', 'theme-fade');
       apply();
-      clearTimeout(toggleTheme._fadeT);
-      toggleTheme._fadeT = setTimeout(function () { root.classList.remove('theme-fade'); }, 460);
+      settleCharts();
       return;
     }
-    const r = btn ? btn.getBoundingClientRect() : null;
-    const x = r ? r.left + r.width / 2 : window.innerWidth - 36;
-    const y = r ? r.top + r.height / 2 : 26;
-    /* 半径取「按钮到最远角」的距离，保证圆能覆盖整屏 */
-    const rad = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y));
-    let vt = null;
-    try { vt = document.startViewTransition(apply); } catch (e) { apply(); return; }
-    if (!vt || !vt.ready) return;
-    vt.ready.then(function () {
-      document.documentElement.animate(
-        { clipPath: ['circle(0px at ' + x + 'px ' + y + 'px)', 'circle(' + rad + 'px at ' + x + 'px ' + y + 'px)'] },
-        {
-          duration: 560, easing: 'cubic-bezier(.22,.61,.36,1)', fill: 'both',
-          pseudoElement: '::view-transition-new(root)'
-        }
-      );
-    }).catch(function () { /* 动画被打断（快速连点）时静默忽略 */ });
+    root.classList.remove('theme-anim', 'theme-fade');
+    root.classList.add(cls);
+    apply();
+    clearTimeout(switchTheme._t);
+    switchTheme._t = setTimeout(function () {
+      root.classList.remove(cls);
+      settleCharts();
+    }, THEME_MS);
   }
+  /* 颜色过渡结束：重绘一次（图表要拿新配色重建），并给图表容器一段淡入，
+     否则 canvas 会在这一帧「啪」地换色。整体 DOM 重建发生在颜色已经定型之后，
+     所以视觉上只是一次轻微的刷新，不是硬切。 */
+  function settleCharts() {
+    /* 只有真的画了图（页面上存在 .ec 容器）才需要重建：图表颜色写死在 canvas 里，
+       必须用新配色重画一次；纯文字页面重渲染只是白费一次 DOM 重建。 */
+    if (!document.querySelector('.ec')) return;
+    if (!window.Charts || !window.Charts.has || !window.Charts.has()) return;
+    try { render(true); } catch (e) { return; }
+    const v = document.getElementById('view');
+    if (!v) return;
+    v.classList.remove('theme-settle');
+    void v.offsetWidth;
+    v.classList.add('theme-settle');
+    clearTimeout(settleCharts._t);
+    settleCharts._t = setTimeout(function () { v.classList.remove('theme-settle'); }, 340);
+  }
+  /* 顶栏按钮：在「浅色 ⇄ 深色」之间翻转，并把结果写进偏好（auto 被显式选择覆盖，
+     与主流站点一致；想回到跟随系统就去参数设置页选「跟随系统」）。 */
+  function toggleTheme() {
+    const next = effectiveTheme() === 'dark' ? 'light' : 'dark';
+    try { if (window.Prefs) Prefs.set('theme', next); } catch (e) { }
+    switchTheme(next, true);
+  }
+  /* 供参数设置页的「主题」分段控件调用：偏好已写好，这里只负责带过渡地应用 */
+  window.AppTheme = {
+    apply: function () { switchTheme(effectiveTheme(), true); },
+    current: effectiveTheme,
+    pref: themePref
+  };
 
   /* ---------- 语言 ---------- */
   function initLang() {
@@ -762,6 +838,15 @@
       const play = document.getElementById('tlPlay');
       const box = document.getElementById('tlChart');
       const lab = document.getElementById('tlYear');
+      const railFill = document.getElementById('tlRailFill');
+      /* 时间轴进度填充：原生 range 不暴露「已走比例」，所以自己按 value 折算成百分比，
+         由 .tl-rail-fill 画强调色进度条。播放每帧 / 拖动 / 按键统一走这里。 */
+      function syncRail() {
+        if (!railFill || !range) return;
+        const mn = +range.min || 0, mx = +range.max || 1;
+        const pct = mx > mn ? ((+range.value) - mn) / (mx - mn) * 100 : 0;
+        railFill.style.width = Math.max(0, Math.min(100, pct)).toFixed(3) + '%';
+      }
       /* 重大事件到达提示：跨过某事件的日期时，在竞速图右下角弹出一张卡片。
          用「上一步日期 → 当前日期」的区间判断，拖到哪都会只提示一次。 */
       let lastMsDate = null;
@@ -792,6 +877,7 @@
         if (curDate) lastMsDate = curDate;
         state.tlFy = info.fy;
         if (lab) lab.textContent = info.label;
+        syncRail();
         if (box) { box.setAttribute('data-fy', state.tlFy); P.drawTimeline(box); }
         if (P.tlHighlightRail) P.tlHighlightRail(info.fy);
       }
@@ -856,6 +942,7 @@
           if (idx !== lastIdx) {
             lastIdx = idx;
             range.value = idx;
+            syncRail();
             const info = P.tlIdxToInfo(idx, state.tlStep);
             if (lab) lab.textContent = info.label;
             if (P.tlHighlightRail) P.tlHighlightRail(info.fy);
@@ -906,6 +993,7 @@
         setPlayBtn();   /* 走完自动停在结尾时会变成「重播」图标 */
       }
       setPlayBtn();     /* 首次挂载时同步一次（默认停在结尾 → 显示重播） */
+      syncRail();       /* 首帧就把进度条画到当前时刻 */
       /* ★ 重渲染后接续播放：筛选一变就整页重渲染，这里用**新**的 DOM 从当前时刻重新起循环，
          于是「播放中改筛选」不会中断，时间轴也不会被拨回起点。 */
       if (state.tlPlaying) {
@@ -933,6 +1021,35 @@
         jumpNum.addEventListener('blur', function () { applyJump(jumpNum.value, true); });
         jumpNum.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); jumpNum.blur(); } });
       }
+      /* ★ 2026-11-04 晚（第十三轮）：全局 ← / → 调时间，每次 1 年，且**保持原有状态**
+         —— 原本在演进就从新位置继续演进（速度不变），原本暂停就仍然暂停。
+         只在「本页 + 竞速图（存在 #tlRange）+ 焦点不在输入控件」时生效；
+         每次 mount 先摘掉上一轮的监听器（否则重渲染一次就多挂一个，一次跳好几年）。
+         滑块自己获得焦点时不吃这两个键：那里浏览器原生按「天」步进，更精细。 */
+      function onTlArrow(e) {
+        if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+        const tg = e.target;
+        if (tg && (tg.tagName === 'INPUT' || tg.tagName === 'TEXTAREA' || tg.tagName === 'SELECT' || tg.isContentEditable)) return;
+        if (!range || !document.body.contains(range)) return;
+        const max = +range.max;
+        const next = Math.max(+range.min, Math.min(max, (+range.value) + (e.key === 'ArrowRight' ? 365 : -365)));
+        e.preventDefault();
+        if (next === +range.value) return;            /* 已经在头 / 尾，无处可去 */
+        const wasPlaying = !!state.tlPlaying;
+        range.value = next;
+        setFyFromRange(range);
+        if (wasPlaying) {
+          if (next >= max) stopPlay();                /* 正好走到终点：正常收尾，不再空转 */
+          else startPlay();                           /* 继续演进 */
+        } else {
+          setPlayBtn();                               /* 保持暂停，只更新按钮形态 */
+        }
+      }
+      if (window.__tlArrowHandler) document.removeEventListener('keydown', window.__tlArrowHandler);
+      window.__tlArrowHandler = onTlArrow;
+      document.addEventListener('keydown', onTlArrow);
+
       /* 重大事件弹窗：默认收起，点右下角标签展开/收起（状态跨渲染保持） */
       const msTab = document.getElementById('msPopTab');
       const msBody = document.getElementById('msPopBody');
@@ -988,15 +1105,43 @@
     }
 
     if (route === 'model') {
-      const ps = document.getElementById('presetSel');
-      if (ps) ps.addEventListener('change', function () {
-        if (!ps.value) return;
-        Pm.applyPreset(ps.value); render(true); toast(t('ui.ok'));
+      /* 预设：2026-11-04 晚从 <select> 改成 chips（.pz-chip[data-preset]） */
+      document.querySelectorAll('[data-preset]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          const v = b.getAttribute('data-preset');
+          if (!v) return;
+          Pm.applyPreset(v); render(true); toast(t('ui.ok'));
+        });
       });
       const rs = document.getElementById('pReset');
       if (rs) rs.addEventListener('click', function () { Pm.reset(); render(true); toast(t('ui.ok')); });
       const mcr = document.getElementById('mColorReset');
       if (mcr) mcr.addEventListener('click', function () { Pm.resetColors(); render(true); toast(t('ui.ok')); });
+
+      /* ---- 外观与交互（第十三轮新增）----
+         四组分段控件共用一套逻辑：写 Prefs → 立刻生效 → 需要重排的（每页行数）重渲染。
+         主题走 AppTheme.apply()（带 0.62s 颜色过渡），不在这里直接改 data-theme。 */
+      document.querySelectorAll('.pz-seg[data-pref]').forEach(function (seg) {
+        seg.addEventListener('click', function (e) {
+          const btn = e.target.closest ? e.target.closest('[data-pv]') : null;
+          if (!btn || btn.classList.contains('on')) return;
+          const key = seg.getAttribute('data-pref');
+          let val = btn.getAttribute('data-pv');
+          if (key === 'perPage') val = parseInt(val, 10);
+          seg.querySelectorAll('[data-pv]').forEach(function (x) { x.classList.toggle('on', x === btn); });
+          if (!window.Prefs) return;
+          Prefs.set(key, val);
+          if (key === 'theme') { if (window.AppTheme) window.AppTheme.apply(); return; }
+          if (key === 'perPage') { state.page = 1; render(true); }
+        });
+      });
+      const pr = document.getElementById('prefReset');
+      if (pr) pr.addEventListener('click', function () {
+        if (!window.Prefs) return;
+        Prefs.reset();
+        if (window.AppTheme) window.AppTheme.apply();
+        render(true); toast(t('ui.ok'));
+      });
       /* 六维占比：滑杆 / 数字框改写 b1–b6，榜单按新权重实时重排 */
       const wPair = function (k) {
         return {
@@ -1013,9 +1158,11 @@
           const pr = wPair(k);
           if (pr.range && pr.range !== src) pr.range.value = pct.toFixed(1);
           if (pr.num && pr.num !== src) pr.num.value = pct.toFixed(1);
+          /* 轨道进度填充宽度跟着走（CSS 用 --p 画左半段），否则拖完滑杆颜色还停在旧位置 */
+          if (pr.range) pr.range.style.setProperty('--p', pct.toFixed(1) + '%');
         });
         const s = document.getElementById('wSum');
-        if (s) s.textContent = sum.toFixed(1) + '%';
+        if (s) s.textContent = t('md.weightsSum', { s: sum.toFixed(1) });
       };
       document.querySelectorAll('[data-wdim]').forEach(function (el) {
         el.addEventListener('input', function () {
@@ -1073,28 +1220,8 @@
           });
         });
       });
-      /* 国家配色：同样点击色块弹窗编辑 */
-      document.querySelectorAll('[data-ccmod]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-          const iso = btn.getAttribute('data-ccmod');
-          openColorPopup({
-            current: (P.countryColor ? P.countryColor(iso) : '#000000'),
-            /* 注意：这里必须用 P.util.countryName —— 本文件作用域里没有 countryName 这个
-               裸标识符，之前写成 countryName(iso) 会抛 ReferenceError，取色弹窗根本打不开，
-               表现就是「国旗颜色点了没反应」。 */
-            label: (P.util.countryName ? P.util.countryName(iso) : iso) || iso,
-            anchor: btn,
-            onConfirm: function (hex) {
-              if (P.setCountryColor) { P.setCountryColor(iso, hex); btn.style.background = hex; toast(t('md.countryColorsOk')); }
-            }
-          });
-        });
-      });
-      const ccR = document.getElementById('ccReset');
-      if (ccR) ccR.addEventListener('click', function () {
-        if (P.resetCountryColors) P.resetCountryColors();
-        render(true); toast(t('ui.ok'));
-      });
+      /* 国家配色已按用户要求整块删除（2026-11-04 晚），这里不再有 [data-ccmod] 绑定。
+         国家取色仍由 pages-extra.js 的 countryColor() 按国码稳定自动生成。 */
       document.querySelectorAll('.md-tgl').forEach(function (b) {
         b.addEventListener('click', function () {
           const sec = b.closest('.md-sec');

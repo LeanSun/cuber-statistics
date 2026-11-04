@@ -206,7 +206,13 @@
     try { localStorage.setItem(CKEY, JSON.stringify(ccur)); } catch (e) { }
     applyColors();
   }
-  function resetColors() { ccur = null; loadColors(); try { localStorage.removeItem(CKEY); } catch (e) { } applyColors(); }
+  /* ★ 顺序很重要（2026-11-04 晚修）：必须先删 localStorage 再 loadColors()。
+     旧写法是 `ccur=null; loadColors(); removeItem()` —— loadColors 会把刚读到的
+     自定义值重新填回 ccur，于是「恢复默认」当下没有任何变化，刷新后才生效。 */
+  function resetColors() {
+    try { localStorage.removeItem(CKEY); } catch (e) { }
+    ccur = null; loadColors(); applyColors();
+  }
   /* 把配色写到 <html> 的内联样式上。
      ⚠ 只有**用户真的自定义过**（localStorage 里有记录）才写：否则每次启动都会把
      css 里浅色 / 深色两套主题的 --m1…--m6 一起盖掉 —— 深色主题永远拿不到深色那一套，
@@ -217,16 +223,74 @@
   function applyColors() {
     if (typeof document === 'undefined' || !document.documentElement) return;
     const root = document.documentElement;
+    /* 无真实 DOM（冒烟 / Node）时 documentElement 可能没有 style，直接跳过 */
+    if (!root.style || typeof root.style.setProperty !== 'function') return;
     if (!hasCustomColors()) {
-      Object.keys(CDEF).forEach(function (k) { root.style.removeProperty('--' + k); });
+      Object.keys(CDEF).forEach(function (k) { try { root.style.removeProperty('--' + k); } catch (e) { } });
       return;
     }
     const c = colors();
-    Object.keys(c).forEach(function (k) { root.style.setProperty('--' + k, c[k]); });
+    Object.keys(c).forEach(function (k) { try { root.style.setProperty('--' + k, c[k]); } catch (e) { } });
   }
+
+  /* ---------------- 界面偏好（2026-11-04 晚第十三轮新增） ----------------
+     与评分参数（Params）分开存：这些只影响「怎么显示」，不改模型、不影响榜单数值。
+     面板在「参数设置 → 外观与交互」，四个键：
+       theme   auto | light | dark     主题（auto = 跟随系统，由 app.js 的 matchMedia 监听）
+       density cozy | compact          界面密度（紧凑模式压缩表格行高 / 卡片留白）
+       motion  full | reduced          动效（reduced 关掉过渡与动画，替代系统级设置）
+       perPage 20 | 50 | 100           榜单每页行数（只影响「历史地位排名」翻页） */
+  const PKEY = 'goat-prefs-v1';
+  const PDEF = { theme: 'auto', density: 'cozy', motion: 'full', perPage: 20 };
+  const P_OK = {
+    theme: ['auto', 'light', 'dark'],
+    density: ['cozy', 'compact'],
+    motion: ['full', 'reduced'],
+    perPage: [20, 50, 100]
+  };
+  let pcur = clone(PDEF);
+  function invalidPrefs(o) { Object.keys(PDEF).forEach(function (k) { if (P_OK[k].indexOf(o[k]) < 0) o[k] = PDEF[k]; }); return o; }
+  function loadPrefs() {
+    let o = clone(PDEF);
+    try {
+      const s = localStorage.getItem(PKEY);
+      if (s) { const v = JSON.parse(s); Object.keys(PDEF).forEach(function (k) { if (v[k] !== undefined) o[k] = v[k]; }); }
+    } catch (e) { }
+    pcur = invalidPrefs(o);
+    papplyPrefs();
+    return pcur;
+  }
+  function savePrefs() { try { localStorage.setItem(PKEY, JSON.stringify(pcur)); } catch (e) { } }
+  /* 把偏好落成 <html> 上的属性 / 类名，CSS 直接按它们切换。主题不在这里设：
+     主题要走 app.js 的切换动画（data-theme 由它统一写）。 */
+  function papplyPrefs() {
+    if (typeof document === 'undefined' || !document.documentElement) return;
+    const root = document.documentElement;
+    /* 冒烟 / 无 DOM 环境里 documentElement 可能是个没有 classList 的桩，这里全部容错 */
+    try { if (root.setAttribute) root.setAttribute('data-density', pcur.density); } catch (e) { }
+    try { if (root.classList) root.classList.toggle('motion-reduced', pcur.motion === 'reduced'); } catch (e) { }
+  }
+  function setPref(k, v) {
+    if (!Object.prototype.hasOwnProperty.call(PDEF, k)) return;
+    if (P_OK[k].indexOf(v) < 0) return;
+    pcur[k] = v; savePrefs(); papplyPrefs();
+    try { document.dispatchEvent(new CustomEvent('goat:pref', { detail: { key: k, value: v } })); } catch (e) { }
+  }
+  function resetPrefs() {
+    pcur = clone(PDEF); savePrefs(); papplyPrefs();
+    try { document.dispatchEvent(new CustomEvent('goat:pref', { detail: { key: 'reset', value: null } })); } catch (e) { }
+  }
+  window.Prefs = {
+    get: function (k) { return pcur[k]; },
+    num: function (k) { const n = parseInt(pcur[k], 10); return isNaN(n) ? PDEF[k] : n; },
+    all: function () { return clone(pcur); },
+    defaults: PDEF, options: P_OK,
+    set: setPref, reset: resetPrefs, apply: papplyPrefs
+  };
 
   load();
   loadColors();
+  loadPrefs();
 
   window.Params = {
     get: function (k) { return cur[k]; },

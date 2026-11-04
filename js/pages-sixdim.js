@@ -1,7 +1,7 @@
 /* ============================================================
    pages-sixdim.js — 六维分数细则（参数设置页的子页面）
    ------------------------------------------------------------
-   由原独立实验页 sixdim.html 迁移而来，2026-11-04 修复两处结构性 bug：
+   由原独立实验页 sixdim.html 迁移而来（旧页已于 2026-11-04 晚删除），首批修复两处结构性 bug：
 
    ① 表头与表内容不对齐：旧 render() 里 `cells += DIMS.filter(...)` 是**无条件**
       执行的，导致「六维总分」视图下每行有 15 列、表头只有 9 列（多出重复的
@@ -82,24 +82,32 @@
   }
 
   /* ★ 唯一的列定义来源：表头与表体都从这里取，列数 / 列序永远一致。
-     返回 [{key, label, cls, bar}] —— bar 表示该列画色条（当前排序维度）。 */
+     返回 [{key, label, cls, cur}] —— cur 表示该列是当前排序维度（加粗放大）。
+     2026-11-04 晚（第十三轮）：色条整块删除，改为「数字本身用该维度颜色」，
+     所以这里不再有 bar 标记，列宽也随之收窄。 */
   function colsFor(dim, l, metaLabels) {
     const cols = [
-      { key: 'rk', label: l.rank, cls: 'sd-rk tl', bar: false },
-      { key: 'nm', label: l.player, cls: 'sd-nm tl', bar: false }
+      { key: 'rk', label: l.rank, cls: 'sd-rk tl', cur: false },
+      { key: 'nm', label: l.player, cls: 'sd-nm tl', cur: false }
     ];
     if (dim !== 'total') {
-      cols.push({ key: dim, label: dimName(dim, l, metaLabels), cls: 'sd-cur', bar: true });
+      cols.push({ key: dim, label: dimName(dim, l, metaLabels), cls: 'sd-cur', cur: true });
     }
     DIMS.filter(function (d) { return d !== dim; }).forEach(function (d) {
-      cols.push({ key: d, label: dimName(d, l, metaLabels), cls: 'sd-off sd-sm', bar: false });
+      cols.push({ key: d, label: dimName(d, l, metaLabels), cls: 'sd-off sd-sm', cur: false });
     });
     cols.push({
       key: 't', label: l.totalCol,
       cls: dim === 'total' ? 'sd-cur' : 'sd-tot',
-      bar: dim === 'total'
+      cur: dim === 'total'
     });
     return cols;
+  }
+
+  /* 某一列数字的颜色：六维各用自己的主色，六维总分用强调色 */
+  function colorOf(key) {
+    if (key === 't') return 'var(--accent)';
+    return COLOR[key] || 'var(--text)';
   }
 
   /* 每页固定 20 人（2026-11-04 用户要求；原先是「加载更多，每次 +100」） */
@@ -132,34 +140,9 @@
     return { per: per, pages: pages, page: page, from: (page - 1) * per, to: Math.min(page * per, total) };
   }
 
-  /* 单元格里的分数条：与「历史地位排名」共用 .bar-row / .bar-track / .bar-grow /
-     .ministack 这一整套结构与配色 —— 之前是「一条 absolute 定位的半透明色块 + 右对齐数字」，
-     条与数字各在各的位置、看着像两个不相干的元素，而且条长被硬压到 70%，才显得又短又错位。
-     ★ 现在：条长 = 本列分数 ÷ 全站榜首（翻页时尺子不变），数字紧贴条尾；
-       「六维总分」列是六色堆叠条（段宽 = 该维加权贡献 ÷ 总分），颜色与排名页逐段一致。 */
-  function barRow(r, key, mx, color, weights, labels, l) {
-    const val = Number(r[key]) || 0;
-    const w = mx > 0 ? Math.max(1.6, Math.min(100, val / mx * 100)) : 0;
-    let inner;
-    if (key === 't') {
-      const parts = DIMS.map(function (d) {
-        return { d: d, v: (Number(weights[d]) || 0) * (Number(r[d]) || 0) };
-      });
-      let sum = 0;
-      parts.forEach(function (p) { sum += p.v; });
-      const den = sum > 0 ? sum : 1;
-      const segs = parts.filter(function (p) { return p.v > 0; }).map(function (p) {
-        return '<span style="width:' + (p.v / den * 100).toFixed(2) + '%;background:' + COLOR[p.d] + '"' +
-          ' title="' + esc(dimName(p.d, l, labels)) + ' ' + fmt(p.v) + '"></span>';
-      }).join('');
-      inner = '<span class="ministack">' +
-        (segs || '<span style="width:100%;background:' + COLOR.total + '"></span>') + '</span>';
-    } else {
-      inner = '<span class="ministack"><span style="width:100%;background:' + color + '"></span></span>';
-    }
-    return '<div class="bar-row"><div class="bar-track"><div class="bar-grow" style="width:' + w.toFixed(1) + '%">' +
-      inner + '</div></div><span class="bar-total">' + fmt(val) + '</span></div>';
-  }
+  /* 单元格：只留数字，用该维度的颜色着色（2026-11-04 晚用户要求删除分数条）。
+     条状图与排行榜一致但在这里显得拥挤 —— 20 行 × 7 列全是条会盖过数字本身，
+     所以回到「颜色即维度」：M1 玫粉 / M2 红 / M3 金 / M4 绿 / M5 蓝 / M6 紫，总分用强调色。 */
 
   /* 底部分页条：结构 / 类名与榜单页的 .pager 完全一致（« ‹ 1 2 3 › » + 「第 a–b 人 / 共 n 人」） */
   function pagerHtml(total, pg, l) {
@@ -182,14 +165,10 @@
   /* 纯函数：生成表头与表体 HTML。抽出供冒烟测试直接校验「列数一致 / 分页边界」。 */
   function tableHtml(D, st, l) {
     const labels = (D.meta && D.meta.labels) || {};
-    const weights = (D.meta && D.meta.weights) || {};
     const cols = colsFor(st.dim, l, labels);
     const v = view(D, st);
     const pg = pagingOf(v.arr.length, st);
     const show = v.arr.slice(pg.from, pg.to);
-    /* 尺子取「全站榜首」而不是本页第一行：翻页时条长不会忽大忽小 */
-    const mx = v.arr.length ? (Number(v.arr[0][v.key]) || 1) : 1;
-    const color = COLOR[st.dim] || COLOR.total;
 
     const head = cols.map(function (c) {
       return '<th class="' + c.cls + '">' + c.label + '</th>';
@@ -204,10 +183,9 @@
         if (c.key === 'nm') {
           return '<td class="sd-nm tl"><b>' + esc(r.n) + '</b><small>' + esc(r.id) + '</small></td>';
         }
-        if (c.bar) {
-          return '<td class="' + c.cls + ' sd-cell">' + barRow(r, c.key, mx, color, weights, labels, l) + '</td>';
-        }
-        return '<td class="' + c.cls + '">' + fmt(Number(r[c.key]) || 0) + '</td>';
+        /* 分数：数字即颜色（该维度主色），当前排序列加粗放大 */
+        return '<td class="' + c.cls + ' sd-num" style="color:' + colorOf(c.key) + '">' +
+          fmt(Number(r[c.key]) || 0) + '</td>';
       }).join('') + '</tr>';
     }).join('');
 
