@@ -81,8 +81,10 @@ const OPT = {
    M2 领奖台 .15（覆盖面最宽、区分度最好的量，与 M4 并列）
    M4 统治力 .15（在榜时长，与 M1 相关 0.82 同源冗余）
    M6 突破幅度 .04（巅峰质量，仅 281 人有分，点缀维）
-   M5 当前排名 .01（现势，全员覆盖、地板高；名义最低以压制其实际贡献）
-   ⚠ 名义权重 ≠ 实际贡献：M5 覆盖 29.87 万人，名义 1% 实际仍占 Top100 可观比例。详见 weight_probe.js。 */
+   M5 当前排名 .01（现势、全员覆盖；方案 A 后整维满分已压回 FULL=1000）
+   ⚠ 名义权重 ≠ 实际贡献：M5 覆盖率≈100%，其他维仅 0.5%–30.8%。
+     量纲统一前 s5=90.817×K、1% 权重实际占全站加权贡献 74.1%（Top100 仅 6.0%）；
+     方案 A 后 s5=10×K，全站占比降至约 24%。默认值仍是产品决策，调前跑 weight_probe.js。 */
 const DIMS = {
   M1: { w: 0.45, cn: '纪录持有' },
   M2: { w: 0.15, cn: '领奖台' },
@@ -278,13 +280,20 @@ for (const dim of OPT.dims) {
       /* 严格 Kinch：M5 = (1/N) × Σ_e (k/100)，N = 现役项目数（17），缺项按 0 计。
          ★ 2026-11-04：M5_facts.tsv 新增 c[6]=k_single / c[7]=k_avg，
            --track 现在**真正**切换 M5：both→c[5]、single→c[6]、avg→c[7]。
-           三套共用同一个分母 N 与 EVSUM（口径只换分子，不换刻度），
+           三套共用同一个分母 N（口径只换分子，不换刻度），
            否则 avg 档因 333mbf 无平均榜会让 N 从 17 掉到 16、全员虚高。
          ⚠ 分母的项目集合取自**综合档**（c[5]>0），与 --track 无关；
            --ev 单项目查询仍沿用既有的 N=1 行为（诊断用）。
-         这里把 per-event 值编码成 v = EVSUM·(k/100)/N/evW(ev)，
-         使下游既有公式仍成立：s5 = Σ_ev v·evW·FULL/Σw = EVSUM·(1/N)Σ(k/100)·FULL/Σw。
-         （maxOf['M5'] 随后压成 1，见合成段） */
+         ★★ 方案 A（2026-11-04，用户拍板「统一量纲」）：
+           旧编码 v = EVSUM·(k/100)/N/evW(ev) 会得到 s5 = EVSUM·FULL·K/100 = 90.817×K，
+           整维满分被抬到 9081.7，与其他维（榜首 3400–5600）不是同一把尺，
+           名义 1% 的权重实际占全站加权贡献 74.1%。
+           现**去掉 EVSUM 因子**：v = (k/100)/N/evW(ev)，则
+             s5 = Σ_ev v·evW·FULL/Σw = (1/N)Σ(k/100)·FULL = 10 × K（K=0..100）
+           → 整维满分 = FULL = 1000，逐项目满分 = FULL/N = 58.8235；
+           与官方 0–100 的 Kinch 只差 10 倍刻度（÷10 即可核对）。
+         ⚠ maxOf['M5'] 仍必须压成 1：若按「该项目本站榜首」归一，
+           s5[ev] 会正比于 evW(ev)，破坏 Kinch 的 17 项等权。 */
       const kCol = OPT.track === 'single' ? 6 : OPT.track === 'avg' ? 7 : 5;
       const fr = rows.filter((c) => +c[0] === bestYear
         && (!OPT.ev || c[2] === OPT.ev));
@@ -294,15 +303,13 @@ for (const dim of OPT.dims) {
         if (+c[0] === bestYear && (+c[5] || 0) > 0) denomEvs.add(c[2]);
       }
       const N = denomEvs.size || 1;
-      let EVSUM = 0;
-      for (const ev of denomEvs) EVSUM += evW(ev);
       for (const c of fr) {
         const k = +c[kCol] || 0;
         if (!(k > 0)) continue;
-        const v = EVSUM * (k / 100) / N / evW(c[2]);
+        const v = (k / 100) / N / evW(c[2]);
         put(c[1], c[2], v, isCross(c[1]) ? ctyOfYear(c[1], +c[0]) : null);
       }
-      console.log(`# M5 快照取 ${bestYear} 年末（track=${OPT.track} → c[${kCol}]，N=${N} 个现役项目，EVSUM=${EVSUM.toFixed(4)}）`);
+      console.log(`# M5 快照取 ${bestYear} 年末（track=${OPT.track} → c[${kCol}]，N=${N} 个现役项目；方案A：s5=10×Kinch均值，整维满分=FULL=1000）`);
     }
   } else if (dim === 'M6') {
     for (const ln of load('M6_by_record.tsv').slice(1)) {
@@ -329,7 +336,8 @@ for (const dim of selDims) {
   for (const [, a] of sub.get(dim)) for (const [ev, v] of a) if (v > (mm.get(ev) || 0)) mm.set(ev, v);
   maxOf[dim] = mm;
 }
-/* M5 已用 Kinch 均值编码（v 已含 EVSUM/N/evW），归一基准固定为 1 */
+/* M5 已用 Kinch 均值编码（方案 A：v=(k/100)/N/evW，不含 EVSUM），归一基准固定为 1。
+   若改成按「该项目本站榜首」归一，s5[ev] 会正比于 evW(ev)、17 项等权即失效。 */
 if (maxOf['M5']) for (const ev of maxOf['M5'].keys()) maxOf['M5'].set(ev, 1);
 /* 汇总 pids */
 const pids = new Set();

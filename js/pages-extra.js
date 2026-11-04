@@ -2383,8 +2383,8 @@
       detail: [
         ['六个维度回答六个不同的问题：M1 纪录持有（刷新了多少次纪录，守得久再加分）、M3 大赛表现（锦标赛上突破的加成）、M2 领奖台（拿过多少冠亚季军）、M4 统治力（保持在世界前十有多久）、M6 突破幅度（破纪录瞬间把人类前沿推远多少）、M5 当前排名（此刻站在世界各榜什么位置）。',
           'The six dimensions answer six different questions: M1 record ownership (how many times records were broken, plus a holding bonus), M3 championship performance, M2 podiums, M4 dominance (time spent inside the world top ten), M6 breakthrough margin (how far a record pushed the human frontier), M5 current ranking.'],
-        ['维度分先按「榜首 = 1000」归一再加权，是为了让六个量纲完全不同的维度（M2 原始量级上万、M6 只有几十）能放在同一把尺子上相加；归一后每个维度都是 0–1000 的同刻度分数，权重才具有可读的含义。',
-          'Normalising each dimension to leader = 1000 lets dimensions with wildly different scales (M2 in the tens of thousands, M6 in the tens) be summed on one ruler; only then do the weights mean what they say.'],
+        ['维度分先按各维自己的归一基准映射到站点刻度（FULL=1000）再加权，是为了让六个量纲完全不同的维度（M2 原始量级上万、M6 只有几十）能放在同一把尺子上相加。M5 当前排名用 Kinch 绝对刻度 k=100×WR/成绩；方案 A（2026-11-04）起把整维满分压回 1000，即 s5=10×Kinch均值，不再比其他维高一个量级，权重才具有可读的含义。',
+          'Each dimension is mapped onto the site scale (FULL=1000) before weighting so that dimensions with wildly different raw magnitudes (M2 in the tens of thousands, M6 in the tens) can be summed on one ruler. M5 uses the absolute Kinch scale k = 100 x WR / PB; since Plan A (2026-11-04) its full mark is back to 1000 (s5 = 10 x mean Kinch), no longer an order of magnitude above the other dimensions, so the weights mean what they say.'],
         ['跨维相关性已逐对审查（只在两维都非零的人身上算）：目前有两对超过 0.7 — M1 × M6 = 0.769（仅 281 人，且 M6 权重只有 4%）、M1 × M4 = 0.732。二者都是语义近邻（刷新纪录 ⇔ 打得狠 / 长期在世界前十），分年代桶内不降，判定为真实机制而非时代混杂，处置方式是标注并在权重上压制。',
           'All 15 dimension pairs were checked on players non-zero in both: two pairs now exceed 0.7 - M1 x M6 = 0.769 (only 281 players, M6 weighted just 4%) and M1 x M4 = 0.732. Both are semantic neighbours (breaking records vs. raw margin / long top-ten tenure), stable inside decade buckets, so they are documented and discounted by weight.']
       ]
