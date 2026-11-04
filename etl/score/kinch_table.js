@@ -38,12 +38,20 @@ function arg(name, def) {
   return i >= 0 ? process.argv[i + 1] : def;
 }
 function findZip() {
+  /* ⚠ 惰性且容错：CI 通过 --zip 传 /tmp/wca_export.tsv.zip，仓库里并没有
+     data/raw/（该目录被 gitignore）。若把它写成 arg('--zip', findZip()) 的默认参数，
+     JS 会在**传了 --zip 时也照样求值** → ENOENT 直接崩（2026-11-04 CI 实测）。
+     目录不存在时返回空串，交由下面的显式校验给出友好提示。 */
   const d = path.join(ROOT, 'data/raw');
+  if (!fs.existsSync(d)) return '';
   const f = fs.readdirSync(d).filter((x) => /^WCA_export_.*\.tsv\.zip$/.test(x)).sort();
-  if (!f.length) throw new Error('未找到 data/raw/WCA_export_*.tsv.zip');
-  return path.join(d, f[f.length - 1]);
+  return f.length ? path.join(d, f[f.length - 1]) : '';
 }
-const ZIP = arg('--zip', findZip());
+const ZIP = arg('--zip', '') || findZip();
+if (!ZIP) {
+  console.error('未找到 WCA 导出包：请用 --zip <path> 指定，或把 WCA_export_*.tsv.zip 放到 data/raw/');
+  process.exit(1);
+}
 const num = (n) => Number(n).toLocaleString('en-US');
 
 /* 参考 wca.cuber.pro 表头顺序：17 个现役项目。
