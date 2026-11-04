@@ -50,6 +50,17 @@
 页面代码（`js/pages-*.js` / `js/app.js`）对数据来源**无感知**：两种模式都经由 `js/calc.js` 的
 `Calc.assemble()` 产出完全兼容的 `window.MOCK`，页面渲染逻辑零改动。
 
+### Kinch 全能榜（`#/kinch`）
+
+参考 `wca.cuber.pro` 的「17 项目 × Overall」表格，补上参考站没有的单轨拆分与筛选能力：
+
+- `k = min(100, 100 × WR_{项目,轨} / PB_{项目,轨})`，`Overall = 17 项算术平均`，缺项记 0。
+- 三态成绩轨：**综合**（官方 Kinch 选轨，与 M5 严格口径一致，Stanley Chapel 71.00）/ **单次**（17 项全用 single）/ **平均**（17 项全用 average）。
+- **个人榜**与**国家 / 地区榜**（每项目取该国最佳选手的 k）双视图，点国家行可下钻到该国选手榜。
+- 顶部「地区 / 性别」筛选、页面内 17 项目图标、表头排序、分页全部实时生效。
+- 数据由 `etl/score/kinch_table.js` 从 WCA 导出生成 `etl/score/kinch_data.tsvz`（gzip 稀疏表，全量 29.8 万人 × 34 个格子），
+  前端用 `DecompressionStream` 懒加载，不进 `js/data.js`、不增加首屏体积；`Update WCA data` 每周随导出重建。
+
 ## 目录结构
 
 ```

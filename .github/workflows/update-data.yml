@@ -23,6 +23,9 @@ on:
       - 'js/country-table.js'
       - 'js/params.js'
       - '.github/workflows/update-data.yml'
+      # 同一事件不能同时用 paths / paths-ignore；用 ! 否定模式排除机器人自己回推的表，
+      # 否则每次 update-data 都会再触发一次，形成自激循环
+      - '!etl/score/kinch_data.tsvz'
 
 permissions:
   contents: write
@@ -71,11 +74,18 @@ jobs:
             --date "${EXPORT_DATE:-$(date +%F)}" \
             --ver "${EXPORT_VER:-v2.0.2}"
 
+      - name: Build Kinch dual-track table (17 events x single/average)
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+        run: |
+          node etl/score/kinch_table.js --zip /tmp/wca_export.tsv.zip
+          ls -lh etl/score/kinch_data.tsvz
+
       - name: Commit & push if changed
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add js/data.js js/roster.js
+          git add js/data.js js/roster.js etl/score/kinch_data.tsvz
           if git diff --cached --quiet; then
             echo "No changes to js/data.js"
           else
