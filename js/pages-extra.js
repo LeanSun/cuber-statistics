@@ -1159,6 +1159,15 @@
     function sixOfTrack(p) {
       return rtype === 'single' ? (p.sixS || p.six) : (rtype === 'avg' ? (p.sixA || p.six) : p.six);
     }
+    /* 单维竞速图的进度曲线键：M2 领奖台在单/平均口径下改用 sixyear.tsv 的
+       m2s / m2a（按对应轨的领奖台事实累积），否则会出现「2015 年才有第一个
+       单次领奖台，却按合并档曲线从 2007 年就在涨分」。旧数据包没有这两列时
+       退回合并档 m2 曲线，绝不退回 ratio=1。 */
+    function dimCurveKey(p, dim) {
+      if (dim !== 'm2') return dim;
+      const k = rtype === 'single' ? 'm2s' : (rtype === 'avg' ? 'm2a' : 'm2');
+      return (p.sy && p.sy[k]) ? k : 'm2';
+    }
     function valueOf(p, fy) {
       if (evList) {
         /* 多项目（含单项目）：把所选项目的六维分逐维求和，再用当前权重合成，
@@ -1174,9 +1183,22 @@
         if (dimMode) {
           const vec = evScopeVec(p, evList, ckVec);
           if (!vec) return 0;
-          const base0 = vec[SIXD_RACE.indexOf(dim)] || 0;
+          const di = SIXD_RACE.indexOf(dim);
+          let base0 = vec[di] || 0;
+          /* ★ 项目 + 维度 + 成绩口径：evScopeVec 是合并档的逐项目和，此前完全
+             不看 rtype，所以「选项目 + 选 M2 + 切单次」也纹丝不动。按该维
+             「所选口径全局分 ÷ 合并档全局分」缩放，与 evScopeT 同源（总量精确，
+             项目之间的份额是比例分摊；逐项目精确档由榜单侧 sixIn 懒加载承担）。 */
+          if (rtype === 'single' || rtype === 'avg') {
+            const vs = rtype === 'single' ? p.sixS : p.sixA;
+            const vb = p.six;
+            if (vs && vb) {
+              const all = vb[dim] || 0;
+              base0 = all > 0 ? base0 * ((vs[dim] || 0) / all) : 0;
+            }
+          }
           if (!(base0 > 0)) return 0;
-          const dr = dimRatioAt(p, dim, fy);
+          const dr = dimRatioAt(p, dimCurveKey(p, dim), fy);
           return base0 * (dr == null ? careerRamp(p, fy) : dr);
         }
         const t = evScopeT(p, evList, rtype, W6, ckVec);
@@ -1209,7 +1231,7 @@
         const base0 = sv ? (sv[dim] || 0) : 0;
         if (!(base0 > 0)) return 0;
         if (fy < (+p.start || 2003) - 1e-9) return 0;      /* 首次参赛之前不设此人 */
-        const dr = dimRatioAt(p, dim, fy);
+        const dr = dimRatioAt(p, dimCurveKey(p, dim), fy);
         if (dr != null) return base0 * dr;
         /* 旧数据包（没有 p.sy）：退回年度荣誉曲线，为空则按生涯进度，绝不直接给 1 */
         const serD = seriesOf(p, p[key] || {}, serKey);

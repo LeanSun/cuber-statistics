@@ -10,6 +10,12 @@
  *   只做①不做②：线上仍是旧包，页面继续用旧排序，且**不报错**（静默故障）。
  *   本脚本把两步绑成一条命令，并在结束时自检产物，从机制上消灭这个漏项。
  *
+ *   ⑤ 六维年度曲线（sixyear.js，含 M2 单轨曲线 m2s/m2a）
+ *   另加一道自检：三张交付表的 s2（M2 领奖台）不得完全相同 —— 历史上 M2 不受
+ *   --track 影响，三档逐行相等，用户选「M2 + 单次/平均」时按钮形同虚设。
+ *   步骤 ⓪ 只是把既有领奖台按单/平均成绩重排（复用官方 base，不重算维度），
+ *   需要 data/raw/*.zip；没有导出时跳过，沿用已生成的中间表。
+ *
  * 前置：各维度的事实表已是最新（M1_facts / M2_facts / M3_facts / M4_facts / M5_facts / M6_by_record）。
  *       本脚本只重建「六维合成 → 站点交付表 → 前端包」，不重算任何维度。
  *       ⚠ 换籍时间线 nat_seg.tsv 也属于前置：WCA 导出换了一版就要先跑
@@ -38,11 +44,27 @@ const sixdim = (track, csv, label) => ({
               : [MEM, path.join(D, 'sixdim.js'), '--csv', csv],
 });
 
-const STEPS = [
+const STEPS = [];
+/* ⓪ M2 的单次 / 平均领奖台事实表（2026-11-04 起，与 M5 的 k_single/k_avg 同一思路）。
+   sixdim.js 的 --track 会按轨选表，缺表会静默退回合并档 —— 那正是「M2 切口径没反应」
+   的老毛病，所以只要有 WCA 导出就先重建一遍。CI 不跑本脚本（只跑 build.js），
+   没有导出时沿用仓库里已生成好的交付表即可。 */
+const RAW = path.join(D, '../..', 'data', 'raw');
+const hasZip = fs.existsSync(RAW) && fs.readdirSync(RAW).some((f) => f.endsWith('.zip'));
+if (hasZip) {
+  STEPS.push({
+    label: '⓪ M2 单次/平均领奖台事实表（m2_tracks.js）',
+    file: path.join(D, 'm2_tracks.js'),
+    args: [MEM, path.join(D, 'm2_tracks.js')],
+  });
+} else {
+  console.log('· 未发现 data/raw/*.zip，跳过 m2_tracks.js（沿用已有 M2_facts_single/avg.tsv）');
+}
+STEPS.push(
   sixdim('single', 'sixdim_site_single', '① 六维 · 单次轨'),
   sixdim('avg', 'sixdim_site_avg', '② 六维 · 平均轨'),
-  sixdim(null, 'sixdim_site', '③ 六维 · 合计轨（最后跑，恢复 9 列主表）'),
-];
+  sixdim(null, 'sixdim_site', '③ 六维 · 合计轨（最后跑，恢复 9 列主表）')
+);
 if (!SKIP_PACK) {
   STEPS.push({
     label: '④ 打包前端精确档（这一步最容易忘）',
@@ -94,6 +116,35 @@ if (!SKIP_PACK) {
   const sy = path.join(D, 'sixyear.tsv');
   if (!fs.existsSync(sy)) problems.push('sixyear.tsv 不存在（六维年度曲线没生成，单维竞速图会退回旧曲线）');
   else if (fs.statSync(sy).size / 1048576 < 1) problems.push('sixyear.tsv 过小，可能是空表');
+  const syHead = header('sixyear.tsv');
+  if (syHead.length && (syHead[7] !== 'm2s' || syHead[8] !== 'm2a')) {
+    problems.push(`sixyear.tsv 表头缺 m2s/m2a 两列（实为 [${syHead.join(',')}]）`);
+  }
+}
+
+/* M2 口径自检：三张交付表的 s2 列必须真的不一样。
+   ⚠ 必须按 pid 对齐，不能按行号 —— 三档都按各自总分排序，同名次不是同一人，
+   按行比会「因为人不同」而假绿。 */
+const s2map = (f) => {
+  const p = path.join(D, f), m = new Map();
+  if (!fs.existsSync(p)) return m;
+  for (const l of fs.readFileSync(p, 'utf8').split('\n').slice(1)) {
+    const c = l.split('\t');
+    if (c.length > 2) m.set(c[0], c[2]);
+  }
+  return m;
+};
+const s2b = s2map('sixdim_site.tsv'), s2s = s2map('sixdim_site_single.tsv'), s2a = s2map('sixdim_site_avg.tsv');
+if (s2b.size && s2s.size && s2a.size) {
+  let n = 0, diffS = 0, diffA = 0;
+  for (const [pid, v] of s2b) {
+    if (!s2s.has(pid) || !s2a.has(pid)) continue;
+    n++;
+    if (s2s.get(pid) !== v) diffS++;
+    if (s2a.get(pid) !== v) diffA++;
+  }
+  if (!diffS || !diffA) problems.push(`M2 单次/平均轨未生效（同 pid ${n} 人中 single 差异 ${diffS}、avg 差异 ${diffA}）`);
+  else console.log(`· M2 三轨自检：同 pid ${n} 人中 single 差异 ${diffS}、avg 差异 ${diffA}`);
 }
 
 const sec = ((Date.now() - t0) / 1000).toFixed(0);

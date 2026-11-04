@@ -1187,6 +1187,43 @@ console.log('== 默认值：停办项目计入 / 竞速图速率 ==');
       '只有装不下时才滚动（带 8px 容差，短名保持静止）');
   }
   {
+    /* ---- 2026-11-04：M2 领奖台必须真的按「单次 / 平均」拆轨 ----
+       历史上 sixdim.js 的 --track 完全跳过 M2（事实表没有轨道列），三档 s2 逐人相等，
+       于是「六维筛选 = M2」时顶部成绩口径点了没反应。断言分两层：
+       源码层（CI 8 人样本也适用）+ 交付表层（按 pid 对齐，不能按行号比）。 */
+    const sixSrc = fs.readFileSync(path.join(ROOT, 'etl/score/sixdim.js'), 'utf8');
+    const sySrc = fs.readFileSync(path.join(ROOT, 'etl/score/sixyear.js'), 'utf8');
+    const bSrc = fs.readFileSync(path.join(ROOT, 'etl/build.js'), 'utf8');
+    const peSrc2 = fs.readFileSync(path.join(ROOT, 'js/pages-extra.js'), 'utf8');
+    ok(sixSrc.indexOf("'M2_facts_' + OPT.track + '.tsv'") >= 0,
+      'sixdim.js 按 --track 选 M2 单/平均事实表（不再无条件读 M2_facts.tsv）');
+    ok(sySrc.indexOf("put('m2s'") >= 0 && sySrc.indexOf("put('m2a'") >= 0 &&
+      sySrc.indexOf("DIMS.concat(['m2s', 'm2a'])") >= 0,
+      'sixyear.js 产出 M2 单轨年度曲线（m2s / m2a）');
+    ok(bSrc.indexOf("SIXK.concat(['m2s', 'm2a'])") >= 0, 'build.js 把 M2 单轨曲线注入 p.sy');
+    ok(peSrc2.indexOf('function dimCurveKey(p, dim)') >= 0 &&
+      peSrc2.indexOf('dimRatioAt(p, dimCurveKey(p, dim), fy)') >= 0,
+      '单维竞速图按成绩口径选 M2 进度曲线');
+    const s2map = (f) => {
+      const p = path.join(ROOT, 'etl/score', f), m = new Map();
+      if (!fs.existsSync(p)) return m;
+      fs.readFileSync(p, 'utf8').trim().split('\n').slice(1).forEach((l) => {
+        const c = l.split('\t'); if (c.length > 2) m.set(c[0], c[2]);
+      });
+      return m;
+    };
+    const sb = s2map('sixdim_site.tsv'), ss = s2map('sixdim_site_single.tsv'), sa = s2map('sixdim_site_avg.tsv');
+    let n = 0, ds = 0, da = 0;
+    for (const [pid, v] of sb) {
+      if (!ss.has(pid) || !sa.has(pid)) continue;
+      n++;
+      if (ss.get(pid) !== v) ds++;
+      if (sa.get(pid) !== v) da++;
+    }
+    ok(n > 1000 && ds > n * 0.1 && da > n * 0.1,
+      'M2 三档交付表确实不同（同 pid ' + n + ' 人，single 差 ' + ds + ' / avg 差 ' + da + '）');
+  }
+  {
     /* ---- 按项目筛选：早年不该出现「后来者」 ----
        旧口径只查 p.events（生涯玩过没）→ 2007 年才有中国盲拧成绩的人，
        2004 年的画面里就已经有一条属于他的分数条。 */

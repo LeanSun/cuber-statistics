@@ -3,7 +3,8 @@
  * sixdim.js · 六维统一查询引擎（M1-F2 / M2-F1 / M3-F1 / M4-F1 / M5快照 / M6-F2）
  * -----------------------------------------------------------------------------
  * 功能（对应用户 2026-10-25 的六条要求）：
- *   ① 除 M2 外每维可按 单次/平均/双轨 筛选        → --track single|avg|both
+ *   ① 六维每维可按 单次/平均/双轨 筛选              → --track single|avg|both
+ *      （M2 自 2026-11-04 起按「决赛轮用 best / average 重排前三」拆轨，见 m2_tracks.js）
  *   ② 所有维度可按单项目筛选                      → --ev 333|all
  *   ③ 总分 = 各项目小计 × 项目系数 后累加          → EV_WEIGHT_V2 统一项目系数
  *   ④ 自定义时间截取（"至2010年的世界第一人"）      → --asof 2010
@@ -26,7 +27,9 @@
  *
  * 数据源（各封存脚本的纯写出型事实表）：
  *   M1_facts.tsv  (pid,ev,type,level,scope,year,frac,score)      ← m1_hold.js
- *   M2_facts.tsv  (pid,name,ev,tier,pos,year,compId,base,decay)  ← m2m3_balance.js
+ *   M2_facts.tsv  (pid,name,ev,tier,pos,year,compId,base,decay)  ← m2m3_balance.js（both 轨）
+ *                   ※ --track both→M2_facts.tsv / single→M2_facts_single.tsv / avg→M2_facts_avg.tsv
+ *                     （← m2_tracks.js，按决赛轮 best / average 重排前三；both 轨逐字不变）※
  *   M3_facts.tsv  (pid,ev,type,lvl,tier,year,add)                ← m3_record_bonus.js
  *   M4_facts.tsv  (pid,ev,track,year,contrib)                    ← m4_dominance.js
  *   M5_facts.tsv  (year,pid,ev,kind,rank,score,k_single,k_avg)   ← m5_facts.js
@@ -65,7 +68,7 @@ for (let i = 2; i < process.argv.length; i++) {
 const OPT = {
   dims: (argv.dims ? String(argv.dims).toUpperCase().split(',') : ['M1', 'M2', 'M3', 'M4', 'M5', 'M6']),
   ev: argv.ev && argv.ev !== 'all' ? String(argv.ev) : null,
-  track: argv.track ? String(argv.track) : 'both',            // single | avg | both（M2 不受影响）
+  track: argv.track ? String(argv.track) : 'both',            // single | avg | both（六维全部生效）
   gender: argv.gender ? String(argv.gender).toLowerCase() : 'all',  // m | f | all
   asof: argv.asof ? +argv.asof : 2026,
   top: argv.top ? +argv.top : 20,
@@ -228,7 +231,16 @@ for (const dim of OPT.dims) {
       put(c[0], c[1], +c[7], cty);
     }
   } else if (dim === 'M2') {
-    for (const ln of load('M2_facts.tsv').slice(1)) {
+    /* 三轨事实表：both 用原表；single / avg 用 m2_tracks.js 按决赛轮
+       best / average 重排前三得到的表。缺文件时必须明确告警再退回合并档 ——
+       静默退回正是「选了单次/平均却毫无变化」的老毛病。 */
+    let mf = 'M2_facts.tsv';
+    if (OPT.track === 'single' || OPT.track === 'avg') {
+      const cand = 'M2_facts_' + OPT.track + '.tsv';
+      if (fs.existsSync(path.join(D, cand))) mf = cand;
+      else console.warn(`⚠ 缺 ${cand}，--track ${OPT.track} 的 M2 退回合并档（先跑 m2_tracks.js）`);
+    }
+    for (const ln of load(mf).slice(1)) {
       const c = ln.split('\t');
       if (+c[5] > OPT.asof) continue;
       if (OPT.ev && c[2] !== OPT.ev) continue;

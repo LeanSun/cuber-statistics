@@ -17,8 +17,12 @@
    前端用 `p.six[dim] × ratio/1000` 还原分数，因此**最后一年恒等于该维的真实分**，
    历史形状则由维度自己的事实决定 —— 起始时间、人员构成、增长节奏全部随之纠正。
 
-   输出 sixyear.tsv：  pid \t dim \t "2007:120,2009:340"        （ratio 为 0..1000 的整数）
+   输出 sixyear.tsv：  pid \t m1..m6 \t m2s \t m2a    （ratio 为 0..1000 的整数，定长 9 列）
    只保留 sixdim_site.tsv 里那批人（其余选手没有 p.six，单维竞速图本来就不展示他们）。
+   最后两列是 M2 领奖台在「单次 / 平均」口径下**各自的**年度曲线（m2_tracks.js 产物）：
+   切了成绩口径后，M2 的基准分换成该轨的分，进度曲线也必须换成该轨的，
+   否则「统治力式」的老毛病会换到 M2 上 —— 某人明明 2015 年才有第一个单次领奖台，
+   却按合并档曲线从 2007 年就开始涨分。缺这两张表时列留空，前端退回 m2 合并曲线。
 
    用法：node etl/score/sixyear.js
    ========================================================================== */
@@ -50,8 +54,10 @@ log('站点主表选手:', keep.size);
 
 /* ── 2 累计容器：dim → pid → Map(year → raw) ── */
 const DIMS = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'];
+/* M2 单轨曲线（2026-11-04）：键名故意带 s/a 后缀，前端 dimCurve 直接按字符串取 p.sy[key] */
+const ALL = DIMS.concat(['m2s', 'm2a']);
 const acc = {};
-DIMS.forEach((d) => { acc[d] = new Map(); });
+ALL.forEach((d) => { acc[d] = new Map(); });
 function put(dim, pid, year, v) {
   if (!pid || !year || !(v > 0)) return;
   if (!keep.has(pid)) return;
@@ -81,6 +87,9 @@ function stream(file, onRow) {
   const p1 = stream('M1_facts.tsv', (c) => put('m1', c[0], +c[5], +c[7] || 0))
     /* M2 领奖台：pid,name,ev,tier,pos,year,compId,base,decay */
     .then(() => stream('M2_facts.tsv', (c) => put('m2', c[0], +c[5], (+c[7] || 0) * (+c[8] || 0) * (c[3] === 'OP' ? BETA : 1))))
+    /* M2 单轨：与 sixdim.js --track single/avg 同一份事实表，曲线才与基准分同源 */
+    .then(() => stream('M2_facts_single.tsv', (c) => put('m2s', c[0], +c[5], (+c[7] || 0) * (+c[8] || 0) * (c[3] === 'OP' ? BETA : 1))))
+    .then(() => stream('M2_facts_avg.tsv', (c) => put('m2a', c[0], +c[5], (+c[7] || 0) * (+c[8] || 0) * (c[3] === 'OP' ? BETA : 1))))
     /* M3 大赛表现：pid,ev,type,lvl,tier,year,add,pioneer,f */
     .then(() => stream('M3_facts.tsv', (c) => put('m3', c[0], +c[5], +c[6] || 0)))
     /* M4 统治力：pid,ev,track,year,contrib */
@@ -103,7 +112,7 @@ function stream(file, onRow) {
     for (const pid of keep) {
       const cell = {};
       let any = false;
-      for (const dim of DIMS) {
+      for (const dim of ALL) {
         const m = acc[dim].get(pid);
         if (!m || !m.size) continue;
         const ys = [...m.keys()].sort((a, b) => a - b);
@@ -151,10 +160,10 @@ function stream(file, onRow) {
         pairs += slim.length;
         any = true;
       }
-      if (any) { out.push([pid].concat(DIMS.map((d) => cell[d] || '')).join('\t')); pids++; }
+      if (any) { out.push([pid].concat(ALL.map((d) => cell[d] || '')).join('\t')); pids++; }
     }
-    /* 定长 7 列：pid + m1..m6（该维没有事实就留空），build.js 直接按列取 */
-    const head = ['pid'].concat(DIMS).join('\t') + '\n';
+    /* 定长 9 列：pid + m1..m6 + m2s + m2a（该维没有事实就留空），build.js 直接按列取 */
+    const head = ['pid'].concat(ALL).join('\t') + '\n';
     fs.writeFileSync(OUT, head + out.join('\n') + '\n', 'utf8');
     log('写出', path.basename(OUT), '|', pids, '人 |', pairs, '个 (年,比率) 点 |',
       (fs.statSync(OUT).size / 1048576).toFixed(2), 'MB');

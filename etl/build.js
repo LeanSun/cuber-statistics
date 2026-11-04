@@ -48,17 +48,20 @@ const SIX = new Map();
    筛选使用 —— 旧实现拿 p.yearly（领奖台 + 纪录次数）当所有维度的进度曲线，
    于是「统治力」在首次参赛前就冒出来、「当前排名」2003 年就有一整屏当代选手。
    缺表时前端退回旧曲线（p.yearly），不会报错。 */
-const SIXY = new Map();      // pid → { m1:'2009:0,2010:82', ... }
+const SIXY = new Map();      // pid → { m1:'2009:0,2010:82', ..., m2s, m2a }
 (function loadSixYear() {
   const f = path.join(__dirname, 'score', 'sixyear.tsv');
   if (!fs.existsSync(f)) { console.warn('⚠ 未找到 ' + f + ' —— 单维竞速图将退回通用年度曲线；请先跑 etl/score/sixyear.js'); return; }
   const lines = fs.readFileSync(f, 'utf8').trim().split('\n');
+  /* 定长 9 列：m1..m6 + M2 的单次/平均轨曲线（m2s / m2a）。
+     老表只有 7 列时后面两列自然取不到 → 前端退回合并档 m2 曲线，不会报错。 */
+  const YK = SIXK.concat(['m2s', 'm2a']);
   for (let i = 1; i < lines.length; i++) {
     const c = lines[i].split('\t');
     if (!c[0]) continue;
     const o = {};
     let any = false;
-    for (let k = 1; k <= 6; k++) { if (c[k]) { o[SIXK[k - 1]] = c[k]; any = true; } }
+    for (let k = 1; k <= YK.length; k++) { if (c[k]) { o[YK[k - 1]] = c[k]; any = true; } }
     if (any) SIXY.set(c[0], o);
   }
   console.log('六维年度曲线载入:', SIXY.size, '人');
