@@ -13,25 +13,7 @@
 
     'nav.rank': '历史地位排名', 'nav.player': '选手主页',
     'nav.pk': '选手 PK', 'nav.timeline': '图表可视化', 'nav.topics': '另类统计', 'nav.model': '参数设置',
-    'nav.kinch': 'Kinch 全能榜',
 
-    /* ── Kinch 全能榜（逐项目 × 单轨拆分 + 性别 / 地区筛选）── */
-    'kinch.title': 'Kinch 全能排名',
-    'kinch.sub': '17 个项目对世界纪录的比值 · 单次 / 平均分别成榜 · 逐项目排序 · 性别与地区筛选实时生效',
-    'kinch.view': '榜单', 'kinch.view.person': '个人榜', 'kinch.view.nation': '国家 / 地区榜',
-    'kinch.track': '成绩轨', 'kinch.track.best': '综合（官方选轨）', 'kinch.track.single': '单次', 'kinch.track.average': '平均',
-    'kinch.events': '项目', 'kinch.col.player': '选手', 'kinch.col.country': '国家 / 地区',
-    'kinch.col.players': '选手数', 'kinch.col.gender': '性别', 'kinch.col.region': '地区',
-    'kinch.noAvg': '该项目无平均榜',
-    'kinch.wcaTip': '该选手不在本站精简档，前往 WCA 官方主页',
-    'kinch.nationTip': '点击查看该国家 / 地区的选手榜',
-    'kinch.loading': '正在加载 Kinch 数据表（全量 29.8 万选手，约 10MB）…',
-    'kinch.loadFail': 'Kinch 数据表加载失败，请刷新页面重试。',
-    'kinch.cap': '当前口径：{track} · 符合筛选 {n} 位选手',
-    'kinch.capLimit': '榜单展示前 {n} 名',
-    'kinch.summary': '符合筛选的 Kinch 选手 {n} 人',
-    'kinch.pager': '第 {a}–{b} 条 / 共 {n} 条',
-    'kinch.note': '单项 k = 100 × 世界纪录 ÷ 你的 PB（WR 保持者 = 100，慢一倍 = 50）；Overall = 17 项算术平均，没打过的项目记 0。「综合」按官方 Kinch 选轨（与本站 M5 一致），「单次 / 平均」则 17 项一律只用对应轨、缺榜记 0。点表头可排序，点项目图标可只看该项目；顶部「地区 / 性别」筛选对本榜实时生效。国家 / 地区榜每项目取该国最佳选手的 k；因参考站未公开选轨规则且数据快照时点不同，Overall 与其相差约 1~2 分属正常。数据来自 WCA 官方导出快照。',
     'nav.homeTip': '返回首页',
 
     'f.events': '项目范围', 'f.all': '全部', 'f.region': '地区', 'f.continent': '大洲 / 地区',
@@ -382,25 +364,7 @@
 
     'nav.rank': 'Ranking', 'nav.player': 'Player',
     'nav.pk': 'Head to head', 'nav.timeline': 'Charts', 'nav.topics': 'Fun stats', 'nav.model': 'Parameters',
-    'nav.kinch': 'Kinch Rank',
 
-    /* Kinch overall ranking: per-event columns, split single/average tracks */
-    'kinch.title': 'Kinch Overall Ranking',
-    'kinch.sub': 'Ratio to each world record across 17 events · separate single / average boards · per-event sorting · live gender & region filters',
-    'kinch.view': 'Board', 'kinch.view.person': 'Players', 'kinch.view.nation': 'Countries',
-    'kinch.track': 'Track', 'kinch.track.best': 'Combined (official)', 'kinch.track.single': 'Single', 'kinch.track.average': 'Average',
-    'kinch.events': 'Events', 'kinch.col.player': 'Player', 'kinch.col.country': 'Country / region',
-    'kinch.col.players': 'Players', 'kinch.col.gender': 'Gender', 'kinch.col.region': 'Region',
-    'kinch.noAvg': 'No average board for this event',
-    'kinch.wcaTip': 'This player is outside the site compact profile; open the official WCA page',
-    'kinch.nationTip': 'Click to drill down into this country / region',
-    'kinch.loading': 'Loading Kinch table (298k players, ~10 MB)…',
-    'kinch.loadFail': 'Failed to load the Kinch table. Please refresh and retry.',
-    'kinch.cap': 'Track: {track} · {n} matching players',
-    'kinch.capLimit': 'showing top {n}',
-    'kinch.summary': '{n} Kinch players match the current filters',
-    'kinch.pager': '{a}–{b} of {n}',
-    'kinch.note': 'Per event k = 100 x world record / your PB (WR holder = 100, twice as slow = 50); Overall is the mean of 17 events, missing events count as 0. "Combined" follows the official Kinch track selection (same as this site M5); "Single" / "Average" use only that track for all 17 events. Click a column header to sort, click an event chip to focus on one event; the region / gender filters above apply live. Country rows take the best k of any player in that country; a 1-2 point gap versus wca.cuber.pro comes from its undisclosed track rule and a different snapshot date. Built from the official WCA results export.',
     'nav.homeTip': 'Back to home',
 
     'f.events': 'Events', 'f.all': 'All', 'f.region': 'Region', 'f.continent': 'Continent / region',

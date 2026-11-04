@@ -123,9 +123,7 @@
     stackMode: '',
     scope: 'country', geo: '',
     pk: [], tlView: 'race', tlMode: 'cumulative', tlFy: 0, tlStep: 'day', tlMetric: 'overall', tlLane: 'single', tlSmooth: false, tlPlaying: false, tlRegion: '', tlCountry: '', tlDim: '', msPopOpen: false,
-    topicTab: 'rec', topicStat: '', otherTab: 'king', nationMetric: 'total', counterZero: 'wr', topicBoard: '', dimSel: '',
-    /* Kinch 全能榜（独立页面、独立数据源）：轨 / 视图 / 项目 / 排序 / 分页 */
-    kinchTrack: 'best', kinchView: 'person', kinchEv: '', kinchSort: 'overall', kinchDir: 'desc', kinchPage: 1
+    topicTab: 'rec', topicStat: '', otherTab: 'king', nationMetric: 'total', counterZero: 'wr', topicBoard: '', dimSel: ''
   };
 
   /* 播放原点（天索引 / 起始毫秒），供拖动时间轴实时跳转而保留连续播放 */
@@ -261,14 +259,6 @@
       if (q.g) state.group = q.g;
       if (q.country) state.geo = q.country;
     }
-    /* Kinch 榜支持深链：#/kinch?track=single&view=nation&ev=333&country=CN */
-    if (route === 'kinch') {
-      if (q.track && ['best', 'single', 'average'].indexOf(q.track) >= 0) state.kinchTrack = q.track;
-      if (q.view && ['person', 'nation'].indexOf(q.view) >= 0) state.kinchView = q.view;
-      if (q.ev) state.kinchEv = q.ev;
-      if (q.country) state.geo = q.country;
-      state.kinchPage = 1;
-    }
     if (route === 'topics' && q.tab) state.topicTab = q.tab;
   }
 
@@ -290,7 +280,7 @@
 
   function renderNav(route) {
     const items = [
-      ['rank', '#/rank'], ['kinch', '#/kinch'], ['timeline', '#/timeline'],
+      ['rank', '#/rank'], ['timeline', '#/timeline'],
       ['topics', '#/topics'], ['model', '#/model']
     ];
     navEl.innerHTML = items.map(function (x) {
@@ -424,7 +414,7 @@
   }
 
   function renderFilterBar(route) {
-    if (route !== 'rank' && route !== 'timeline' && route !== 'topics' && route !== 'kinch') { fbEl.hidden = true; fbEl.innerHTML = ''; return; }
+    if (route !== 'rank' && route !== 'timeline' && route !== 'topics') { fbEl.hidden = true; fbEl.innerHTML = ''; return; }
     fbEl.hidden = false;
     /* 年份下拉原本硬编码到 2025，导致「数据进入 2026 年后就没有变动」的错觉：
        既选不到 2026，默认值还停在 2025。这里改成按数据实际最新年份动态生成。 */
@@ -438,10 +428,10 @@
        第二行 = 国家/地区 · 性别 · 成绩口径 · 时间 · 停办 · 重置 · 计数，
        全部塞进同一个 .frow，保证它们从同一基线起排、按同一套行高对齐。 */
     let h = '<div class="filterbar-inner">';
-    if (route !== 'topics' && route !== 'kinch') h += '<div class="frow frow-ev">';
+    if (route !== 'topics') h += '<div class="frow frow-ev">';
 
     /* ---------- 预设分组（快速筛选） + 事件图标多选（仅总榜 / 图表可视化；趣味统计页用页面内筛选） ---------- */
-    if (route !== 'topics' && route !== 'kinch') {
+    if (route !== 'topics') {
       h += '<div class="fgroup ev-fgroup">';
       h += '<div class="fctl presets" id="fgGroup">';
       const presets = [{ id: 'all', zh: t('f.all'), en: t('f.all') }].concat(M.presetGroups.filter(function (g) { return g.id !== 'all'; }));
@@ -493,7 +483,7 @@
        原生 <select> 只能按首字母跳转、且只认当前语言的显示名（中文界面下敲 "china" 找不到中国），
        所以改成一个自绘 combobox：输入框 + 下拉列表，匹配串同时包含
        中文名 / 英文名 / ISO2 三套写法，中英文界面下都能搜。 */
-    if (route === 'rank' || route === 'timeline' || route === 'topics' || route === 'kinch') {
+    if (route === 'rank' || route === 'timeline' || route === 'topics') {
       h += '<div class="fgroup"><span class="flabel">' + esc(t('f.region')) + '</span><div class="fctl">';
       h += '<div class="geo-combo" id="fgGeoBox" data-open="0">';
       h += '<input id="fgGeoQ" class="geo-input" type="text" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="fgGeoMenu" placeholder="' + esc(t('f.searchPh')) + '" value="' + esc(geoLabel(state.geo)) + '" data-label="' + esc(geoLabel(state.geo)) + '" data-geo="' + esc(state.geo || '') + '">';
@@ -523,7 +513,7 @@
       h += '</div></div></div></div>';
     }
 
-    if (route === 'rank' || route === 'timeline' || route === 'topics' || route === 'kinch') {
+    if (route === 'rank' || route === 'timeline' || route === 'topics') {
       h += '<div class="fgroup"><span class="flabel">' + esc(t('f.gender')) + '</span><div class="fctl">';
       [['all', 'f.gender.all'], ['M', 'f.gender.m'], ['F', 'f.gender.f']].forEach(function (g) {
         h += '<button class="chip' + (state.gender === g[0] ? ' on' : '') + '" data-gender="' + g[0] + '">' + esc(t(g[1])) + '</button>';
@@ -589,7 +579,6 @@
     let matched = listed;
     if (route === 'rank' || route === 'timeline') matched = noFilt ? listed : P.filtered(state).length;
     else if (route === 'topics') matched = P.util.topicPool(state).length;
-    else if (route === 'kinch') matched = P.kinchCount ? P.kinchCount(state) : 0;
     let geoLabel = '';
     if (state.region) geoLabel = P.util.regionName(state.region);
     else if (state.geo) {
@@ -597,10 +586,6 @@
       else geoLabel = P.util.countryName(state.geo) || state.geo;
     }
     let main, note;
-    if (route === 'kinch') {
-      el.innerHTML = (geoLabel ? '<b>' + esc(geoLabel) + '</b> · ' : '') + esc(t('kinch.summary', { n: U.num(matched) }));
-      return;
-    }
     if (noFilt && (route === 'rank' || route === 'timeline')) {
       main = t('f.summaryAll', { n: U.num(total), rated: U.num(rated), shown: U.num(listed) });
     } else {
@@ -626,7 +611,6 @@
     let html = '';
     if (route === 'home') { applyGradientEgg(); html = P.home(); }
     else if (route === 'rank') html = P.rank(state);
-    else if (route === 'kinch') html = P.kinch(state);
     else if (route === 'player') html = P.player(r.seg[1] || '');
     else if (route === 'pk') html = P.pk(state);
     else if (route === 'timeline') html = P.timeline(state);
@@ -1402,7 +1386,7 @@
   /* ---------- 全局事件委托 ---------- */
   /* ⚠ 这里少一个选择器，对应的按钮就「点了没反应」——2026-10-27 的六维筛选按钮
      正是因为漏了 [data-dim]/[data-tldim]，事件委托根本收不到点击，才表现为「加了按钮但没功能」。 */
-  const DELEGATE = '[data-sort],[data-page],[data-expand],[data-prow],[data-tab],[data-type],[data-stack],[data-dim],[data-tldim],[data-pkadd],[data-pkrm],[data-pktrayrm],[data-pktrayclear],[data-toggle],[data-expandall],[data-goto],[data-group],[data-gender],[data-retired],[data-tlmode],[data-tlview],[data-tlstep],[data-tlmetric],[data-tllane],[data-topic],[data-topicev],[data-topicboard],[data-other],[data-nation],[data-scope],[data-continent],[data-evpick],[data-evtab],[data-evtoggle],[data-evall],[data-evnone],[data-evsave],[data-gload],[data-gdel],[data-reclevel],[data-rectype],[data-podtier],[data-mdanchor],[data-mdsec],[data-msimport],[data-msreset],[data-msdel],[data-msedit],[data-msunhide],[data-msjump],[data-copy],[data-ktrack],[data-kview],[data-kev],[data-ksort],[data-kpage],[data-knation]';
+  const DELEGATE = '[data-sort],[data-page],[data-expand],[data-prow],[data-tab],[data-type],[data-stack],[data-dim],[data-tldim],[data-pkadd],[data-pkrm],[data-pktrayrm],[data-pktrayclear],[data-toggle],[data-expandall],[data-goto],[data-group],[data-gender],[data-retired],[data-tlmode],[data-tlview],[data-tlstep],[data-tlmetric],[data-tllane],[data-topic],[data-topicev],[data-topicboard],[data-other],[data-nation],[data-scope],[data-continent],[data-evpick],[data-evtab],[data-evtoggle],[data-evall],[data-evnone],[data-evsave],[data-gload],[data-gdel],[data-reclevel],[data-rectype],[data-podtier],[data-mdanchor],[data-mdsec],[data-msimport],[data-msreset],[data-msdel],[data-msedit],[data-msunhide],[data-msjump],[data-copy]';
 
   document.addEventListener('click', function (e) {
     const el = e.target.closest ? e.target.closest(DELEGATE) : null;
@@ -1455,40 +1439,6 @@
     }
     if (el.hasAttribute('data-type')) {
       state.recType = el.getAttribute('data-type'); state.page = 1;
-      render(true); return;
-    }
-    /* ── Kinch 全能榜：独立状态，不污染总榜的 sortKey / recType ───────── */
-    if (el.hasAttribute('data-ktrack')) {
-      state.kinchTrack = el.getAttribute('data-ktrack'); state.kinchPage = 1;
-      render(true); return;
-    }
-    if (el.hasAttribute('data-kview')) {
-      state.kinchView = el.getAttribute('data-kview'); state.kinchPage = 1;
-      state.kinchSort = 'overall'; state.kinchDir = 'desc';
-      render(true); return;
-    }
-    if (el.hasAttribute('data-kev')) {
-      const ev = el.getAttribute('data-kev') || '';
-      state.kinchEv = (state.kinchEv === ev) ? '' : ev;
-      state.kinchSort = state.kinchEv || 'overall';
-      state.kinchDir = 'desc'; state.kinchPage = 1;
-      render(true); return;
-    }
-    if (el.hasAttribute('data-ksort')) {
-      const kk = el.getAttribute('data-ksort');
-      if (state.kinchSort === kk) state.kinchDir = state.kinchDir === 'asc' ? 'desc' : 'asc';
-      else { state.kinchSort = kk; state.kinchDir = 'desc'; }
-      state.kinchPage = 1; render(true); return;
-    }
-    if (el.hasAttribute('data-kpage')) {
-      state.kinchPage = Math.max(1, +el.getAttribute('data-kpage') || 1);
-      render(true); return;
-    }
-    if (el.hasAttribute('data-knation')) {
-      /* 国家榜点行 → 把该地区写进筛选并切回个人榜，实现「国家 → 选手」下钻 */
-      state.geo = el.getAttribute('data-knation') || '';
-      state.country = ''; state.continent = ''; state.region = '';
-      state.kinchView = 'person'; state.kinchPage = 1;
       render(true); return;
     }
     /* 总榜柱状图堆叠方式：按项目（各项目六维小计）/ 按维度（六维加权贡献） */
@@ -1764,8 +1714,6 @@
       state.country = ''; state.continent = ''; state.region = '';
       state.gender = 'all'; state.y0 = null; state.y1 = null; state.recType = 'all'; state.page = 1;
       state.topicBoard = ''; state.topicEvent = '';
-      state.kinchTrack = 'best'; state.kinchView = 'person'; state.kinchEv = '';
-      state.kinchSort = 'overall'; state.kinchDir = 'desc'; state.kinchPage = 1;
       const base = location.hash.split('?')[0] || '#/rank';
       hashConsumed = base;
       location.hash = base;
