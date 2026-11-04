@@ -319,6 +319,9 @@
     'md.countryColors': '国家配色', 'md.countryColorsHint': '分数演进图与纪录时间轴按国籍取色。可在此逐国改成任意颜色，立即生效并保存在本机；未列出的国家按国码稳定自动取色。中国默认已加深，避免与国旗红混在一起。', 'md.countryColorsOk': '国旗配色已更新', 'md.paramsHint': '修改后点击「应用」立即重算全部榜单；「恢复默认」回到模型定稿 v1.0 的取值。',
     'md.apply': '应用', 'md.resetDefault': '恢复默认', 'md.preset': '权重预设', 'md.current': '当前值',
     'md.range': '范围', 'md.toc': '目录',
+    /* 六维分数细则（参数设置子页面）：标题与导航 */
+    'sd.title': '六维分数细则', 'sd.sub': '逐人查看 M1–M6 各维得分与六维加权总分。',
+    'sd.tabDoc': '参数设置', 'sd.tabThis': '六维分数细则',
     'md.factor.w': '项目权重', 'md.factor.S': '时代折减', 'md.factor.T': '单次/平均', 'md.factor.K': '线数补偿',
     'md.factor.G': '层级系数', 'md.factor.A': '破纪录幅度', 'md.factor.O': '场合加成', 'md.factor.z': '领先度',
     'md.factor.V': '名次价值', 'md.factor.C': '赛级加成', 'md.factor.CSI': '赛事强度', 'md.factor.m': '夺冠幅度',
@@ -670,6 +673,8 @@
     'md.countryColors': 'Country colours', 'md.countryColorsHint': 'The score evolution and record timeline colour each bar by nationality. Set any country to any colour here — changes apply instantly and are stored locally; countries not listed get a stable colour from their code. China defaults to a darker red so it does not blend into its own flag.', 'md.countryColorsOk': 'Country colours updated', 'md.paramsHint': 'Click Apply to recompute every ranking; Reset returns to the values of model v1.0.',
     'md.apply': 'Apply', 'md.resetDefault': 'Reset', 'md.preset': 'Weight presets', 'md.current': 'Current',
     'md.range': 'Range', 'md.toc': 'Contents',
+    'sd.title': 'Six-dimension score breakdown', 'sd.sub': 'Per-player M1–M6 scores and the weighted total.',
+    'sd.tabDoc': 'Parameters', 'sd.tabThis': 'Score breakdown',
     'md.factor.w': 'Event weight', 'md.factor.S': 'Era discount', 'md.factor.T': 'Single/average', 'md.factor.K': 'Line compensation',
     'md.factor.G': 'Tier coefficient', 'md.factor.A': 'Improvement margin', 'md.factor.O': 'Occasion bonus', 'md.factor.z': 'Dominance',
     'md.factor.V': 'Place value', 'md.factor.C': 'Tier bonus', 'md.factor.CSI': 'Field strength', 'md.factor.m': 'Winning margin',

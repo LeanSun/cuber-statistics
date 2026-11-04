@@ -415,7 +415,7 @@ if (OPT.csv) {
   fs.writeFileSync(path.join(D, `${OPT.csv}.tsv`), out.join('\n') + '\n', 'utf8');
   console.log(`\n→ 已写 ${OPT.csv}.tsv（全量 ${rowsOut.length} 行）`);
 }
-/* ── 六维实验榜页面数据（仅在无筛选的全量口径下写出，避免覆盖成局部快照）──
+/* ── 六维分数细则页面数据（仅在无筛选的全量口径下写出，避免覆盖成局部快照）──
    track=both     → sixdim_site.tsv / sixdim_by_event.tsv（主交付，build.js 直接依赖）
    track=single/avg → sixdim_site_single.tsv / sixdim_by_event_single.tsv（成绩口径拆分用） */
 const DIM_KEYS = Object.keys(DIMS);
@@ -539,7 +539,7 @@ if (OPT.csv && noFilter) {
       rows: compact,
     };
     fs.writeFileSync(path.join(__dirname, '..', '..', 'js', 'sixdim_data.js'),
-      '/* 自动生成：etl/score/sixdim.js → 六维实验榜（sixdim.html）数据。勿手改。 */\nwindow.SIXDIM = ' + JSON.stringify(page) + ';\n', 'utf8');
+      '/* 自动生成：etl/score/sixdim.js → 六维分数细则数据。勿手改。 */\nwindow.SIXDIM = ' + JSON.stringify(page) + ';\n', 'utf8');
     console.log(`→ 已写 js/sixdim_data.js（${compact.length} 人，实验榜页面数据）`);
   }
 }

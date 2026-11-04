@@ -9,6 +9,9 @@
 <link rel="stylesheet" href="css/style.css" data-page-node-id="Ku8mCzgQhdpahdBfnXHKS7">
 <link rel="stylesheet" href="vendor/cubing-icons.css">
 <link rel="stylesheet" href="css/flags.css">
+<!-- 语言包提前到 head：导航的静态占位需要在首屏第一帧就按用户语言渲染，
+     不能等到 app.js（排在 65MB 的 data.js 之后）才初始化。i18n.js 无依赖，可安全前置。 -->
+<script src="js/i18n.js"></script>
 <style type="text/css" data-page-node-id="xUgB25rRXkQcslc1U5OVuO">.CtxtMenu_InfoClose {  top:.2em; right:.2em;}
 .CtxtMenu_InfoContent {  overflow:auto; text-align:left; font-size:80%;  padding:.4em .6em; border:1px inset; margin:1em 0px;  max-height:20em; max-width:30em; background-color:#EEEEEE;  white-space:normal;}
 .CtxtMenu_Info.CtxtMenu_MousePost {outline:none;}
@@ -59,8 +62,10 @@
       <span class="brand-text" data-page-node-id="k9dQB21mhekl0D0Bq0YyTE">Cube&nbsp;GOAT</span>
     </a>
 
-    <nav class="nav" id="nav" aria-label="主导航" data-page-node-id="qF41OiVOm2Bi88gHduu0wV"><a href="#/rank">历史地位排名</a><a href="#/timeline">图表可视化</a><a href="#/topics">另类统计</a><a href="#/model">参数设置</a><a href="sixdim.html">六维实验榜</a></nav>
-
+    <!-- 静态占位与 app.js 的 renderNav() 产物保持一致（同为 4 项、同样文案、同样的
+         data-i18n 键），避免等 65MB data.js 加载完才「换脸」。多语言与当前页高亮由紧随
+         其后的首屏引导脚本处理。六维分数细则已移入「参数设置」子页面，不再单列导航。 -->
+    <nav class="nav" id="nav" aria-label="主导航" data-page-node-id="qF41OiVOm2Bi88gHduu0wV"><a href="#/rank" data-i18n="nav.rank">历史地位排名</a><a href="#/timeline" data-i18n="nav.timeline">图表可视化</a><a href="#/topics" data-i18n="nav.topics">另类统计</a><a href="#/model" data-i18n="nav.model">参数设置</a></nav>
     <div class="tools" data-page-node-id="DBrRnXMSoMDHePwz9dqZMO">
       <button class="icon-btn" id="langBtn" type="button" title="切换语言 / Switch language" aria-label="切换语言" data-page-node-id="LaW2EN7DvcO9iAImUDolg0">EN</button>
       <button class="icon-btn" id="themeBtn" type="button" title="切换主题 / Toggle theme" aria-label="切换主题" data-page-node-id="yFBf8xOsuxY42FetSEcoeZ">
@@ -73,6 +78,47 @@
     </div>
   </div>
 </header>
+<script>
+  /* 首屏引导：放在 header 之后、所有同步脚本（含 65MB 的 data.js）之前执行，
+     因此浏览器解析到这里时顶栏就已经是最终形态，不会出现「先简版后正确版」的闪烁。
+     ① 按 localStorage 语言把静态导航与其它 data-i18n 占位改成对应文案；
+     ② 按 location.hash 给当前页加 active；
+     ③ 同步语言按钮、主题图标与 <html lang>。
+     这几项原本都要等 app.js 才初始化，而 app.js 排在巨型数据脚本之后。 */
+  (function () {
+    try {
+      var I = window.I18N;
+      var lg = localStorage.getItem('goat-lang') || 'zh';
+      if (I) I.set(lg);
+      if (I) {
+        var ns = document.querySelectorAll('[data-i18n]');
+        for (var j = 0; j < ns.length; j++) {
+          var k = ns[j].getAttribute('data-i18n');
+          if (k) ns[j].textContent = I(k);
+        }
+      }
+      var seg = (location.hash || '').replace(/^#\/?/, '').split(/[?#]/)[0].split('/')[0];
+      /* 与 app.js renderNav() 的高亮规则保持一致：player 归入 rank；
+         pk / home / 其它路由不高亮任何一项。 */
+      if (seg === 'player') seg = 'rank';
+      var nav = document.getElementById('nav');
+      if (nav && { rank: 1, timeline: 1, topics: 1, model: 1 }[seg]) {
+        var a = nav.querySelector('a[href="#/' + seg + '"]');
+        if (a) a.className = 'active';
+      }
+      var lb = document.getElementById('langBtn');
+      if (lb) lb.textContent = lg === 'zh' ? 'EN' : '中';
+      var th = localStorage.getItem('goat-theme');
+      if (!th && window.matchMedia) th = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      if (th) {
+        document.documentElement.setAttribute('data-theme', th);
+        var tic = document.getElementById('themeIcon');
+        if (tic) tic.textContent = th === 'dark' ? '☾' : '☀';
+      }
+      document.documentElement.lang = lg === 'en' ? 'en' : 'zh-CN';
+    } catch (e) { /* 首屏引导失败也不能阻断后续页面 */ }
+  })();
+</script>
 
 <div class="demo-banner" id="demoBanner" style="display: none;" data-page-node-id="lQFGXhLH71WulSDEMxzH0B">
   <span data-i18n="demo.banner" data-page-node-id="hUrGpHWqUFBnBrEReZLuXp">演示数据 · 页面中的人名与成绩均由程序生成的虚构样本构成，不代表任何真实选手</span>
@@ -137,7 +183,7 @@
 
 <script src="vendor/echarts.min.js" data-page-node-id="fn1XWmQgDWlIbvMwJKs5M6"></script>
 <script src="js/country-table.js"></script>
-<script src="js/i18n.js" data-page-node-id="m1vWQqHVDBEfUTPxsWAiF0"></script>
+<!-- i18n.js 已提前到 head（首屏导航引导需要），此处不再重复加载 -->
 <script src="js/groups.js" data-page-node-id="xCQiJnKeVDqrUaQ59vJkWo"></script>
 <script src="js/params.js" data-page-node-id="tZMoqjKVsHtTXpiTV1Sb0g"></script>
 <script src="js/calc.js" data-page-node-id="SgQg1pWUQhr6AGuIOcb6gd"></script>
@@ -164,6 +210,8 @@
 <script src="js/pages-core.js" data-page-node-id="8F61idwGzg3Zn2KT7L6jDs"></script>
 <script src="js/pages-player.js" data-page-node-id="Tdoeuf2dmcNaLR6GfAZUer"></script>
 <script src="js/pages-extra.js" data-page-node-id="B1fx1PvtmEnSa1FlOxGc5B"></script>
+<!-- 六维分数细则（参数设置子页面）逻辑；其 7MB 数据表在 pages-sixdim.js 里按需动态加载 -->
+<script src="js/pages-sixdim.js"></script>
 <script src="js/app.js" data-page-node-id="yNMmM1mOF1YQV6CKPVjFE6"></script>
 
 

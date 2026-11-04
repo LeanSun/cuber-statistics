@@ -616,7 +616,9 @@
     else if (route === 'pk') html = P.pk(state);
     else if (route === 'timeline') html = P.timeline(state);
     else if (route === 'topics') html = P.topics(state);
-    else if (route === 'model') html = P.model(state);
+    /* 「六维分数细则」是参数设置页的子页面：#/model/sixdim。
+       沿用 model 路由的好处是导航高亮、参数页口径都保持不变。 */
+    else if (route === 'model') html = (r.seg[1] === 'sixdim' && P.sixdim) ? P.sixdim(state) : P.model(state);
     else html = P.home();
 
     view.innerHTML = html;
@@ -1098,6 +1100,9 @@
           typeset();
         });
       });
+      /* 六维分数细则子页面：容器内自行判断，没有 #sdRoot 时立即返回，
+         7MB 数据表只在真正进入该子页面时才动态加载。 */
+      if (P.sixdimMount) P.sixdimMount();
     }
 
     /* 卡片鼠标光晕 */

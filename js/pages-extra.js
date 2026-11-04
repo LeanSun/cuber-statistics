@@ -2503,7 +2503,10 @@
   P.model = function (state) {
     const en = t.isEn();
     const secId = state.mdSection || (MD[0] && MD[0].id) || 'overview';
-    let h = '<div class="page-head reveal"><h1>' + esc(t('md.title')) + '</h1><p class="sub">' + esc(t('md.sub')) + '</p></div>';
+    /* 参数设置页的二级导航：本页（参数/原理）↔ 六维分数细则子页面。
+       P.sixdimSubTabs 由 pages-sixdim.js 提供；冒烟环境未加载该文件时优雅降级为空。 */
+    let h = P.sixdimSubTabs ? P.sixdimSubTabs('doc') : '';
+    h += '<div class="page-head reveal"><h1>' + esc(t('md.title')) + '</h1><p class="sub">' + esc(t('md.sub')) + '</p></div>';
 
     /* 六维权重 / 六维名称：被下方的「六维占比自定义」与「预设」复用，必须在使用前定义。
        注意：原先附带的「总分口径（现行）」卡片已按需求删除，这里只保留两个常量声明。 */

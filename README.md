@@ -56,7 +56,7 @@
 ```
 cuber-statistics/
 ├─ index.html            外壳：导航 / 筛选条 / 页脚 / WCA 版权声明（站点根，GitHub Pages 直接托管）
-├─ sixdim.html           六维实验榜：可按单维度排名、性别筛选、as-of 年份截取
+├─ sixdim.html           六维分数细则旧入口：自动跳转到「参数设置 → 六维分数细则」子页面
 ├─ css/style.css         主题变量（深浅双主题）+ 组件 + 响应式 + 动效
 ├─ vendor/echarts.min.js 本地 ECharts（离线可用）
 ├─ js/
@@ -67,12 +67,13 @@ cuber-statistics/
 │  ├─ mock.js            演示数据生成器（仅 ?demo=1 时加载，绝不静默覆盖真实数据）
 │  ├─ data.js            真实数据（由 etl/build.js 生成，本站唯一数据源）
 │  ├─ roster.js          长尾名册（精简档之后其余选手的懒加载名册）
-│  ├─ sixdim_data.js     六维实验榜数据（由 etl/score/sixdim.js 导出）
+│  ├─ sixdim_data.js     六维分数细则数据（由 etl/score/sixdim.js 导出，子页面按需懒加载）
 │  ├─ icons.js           内联 SVG 图标（WCA 项目图标 + 界面图标）
 │  ├─ charts.js          ECharts 封装（主题取色 / 自适应 / 动画）
 │  ├─ pages-core.js      首页 · 综合总榜
 │  ├─ pages-player.js    选手主页 · 选手 PK
 │  ├─ pages-extra.js     动态可视化 · 另类统计 · 评分原理说明
+│  ├─ pages-sixdim.js    六维分数细则（参数设置子页面；数据表按需懒加载）
 │  └─ app.js             路由 / 状态 / 主题 / 语言 / 事件 / 数据模式切换
 ├─ etl/                  WCA 导出下载 → 清洗 → js/data.js（详见 etl/README.md）
 ├─ etl/score/            六维模型脚本与封存文档（sixdim.js 统一引擎 = 模型真源）

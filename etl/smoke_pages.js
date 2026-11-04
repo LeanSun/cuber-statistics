@@ -47,7 +47,7 @@ function load(f) {
 global.Calc = win.Calc; global.U = win.U; global.Params = win.Params; global.I18N = win.I18N;
 const DATA_FILE = process.env.SMOKE_DATA || 'data/data.js';
 /* app.js 也要加载，才能测 renderFilterBar（筛选条是本轮多处改动的落点） */
-[(DATA_FILE), 'js/icons.js', 'js/charts.js', 'js/pages-core.js', 'js/pages-player.js', 'js/pages-extra.js'].forEach(load);
+[(DATA_FILE), 'js/icons.js', 'js/charts.js', 'js/pages-core.js', 'js/pages-player.js', 'js/pages-extra.js', 'js/pages-sixdim.js'].forEach(load);
 
 const M = win.MOCK, P = win.P, t = win.I18N;
 let fail = 0;
@@ -1632,6 +1632,49 @@ console.log('== 登顶时长 ==');
       ok(spells.every(function (s) { return !!s.pid; }), '每段都有榜首');
     }
   }
+}
+
+/* ============ 六维分数细则（参数设置子页面）回归 ============
+   两个历史 bug：① 默认「六维总分」视图表头 9 列、表体 15 列；
+   ② .bar 绝对定位但 <td> 不是定位上下文，色条堆在表格外。 */
+console.log('== 六维分数细则子页面 ==');
+if (P.sixdimTableHtml) {
+  const l = P.sixdimLabels();
+  const fake = {
+    meta: { generated: '2026-11-04', count: 3, weights: { M1: .45, M2: .15, M3: .2, M4: .15, M5: .01, M6: .04 },
+      labels: { M1: '纪录持有', M2: '领奖台', M3: '大赛表现', M4: '统治力', M5: '纪录比', M6: '突破幅度' } },
+    rows: [
+      { id: '2009ZEMD01', n: 'Feliks', g: 'm', t: 3945.78, M1: 38.72, M2: 244.63, M3: 35.47, M4: 56.48, M5: 1.06, M6: 179.40 },
+      { id: '2012PARK03', n: 'Max', g: 'm', t: 2588.42, M1: 36.62, M2: 235.42, M3: 10.23, M4: 47.36, M5: .62, M6: 125.15 },
+      { id: '2019WANY36', n: 'Wang', g: 'f', t: 1800.11, M1: 12.81, M2: 180.11, M3: 8.11, M4: 30.11, M5: .51, M6: 90.11 }
+    ]
+  };
+  ['total', 'M1', 'M2', 'M3', 'M4', 'M5', 'M6'].forEach(function (dim) {
+    const r = P.sixdimTableHtml(fake, { dim: dim, g: 'all', q: '', shown: 100 }, l);
+    const thN = (r.head.match(/<th\b/g) || []).length;
+    const per = r.body.split('<tr>').slice(1).map(function (x) { return (x.match(/<td\b/g) || []).length; });
+    ok(thN === 9 && r.cols === 9 && per.length === 3 && per.every(function (n) { return n === 9; }),
+      dim + ' 视图表头 9 列、每行 9 列（实得 ' + per.join('/') + '）');
+    const barCells = r.body.match(/<td[^>]*sd-cell[^>]*>\s*<span class="sd-bar"/g) || [];
+    ok(barCells.length === 3,
+      dim + ' 视图每行恰好 1 条色条，且都包在带 .sd-cell 的单元格内（定位上下文）');
+    ok((r.body.match(/class="sd-bar"/g) || []).length === 3,
+      dim + ' 视图没有多余的游离色条');
+  });
+  const r = P.sixdimTableHtml(fake, { dim: 'total', g: 'f', q: '', shown: 100 }, l);
+  ok(r.matched === 1 && r.rows === 1, '性别筛选生效（女 = 1 人）');
+  const r2 = P.sixdimTableHtml(fake, { dim: 'total', g: 'all', q: 'park', shown: 100 }, l);
+  ok(r2.matched === 1, '姓名 / WCA ID 搜索生效');
+  const hPage = tryRender('六维分数细则子页面', () => P.sixdim(Object.assign({}, base)));
+  ok(hPage.indexOf('id="sdRoot"') >= 0, '子页面含懒加载容器 #sdRoot');
+  ok(hPage.indexOf('id="sdHead"') >= 0 && hPage.indexOf('id="sdBody"') >= 0, '子页面含表头 / 表体容器');
+  ok(hPage.indexOf('六维实验榜') < 0 && hPage.indexOf('六维分数细则') >= 0, '子页面使用新名称「六维分数细则」');
+  const hDoc = tryRender('参数设置页（二级导航）', () => P.model(Object.assign({}, base)));
+  ok(hDoc.indexOf('#/model/sixdim') >= 0, '参数设置页可进入六维分数细则子页面');
+  ok(t('sd.title') === '六维分数细则', 'i18n 中文名已改为「六维分数细则」');
+} else {
+  console.error('FAIL: P.sixdimTableHtml 未导出（pages-sixdim.js 未加载？）');
+  fail++;
 }
 
 console.log(fail ? ('\n❌ 失败 ' + fail + ' 项') : '\n✅ 全部通过');

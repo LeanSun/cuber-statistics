@@ -38,7 +38,7 @@ node etl/build.js --dir ./sample --out /tmp/data.js --date 2026-10-18 --ver v2.0
    `m1_hold.js` 纪录持有 · `m2m3_balance.js` 领奖台 · `m3_record_bonus.js` 大赛破纪录 ·
    `m4_dominance.js` 统治力 · `m5_current_rank.js` 纪录比 · `m6_lead.js` 突破幅度；
    `sixdim.js` 统一查询引擎负责轨道 / 项目 / as-of / 性别筛选与加权合成，
-   产出 `sixdim_site.tsv`（站点用）与 `js/sixdim_data.js`（六维实验榜用）。
+   产出 `sixdim_site.tsv`（站点用）与 `js/sixdim_data.js`（六维分数细则子页面用）。
    每一维都有封存文档（如 `M6_封存_2026-10-25.md`），改动前请先读其中的「解封条件」。
 
 ## 站点数据流（build.js）
