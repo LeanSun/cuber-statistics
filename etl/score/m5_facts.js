@@ -19,7 +19,7 @@
  *       分母 N 恒为现役项目数 17（不随口径变小），没有该轨成绩的项目记 0。
  *       ⚠ 只用 rows 里「出现的 ev 集合」当分母会在 avg 档掉到 16（333mbf 无平均榜），
  *         导致平均档全员虚高——分母必须与口径解耦。
- *     **综合档选轨（与 kinchranking.com 一致）**：每个项目只留一条轨 ——
+ *     **综合档选轨（与 wca.cuber.pro 一致）**：每个项目只留一条轨 ——
  *       多盲 333mbf / 四盲 / 五盲 → single；三盲 / 最少步 → 单次与平均取较优；其余 → avg。
  *     kind 列恒写 `best`（兼容既有读取方），rank 列只表示综合档名次。
  *     聚合（项目等权平均、缺项=0）在 sixdim.js 里做：M5 = (1/17) × Σ k。
@@ -179,7 +179,7 @@ async function main() {
         if (k > 0) dst.set(pi, k);
       }
     }
-    /* 选轨规则（与 kinchranking.com 一致）：多盲/四盲/五盲 → single；三盲/最少步 → 取较优；其余 → avg */
+    /* 选轨规则（与 wca.cuber.pro 一致）：多盲/四盲/五盲 → single；三盲/最少步 → 取较优；其余 → avg */
     for (const [ev, slot] of kByEv) {
       const rule = STRICT_SINGLE.has(ev) ? 'single' : STRICT_BEST.has(ev) ? 'best' : 'avg';
       const chosen = new Map();       // pi → 综合档 k
@@ -222,7 +222,7 @@ async function main() {
 }
 const CFG_DEPTH = 100;           // 仅**历史年份**每轨的深度上限（三轨取并集；最新年份全量，见 LAST_YEAR）
 const LAST_YEAR = 2026;          // 最新年份**全量**输出（站点实际取用的快照）
-/* ── Kinch 官方选轨规则（与 kinchranking.com 一致；2026-11-04 起严格口径）──
+/* ── Kinch 官方选轨规则（与 wca.cuber.pro 一致；2026-11-04 起严格口径）──
  *   多盲 / 四盲 / 五盲：只有单次榜 → single
  *   三盲 / 最少步：单次与平均取较优
  *   其余项目：取平均 */

@@ -687,18 +687,17 @@ console.log('== 选手页排名数字 / 参数设置页 ==');
   ok(hM.indexOf('data-cmod') >= 0, '模块配色色块存在（点击弹出取色菜单）');
   /* 2026-11-04 晚：国家配色板块按用户要求整块删除 */
   ok(hM.indexOf('data-ccmod') < 0 && hM.indexOf('mdCountryColors') < 0, '国家配色板块已删除');
-  /* 需求变更（2026-10-27）：六维占比自定义由「可拖拽柱状图」改为
-     「每行一根滑杆 + 一个数字输入框」——柱子只有 40 来像素高，拖 1px 就是 2 个点，
-     拖不准也点不中，触屏还会误触页面滚动。滑杆行程长、可点轨道跳位、键盘可微调。 */
+  /* 2026-11-05（第十四轮）：六维占比改写卡片式，彻底去掉滑杆 ——
+     每张卡是「色点 + 名称 + −/数字/+ + 细进度条」，另有一条堆叠总览条。 */
   ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'].forEach(function (k) {
     ok(hM.indexOf('data-wdim="' + k + '"') >= 0, '六维占比自定义：' + k.toUpperCase() + ' 有调节入口');
+    ok(hM.indexOf('data-wstep="' + k + '"') >= 0, '六维占比可 ±1% 步进：' + k.toUpperCase());
   });
-  ok((hM.match(/class="wrange"/g) || []).length === 6 &&
-    (hM.match(/class="wnum"/g) || []).length === 6,
-    '六维占比每行各带一根滑杆与一个数字框（替代可拖拽柱状图）');
-  ok((hM.match(/type="range"/g) || []).length === 6 &&
-    (hM.match(/type="number"/g) || []).length === 6,
-    '滑杆 / 数字框的 input type 正确');
+  ok((hM.match(/class="wc-num"/g) || []).length === 6, '六维占比有 6 个数字框');
+  ok((hM.match(/class="wcard"/g) || []).length === 6, '六维占比为 3×2 卡片网格');
+  ok((hM.match(/data-wbar="/g) || []).length === 6, '每张卡带一条细进度条');
+  ok((hM.match(/data-wseg="/g) || []).length === 6, '顶部堆叠总览条分 6 段');
+  ok(hM.indexOf('type="range"') < 0, '六维占比不再使用滑杆（用户要求去掉 range）');
   ok(hM.indexOf('id="wSum"') >= 0 && hM.indexOf('id="wReset"') >= 0 && hM.indexOf('id="wEven"') >= 0,
     '六维占比给出合计显示 / 恢复默认 / 平均分配');
   /* 需求：所有颜色设置统一沉到页面最下方（在左目录 + 右章节之后） */
@@ -707,12 +706,10 @@ console.log('== 选手页排名数字 / 参数设置页 ==');
   ok(hM.indexOf('id="mdColors"') > iLayout, '模块配色卡片已移到页面最下方（在md-layout之后）');
   /* 2026-11-04 晚：国家配色卡片已删除，不再有第二张颜色卡 */
   ok(hM.indexOf('id="mdCountryColors"') < 0, '国家配色卡片已移除');
-  /* 第十三轮新增「外观与交互」：四个偏好项 + 恢复默认 */
-  ok(hM.indexOf('id="pzPrefs"') >= 0, '新增「外观与交互」卡片');
-  ['theme', 'density', 'motion', 'perPage'].forEach(function (k) {
-    ok(hM.indexOf('data-pref="' + k + '"') >= 0, '外观偏好多出调节项：' + k);
-  });
-  ok(hM.indexOf('id="prefReset"') >= 0, '外观偏好有「恢复默认」');
+  /* 2026-11-05：用户要求删除「外观与交互」整块（主题仍在顶栏切换） */
+  ok(hM.indexOf('id="pzPrefs"') < 0 && hM.indexOf('data-pref=') < 0,
+    '「外观与交互」板块已删除（无 pzPrefs / data-pref 控件）');
+  ok(hM.indexOf('id="prefReset"') < 0, '外观偏好的「恢复默认」按钮已随之移除');
   ok((hM.match(/class="pz-chip"/g) || []).length >= 5, '预设方案改为 chips（不再是 select）');
   ok(hM.indexOf('id="presetSel"') < 0, '旧的预设下拉框已移除');
   /* 偏好模块（Prefs）：默认值 / 校验 / 持久化 */
@@ -1150,17 +1147,22 @@ console.log('== 默认值：停办项目计入 / 竞速图速率 ==');
   ok(hR.indexOf('tlRatejumpCap') < 0, '时间跳跃的滑杆已删除（只留数字框）');
   ok(hR.indexOf('tlRateanim') < 0 && hR.indexOf('tlRatefps') < 0, '动画时长 / 重绘间隔的调节项已删除');
   ok(hR.indexOf('tl-jump') >= 0, '时间跳跃收进播放控件行（.tl-jump）');
-  /* ★ 2026-11-04 晚（第十三轮）：时间轴换成自绘轨道 + 进度填充 + 年份刻度，
-     与上方筛选项之间用 .tl-ctl 的 margin-top 拉开距离 */
+  /* ★ 2026-11-05（第十四轮）：时间轴压成单行紧凑版 —— 去掉大号日期行、
+     左右键提示、5 年刻度行，托盘高度从 95px 降到 ~40px。 */
   ok(hR.indexOf('class="tl-rail"') >= 0, '时间轴用自绘轨道 .tl-rail（不再是裸 range）');
   ok(hR.indexOf('id="tlRailFill"') >= 0, '轨道带强调色进度填充 .tl-rail-fill');
-  ok(hR.indexOf('class="tl-rail-ticks"') >= 0, '轨道下方有年份刻度');
-  ok((hR.match(/class="tl-tick"/g) || []).length >= 2, '刻度至少有 2 个 5 年标记');
-  ok(hR.indexOf('tl.railHint') >= 0 || hR.indexOf('快进 1 年') >= 0, '轨道上方提示左右键可快进');
+  ok(hR.indexOf('class="tl-year"') >= 0 && hR.indexOf('class="tl-year-end"') >= 0,
+    '日期与终点年份都排在轨道同一行');
+  ok(hR.indexOf('tl-rail-ticks') < 0 && hR.indexOf('tl-tick') < 0, '刻度行已删除（不再占一层高度）');
+  ok(hR.indexOf('tl-rail-top') < 0, '大号日期那一行已删除');
+  ok(hR.indexOf('快进 1 年') < 0 && hR.indexOf('jumps one year') < 0, '去掉「← → 各快进 1 年」的说明文字');
   {
     const css = fs.readFileSync(path.join(ROOT, 'css/style.css'), 'utf8');
-    ok(/\.tl-ctl\{[^}]*margin:20px 0 14px/.test(css), '播放控件行与上方筛选项拉开间距（margin-top 20px）');
+    ok(/\.tl-ctl\{[^}]*margin:16px 0 12px/.test(css), '播放控件行与上方筛选项拉开间距（margin-top 16px）');
+    ok(/\.tl-ctl\{[^}]*padding:7px 12px/.test(css), '托盘内边距压到 7px（单行紧凑）');
+    ok(/\.tl-rail\{[^}]*align-items:center/.test(css), '轨道与日期在同一行对齐（不再纵向堆叠）');
     ok(/\.tl-rail-slot input\[type="range"\]::-webkit-slider-thumb/.test(css), '滑块拇指自绘');
+    ok(css.indexOf('.tl-rail-hint') < 0, '.tl-rail-hint 样式已清理');
   }
   {
     const appSrc = fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8');
@@ -1171,7 +1173,21 @@ console.log('== 默认值：停办项目计入 / 竞速图速率 ==');
       '深浅色切换改为颜色插值（不再用 View Transitions 截图扫过）');
     ok(/canAnimateVars/.test(appSrc) && /theme-fade/.test(appSrc),
       '主题切换有主路径 + 老浏览器回退路径');
+    /* 2026-11-05：reduced-motion 下不再「直接跳色」，改成 200ms 的短过渡；
+       图表用 canvas 快照交叉淡化，避免重绘那一帧整体跳色。 */
+    ok(/THEME_MS_QUICK/.test(appSrc) && /themeMs\(\)/.test(appSrc),
+      '系统开了「减少动效」时仍保留 200ms 短过渡（不再硬切）');
+    ok(/prefersReduce\(\) \? THEME_MS_QUICK : THEME_MS/.test(appSrc),
+      '减少动效时压缩时长而不是关闭过渡');
+    ok(/crossFadeCharts/.test(appSrc) && /captureCanvases/.test(appSrc),
+      '图表重绘用旧画面快照交叉淡化');
+    ok(/--theme-dur/.test(appSrc), '过渡时长由 CSS 变量统一写入（CSS 与 JS 不会打架）');
     const css2 = fs.readFileSync(path.join(ROOT, 'css/style.css'), 'utf8');
+    ok(css2.indexOf('transition:none!important') < 0, 'reduced-motion 不再把主题过渡整块关掉');
+    ok(/html\.theme-anim\{[^}]*transition-duration:var\(--theme-dur/.test(css2),
+      '变量过渡时长读 --theme-dur');
+    ok(/\.theme-ghost\{/.test(css2), 'canvas 快照层样式就位（.theme-ghost）');
+    ok(/html\.theme-anim body\{transition:none\}/.test(css2), '切换期间关掉 body 自身的颜色过渡（避免互相打架）');
     ok(/@property --bg\{syntax:"<color>"/.test(css2), '主题色变量注册为 <color>，可以自身插值');
     ok(/html\.theme-anim\{[\s\S]{0,400}?transition-property:--bg/.test(css2),
       '切换动画由 :root 上的变量过渡承担（一组动画而非逐元素）');

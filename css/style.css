@@ -28,7 +28,9 @@
      m1 玫粉 / m2 红 / m3 金 / m4 绿 / m5 蓝 / m6 紫；m7 是品牌色的第七点（青）。 */
   --m1:#ed58a9; --m2:#e54b52; --m3:#ffa838; --m4:#20b561;
   --m5:#008fd2; --m6:#a167f1; --m7:#00a7a7;
-  --grad:linear-gradient(100deg,#ed58a9 0%,#e54b52 20%,#ffa838 40%,#20b561 60%,#008fd2 80%,#a167f1 100%);
+  /* 渐变直接引用 --m1…--m6（而不是各写一遍硬编码色值）：这样主题切换时
+     渐变会跟着插值后的变量逐帧重绘，标题渐变是「流动」过去的，不会整块跳色。 */
+  --grad:linear-gradient(100deg,var(--m1) 0%,var(--m2) 20%,var(--m3) 40%,var(--m4) 60%,var(--m5) 80%,var(--m6) 100%);
   /* 名次徽章：金 / 银 / 铜（与六维配色解耦，改六维不会把冠军徽章染绿） */
   --gold:#e0a20b; --silver:#b6bfcc; --bronze:#c07845;
   --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",Roboto,Helvetica,Arial,sans-serif;
@@ -58,7 +60,7 @@
      切换主题只是「同一组颜色换了亮度」，不是换一套颜色。 */
   --m1:#ff7bbf; --m2:#fe676a; --m3:#ffcb93; --m4:#4acc79;
   --m5:#00a7f5; --m6:#b585ff; --m7:#00c3c3;
-  --grad:linear-gradient(100deg,#ff7bbf 0%,#fe676a 20%,#ffcb93 40%,#4acc79 60%,#00a7f5 80%,#b585ff 100%);
+  /* --grad 由 :root 里的变量派生，深色下不需要再写一遍 */
   --gold:#f0c04a; --silver:#c9d2de; --bronze:#d99a6c;
 }
 
@@ -103,14 +105,31 @@
 @property --silver{syntax:"<color>";inherits:true;initial-value:#b6bfcc}
 @property --bronze{syntax:"<color>";inherits:true;initial-value:#c07845}
 
-/* ① 主路径：只在切换的那 0.62s 里让变量自己过渡 */
+/* ① 主路径：切换期间让变量自己过渡。
+   时长由 JS 写进 --theme-dur（正常 620ms；系统开了「减少动效」时 200ms ——
+   仍然过渡，只是更快。★ 2026-11-05 修正：以前 reduced-motion 下把过渡整个关掉，
+   结果开着「减少动画效果」的系统上切换就是硬跳，用户看到的就是「没有效果」）。 */
 html.theme-anim{
   transition-property:--bg,--bg-elev,--bg-soft,--bg-soft-2,--text,--text-2,--text-3,
     --border,--border-2,--accent,--accent-2,--accent-soft,--warn,--warn-soft,--ok,--ok-soft,
     --m1,--m2,--m3,--m4,--m5,--m6,--gold,--silver,--bronze;
-  transition-duration:.62s;
-  transition-timing-function:cubic-bezier(.4,0,.2,1);
+  transition-duration:var(--theme-dur,.62s);
+  transition-timing-function:cubic-bezier(.34,.12,.2,1);
   transition-delay:0s;
+}
+/* body 自己带一条 0.22s 的 background/color 过渡（用于普通交互）。切换主题时它会与
+   变量过渡互相打架（每帧改目标值 → 过渡不断重启，末尾多出 0.22s 收尾），先关掉。 */
+html.theme-anim body{transition:none}
+/* 少数元素在深色下用硬编码色覆盖（不是走变量），变量过渡管不到它们 ——
+   单独补一条同长度的颜色过渡，否则这些小块会在切换瞬间「啪」地换色。 */
+html.theme-anim .rec-chip,
+html.theme-anim .gpill,
+html.theme-anim .tl-tip-lv,
+html.theme-anim .stat,
+html.theme-anim .wb-toast{
+  transition-property:background-color,color,box-shadow;
+  transition-duration:var(--theme-dur,.62s);
+  transition-timing-function:cubic-bezier(.34,.12,.2,1);
 }
 /* ② 回退路径：老浏览器逐元素过渡颜色属性 */
 html.theme-fade,
@@ -118,17 +137,21 @@ html.theme-fade *,
 html.theme-fade *::before,
 html.theme-fade *::after{
   transition-property:background-color,color,border-color,fill,stroke!important;
-  transition-duration:.62s!important;
-  transition-timing-function:cubic-bezier(.4,0,.2,1)!important;
+  transition-duration:var(--theme-dur,.62s)!important;
+  transition-timing-function:cubic-bezier(.34,.12,.2,1)!important;
   transition-delay:0s!important;
 }
 /* 图表重绘那一帧：颜色过渡结束后 canvas 要重建，给容器补一段极短的淡入把「啪」那一下盖掉 */
 @keyframes chartSettle{from{opacity:.35}to{opacity:1}}
 .theme-settle .chart-box,.theme-settle .ec{animation:chartSettle .3s ease both}
-/* 系统级「减少动效」：直接换色，不做任何过渡（偏好里的「减弱」用 .motion-reduced，见下） */
+/* canvas 交叉淡化用的快照层：盖在新图表上，从旧画面淡出到透明（JS 里创建） */
+.theme-ghost{position:absolute;pointer-events:none;z-index:6;border-radius:inherit;
+  transition-property:opacity;transition-timing-function:linear}
+/* 系统级「减少动效」：不再完全关掉颜色过渡（那等于硬切），改成 200ms 的快速过渡。
+   JS 会把 --theme-dur 写成 .2s；这里只兜住「JS 没跑到」的极端情况。 */
 @media (prefers-reduced-motion: reduce){
-  html.theme-anim,html.theme-fade,
-  html.theme-fade *,html.theme-fade *::before,html.theme-fade *::after{transition:none!important}
+  html.theme-anim,html.theme-anim body{transition-duration:var(--theme-dur,.2s)!important}
+  html.theme-fade,html.theme-fade *{transition-duration:var(--theme-dur,.2s)!important}
   .theme-settle .chart-box,.theme-settle .ec{animation:none!important}
 }
 
@@ -879,56 +902,45 @@ tr:hover .pname .linkish,tr:hover .pname .pname-txt{
 /* ============ 动态可视化 ============ */
 .tl-top{align-items:flex-end;gap:12px 18px}
 /* 视图说明块（.tl-desc）已按用户 2026-11-01 第五轮要求整块删除，样式一并移除 */
-/* ---- 播放控制台（2026-11-04 晚第十三轮重做） ----
-   以前这一行直接贴在筛选项下面：浏览器原生 range 一根灰细线，上下都没有边界，
-   和「图表切换 / 六维筛选」挤在一起看着像同一组控件。
-   现在做成一块独立的软底色托盘：与上方筛选项拉开 20px、自己带边框和圆角，
-   里面分为「播放按钮 / 时间轴 / 时间跳跃」三段。 */
-.tl-ctl{display:flex;gap:16px;align-items:center;flex-wrap:wrap;
-  margin:20px 0 14px;padding:12px 16px;
-  background:var(--bg-soft);border:1px solid var(--border);border-radius:14px}
+/* ---- 播放控制台（2026-11-05 第十四轮压成单行） ----
+   上一版是「大号日期 + 左右键提示 + 轨道 + 5 年刻度」四层叠起来，托盘高 95px，
+   里面真正有内容的只有轨道那一行 —— 用户反馈「太高、大部分都是空的」。
+   现在只留一行：播放按钮 · 当前日期 · 细轨道 · 终点年 · 时间跳跃，高约 40px。
+   仍然保留托盘底色与 16px 上边距，和上面的筛选项分开。 */
+.tl-ctl{display:flex;gap:14px;align-items:center;flex-wrap:wrap;
+  margin:16px 0 12px;padding:7px 12px;
+  background:var(--bg-soft);border:1px solid var(--border);border-radius:12px}
 /* 托盘底色是 --bg-soft，时间跳跃药丸改用 --bg-elev，否则会糊成一片 */
-.tl-ctl .tl-jump{background:var(--bg-elev);padding:5px 10px}
-/* ---- 时间轴：自绘轨道 + 进度填充 + 大号日期 + 5 年刻度 ---- */
-.tl-rail{flex:1;min-width:220px;display:flex;flex-direction:column;gap:1px}
-.tl-rail-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:0 1px}
-.tl-year{font-size:21px;font-weight:750;line-height:1.2;letter-spacing:-.3px;
-  font-variant-numeric:tabular-nums;color:var(--accent)}
-.tl-rail-hint{font-size:11.5px;color:var(--text-3);white-space:nowrap}
-.tl-rail-slot{position:relative;height:24px;display:flex;align-items:center}
+.tl-ctl .tl-jump{background:var(--bg-elev);padding:4px 9px;border:1px solid var(--border);border-radius:999px}
+/* ---- 时间轴：日期 · 细轨道 · 终点年，全在一行 ---- */
+.tl-rail{flex:1;min-width:200px;display:flex;align-items:center;gap:12px}
+.tl-year{font-size:13px;font-weight:700;line-height:1;letter-spacing:-.1px;
+  font-variant-numeric:tabular-nums;color:var(--accent);min-width:84px;white-space:nowrap}
+.tl-year-end{font-size:11.5px;font-weight:650;color:var(--text-3);line-height:1;
+  font-variant-numeric:tabular-nums;min-width:30px;text-align:right}
+.tl-rail-slot{position:relative;flex:1;min-width:100px;height:20px;display:flex;align-items:center}
 .tl-rail-track{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);
-  height:6px;border-radius:999px;background:var(--border-2);overflow:hidden}
+  height:4px;border-radius:999px;background:var(--border-2);overflow:hidden}
 .tl-rail-fill{display:block;height:100%;width:0;border-radius:999px;
-  background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 50%,transparent),var(--accent))}
+  background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 45%,transparent),var(--accent))}
 .tl-rail-slot input[type="range"]{-webkit-appearance:none;appearance:none;position:relative;z-index:2;
-  width:100%;height:24px;margin:0;padding:0;background:transparent;cursor:pointer}
-.tl-rail-slot input[type="range"]::-webkit-slider-runnable-track{height:6px;background:transparent;border:0}
+  width:100%;height:20px;margin:0;padding:0;background:transparent;cursor:pointer}
+.tl-rail-slot input[type="range"]::-webkit-slider-runnable-track{height:4px;background:transparent;border:0}
 .tl-rail-slot input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;
-  width:16px;height:16px;margin-top:-5px;border-radius:50%;
-  background:var(--bg-elev);border:3px solid var(--accent);
-  box-shadow:0 1px 6px rgba(16,24,40,.26);
+  width:13px;height:13px;margin-top:-4.5px;border-radius:50%;
+  background:var(--bg-elev);border:2.5px solid var(--accent);
+  box-shadow:0 1px 4px rgba(16,24,40,.22);
   transition:transform .14s ease,box-shadow .14s ease}
-.tl-rail-slot input[type="range"]:hover::-webkit-slider-thumb{transform:scale(1.1)}
+.tl-rail-slot input[type="range"]:hover::-webkit-slider-thumb{transform:scale(1.12)}
 .tl-rail-slot input[type="range"]:active::-webkit-slider-thumb{
-  transform:scale(1.18);box-shadow:0 0 0 6px color-mix(in srgb,var(--accent) 16%,transparent)}
-.tl-rail-slot input[type="range"]::-moz-range-track{height:6px;background:transparent;border:0}
-.tl-rail-slot input[type="range"]::-moz-range-thumb{width:13px;height:13px;border-radius:50%;
-  background:var(--bg-elev);border:3px solid var(--accent);box-shadow:0 1px 6px rgba(16,24,40,.26)}
-.tl-rail-ticks{position:relative;height:16px;font-size:10.5px;color:var(--text-3);
-  font-variant-numeric:tabular-nums;user-select:none}
-.tl-rail-ticks .tl-tick{position:absolute;top:3px;transform:translateX(-50%);font-style:normal;white-space:nowrap}
-.tl-rail-ticks .tl-tick::before{content:"";position:absolute;left:50%;top:-4px;width:1px;height:3px;background:var(--border-2)}
-.tl-rail-end{position:absolute;top:3px;font-weight:600;color:var(--text-2)}
-.tl-rail-end.l{left:0}
-.tl-rail-end.r{right:0}
-@media (max-width:900px){
-  /* 窄屏轨道只剩 300–400px，5 年刻度会挤成「20032005」，只留首尾两个年份 */
-  .tl-rail-ticks .tl-tick{display:none}
-}
+  transform:scale(1.2);box-shadow:0 0 0 5px color-mix(in srgb,var(--accent) 16%,transparent)}
+.tl-rail-slot input[type="range"]::-moz-range-track{height:4px;background:transparent;border:0}
+.tl-rail-slot input[type="range"]::-moz-range-thumb{width:11px;height:11px;border-radius:50%;
+  background:var(--bg-elev);border:2.5px solid var(--accent);box-shadow:0 1px 4px rgba(16,24,40,.22)}
 @media (max-width:720px){
-  .tl-ctl{gap:10px;padding:10px 12px;margin-top:16px}
+  .tl-ctl{gap:10px;padding:6px 10px;margin-top:14px}
   .tl-rail{order:3;flex-basis:100%}
-  .tl-rail-hint{display:none}
+  .tl-year{min-width:72px;font-size:12px}
 }
 /* ---- 播放 / 暂停 / 重播（YouTube 同款：▶ 与 ❙❙ 是同一枚形状在插值，不是换图） ----
    图标本体是一块被 clip-path 裁出来的方块（颜色跟随 currentColor），
@@ -1036,6 +1048,15 @@ tr:hover .pname .linkish,tr:hover .pname .pname-txt{
 .md-togglebar{display:flex;gap:6px;margin-bottom:10px}
 .md-tgl.on{background:var(--accent);border-color:var(--accent);color:#fff}
 .md-block p{font-size:13.5px}
+.md-block p b{font-weight:650;color:var(--text)}
+.md-block p code{font-family:var(--mono);font-size:12px;padding:1px 5px;border-radius:5px;
+  background:var(--bg-soft);border:1px solid var(--border)}
+/* 章节末尾的外部参考链接（M5 的 Kinch 参考榜） */
+.md-ext{margin:12px 0 0}
+.md-ext a{display:inline-flex;align-items:center;gap:4px;font-size:12.5px;font-weight:600;
+  padding:5px 11px;border-radius:999px;border:1px solid var(--border-2);
+  background:var(--bg-soft);transition:background .15s ease,color .15s ease,border-color .15s ease}
+.md-ext a:hover{background:var(--accent-soft);color:var(--accent);border-color:var(--accent)}
 .md-block{animation:fadeIn .28s ease}
 @keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
 .md-params{margin-top:12px;border:1px dashed var(--border-2);border-radius:var(--r-md);padding:11px 13px;background:var(--bg-soft)}
@@ -1287,16 +1308,7 @@ td.tl:hover .fi, .region-cell:hover .fi{transform:scale(1.22)}
 .pz-foot{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:16px;
   padding-top:13px;border-top:1px dashed var(--border)}
 .pz-note{min-width:0}
-/* 外观与交互：自适应网格，每格「标题 + 说明 + 分段控件」 */
-.pz-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(235px,1fr));gap:12px}
-.pz-item{padding:13px 14px;border:1px solid var(--border);border-radius:12px;background:var(--bg-soft)}
-.pz-item-t{font-size:13.5px;font-weight:650;margin-bottom:3px}
-.pz-item-d{margin:0 0 10px;font-size:12px;color:var(--text-3);line-height:1.55;min-height:2.4em}
-.pz-seg{display:flex;gap:2px;background:var(--bg-elev);border:1px solid var(--border-2);
-  border-radius:9px;padding:2px;width:100%}
-.pz-seg button{flex:1;padding:6px 4px;font-size:12.5px;border-radius:7px;border:0;
-  background:transparent;color:var(--text-2);white-space:nowrap;cursor:pointer}
-.pz-seg button.on{background:var(--accent);color:#fff;font-weight:600;box-shadow:0 1px 3px rgba(16,24,40,.18)}
+/* 外观与交互板块已按用户 2026-11-05 要求删除（.pz-grid / .pz-item / .pz-seg 一并清理） */
 /* 模块配色：色块 + 名称 + 色值（比一排光秃秃的圆圈容易认） */
 .pz-swatches{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:10px}
 .pz-sw{display:flex;align-items:center;gap:10px;padding:8px 10px;
@@ -1305,7 +1317,7 @@ td.tl:hover .fi, .region-cell:hover .fi{transform:scale(1.22)}
 .pz-sw-t{display:flex;flex-direction:column;min-width:0;line-height:1.35}
 .pz-sw-t b{font-size:12.5px;font-weight:600}
 .pz-sw-t small{font-size:10.5px;color:var(--text-3);font-family:var(--mono);letter-spacing:.02em}
-@media (max-width:640px){.pz-card{padding:14px}.pz-grid{grid-template-columns:1fr}}
+@media (max-width:640px){.pz-card{padding:14px}}
 /* 模块配色自定义（.crow 仍被取色弹窗的锚点复用） */
 .crow{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--text-2);
   background:var(--bg-soft);border:1px solid var(--border);border-radius:10px;padding:5px 10px}
@@ -1898,59 +1910,46 @@ button.exp-v3-wca.pid-copy:hover{color:var(--accent)}
    姓名 / 国旗 / 起止日期改由鼠标移到色块上时跟随光标的 tooltip 显示。 */
 
 
-/* ============ 参数设置页：六维占比自定义（滑杆 + 数字框） ============ */
+/* ============ 参数设置页：六维占比（2026-11-05 卡片式，无滑杆） ============
+   顶部一条堆叠总览条 + 3×2 卡片网格。每张卡：色点 · 名称 · 徽标 / − 数字 + / 细进度条。
+   整块高度约为原「六条横向滑杆」的一半，且没有任何可拖拽区域（触屏不会误滚）。 */
 .wdot{width:10px;height:10px;border-radius:50%;flex:none;box-shadow:0 0 0 1px rgba(0,0,0,.12) inset}
-.wslider{display:flex;flex-direction:column;gap:9px}
-.wrow{display:grid;grid-template-columns:minmax(96px,150px) 1fr 72px 16px;
-  align-items:center;gap:10px}
-.wrow-name{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--text-2);min-width:0}
-.wrow-name .wdot{width:9px;height:9px}
-.wrow .wrange{-webkit-appearance:none;appearance:none;width:100%;height:22px;background:none;cursor:pointer}
-/* 2026-11-04 晚：轨道左侧按当前占比填充成该维度的主色（--p / --wc 由渲染时内联写入，
-   拖动后由 app.js 的 syncWdim 同步），一眼能看出「这一维占了多少」。 */
-.wrow .wrange::-webkit-slider-runnable-track{height:6px;border-radius:999px;
-  background:linear-gradient(90deg,var(--wc,var(--accent)) 0 var(--p,0%),var(--bg-soft-2) var(--p,0%) 100%);
-  border:1px solid var(--border)}
-.wrow .wrange::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:16px;height:16px;
-  margin-top:-6px;border-radius:50%;background:var(--wc,var(--accent));border:2px solid var(--bg-elev);
-  box-shadow:0 1px 4px rgba(0,0,0,.22)}
-.wrow .wrange::-moz-range-track{height:6px;border-radius:999px;
-  background:linear-gradient(90deg,var(--wc,var(--accent)) 0 var(--p,0%),var(--bg-soft-2) var(--p,0%) 100%);
-  border:1px solid var(--border)}
-.wrow .wrange::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:var(--wc,var(--accent));
-  border:2px solid var(--bg-elev)}
-.wrow .wnum{width:100%;padding:4px 6px;border-radius:8px;text-align:right;
-  border:1px solid var(--border-2);background:var(--bg-elev);color:var(--text);
-  font-size:12.5px;font-variant-numeric:tabular-nums}
-.wrow .wnum:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
-.wrow-unit{font-size:11.5px;color:var(--text-3)}
-@media (max-width:720px){
-  .wrow{grid-template-columns:1fr 64px 14px;grid-template-areas:"name name name" "range num unit";gap:6px}
-  .wrow-name{grid-area:name}
-  .wrow .wrange{grid-area:range}
-  .wrow .wnum{grid-area:num}
-  .wrow-unit{grid-area:unit}
-}
-/* 以下为旧版「可拖拽柱状图」遗留样式，暂保留以兼容缓存页面 */
-.wchart{display:flex;align-items:flex-end;gap:16px;height:210px;padding:8px 4px 0}
-.wcol{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;height:100%;min-width:0}
-.wcol-track{position:relative;width:58%;max-width:48px;flex:1;order:2;background:var(--bg-soft-2);
-  border-radius:9px 9px 0 0;overflow:hidden}
-.wcol-fill{position:absolute;left:0;right:0;bottom:0;height:0;border-radius:9px 9px 0 0;
-  min-height:2px;transition:height .16s ease;cursor:ns-resize;touch-action:none}
-.wcol-handle{position:absolute;top:-7px;left:50%;transform:translateX(-50%);
-  width:100%;height:16px;cursor:ns-resize}
-.wcol-handle::after{content:"";position:absolute;top:6px;left:50%;transform:translateX(-50%);
-  width:24px;height:4px;border-radius:999px;background:rgba(255,255,255,.9);
-  box-shadow:0 0 0 1px rgba(0,0,0,.18)}
-.wcol-pct{font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--text-2);order:1}
-.wcol-name{font-size:11.5px;color:var(--text-3);display:flex;align-items:center;gap:5px;
-  text-align:center;line-height:1.2;order:3}
-.wcol-name .wdot{width:9px;height:9px}
-@media (max-width:720px){
-  .wchart{gap:8px;height:180px}
-  .wcol-track{width:70%}
-}
+.wstack{display:flex;height:10px;border-radius:999px;overflow:hidden;
+  background:var(--bg-soft-2);margin:12px 0 4px}
+.wstack i{display:block;height:100%;transition:width .22s cubic-bezier(.4,0,.2,1)}
+.wstack i + i{box-shadow:-1px 0 0 rgba(255,255,255,.45)}
+.wgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin-top:10px}
+/* 单行卡：名称在左、步进器在右，底部 3px 进度条绝对定位（不额外占高度） */
+.wcard{position:relative;display:flex;align-items:center;gap:8px;
+  padding:7px 9px 11px;border:1px solid var(--border);border-radius:11px;
+  background:var(--bg-soft);min-width:0}
+.wc-hd{display:flex;align-items:center;gap:6px;min-width:0;flex:1}
+.wc-hd .wdot{background:var(--wc,var(--accent));width:8px;height:8px}
+.wc-hd b{font-size:12.5px;font-weight:650;color:var(--text-2);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wc-badge{font-size:9.5px;font-weight:700;color:var(--text-3);background:var(--bg-elev);
+  border:1px solid var(--border);border-radius:4px;padding:0 3px;line-height:13px;flex:none}
+.wc-ctl{display:flex;align-items:center;gap:2px;flex:none}
+.wc-btn{width:20px;height:20px;flex:none;display:inline-flex;align-items:center;justify-content:center;
+  border:1px solid var(--border-2);border-radius:6px;background:var(--bg-elev);
+  color:var(--text-2);font-size:13px;line-height:1;cursor:pointer;padding:0;
+  transition:background .12s ease,color .12s ease,border-color .12s ease,transform .1s ease}
+.wc-btn:hover{background:var(--accent-soft);color:var(--accent);border-color:var(--accent)}
+.wc-btn:active{transform:scale(.92)}
+.wc-num{width:46px;flex:none;padding:1px 0;border:0;border-radius:5px;
+  background:transparent;color:var(--text);text-align:right;
+  font-size:14px;font-weight:750;font-variant-numeric:tabular-nums;
+  -moz-appearance:textfield;appearance:textfield}
+.wc-num::-webkit-outer-spin-button,.wc-num::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.wc-num:hover{background:var(--bg-elev)}
+.wc-num:focus{outline:none;background:var(--bg-elev);box-shadow:0 0 0 2px var(--accent-soft)}
+.wc-pct{font-size:10.5px;color:var(--text-3);flex:none;margin-right:2px}
+.wc-bar{position:absolute;left:9px;right:9px;bottom:5px;height:3px;border-radius:999px;
+  background:var(--bg-soft-2);overflow:hidden}
+.wc-bar i{display:block;height:100%;border-radius:999px;background:var(--wc,var(--accent));
+  transition:width .22s cubic-bezier(.4,0,.2,1)}
+@media (max-width:860px){.wgrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:520px){.wgrid{grid-template-columns:1fr}}
 
 /* 首屏加载占位：替换此前静态写死的旧版首页（含已下线的 GOAT 入口），
    避免脚本接管前短暂闪现过时内容 */

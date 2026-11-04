@@ -242,17 +242,19 @@
     try { if (window.Prefs && Prefs.get('motion') === 'reduced') return true; } catch (e) { }
     return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   }
-  /* ★ 深浅色切换（2026-11-04 晚第十三轮重做，用户反馈「还是很生硬」）
-     上一版是 View Transitions 的圆形揭示：本质是把新主题渲染成**一张静态截图**，
-     从按钮处扫过去，边界是一条硬圆，扫过的瞬间整页定型 —— 看着像「唰」地盖了一层，
-     而且图表（canvas）整体跳色。所以这一版不再用截图，改成**真正的颜色插值**：
-       · 给 <html> 挂 .theme-anim 约 0.62s，期间所有元素只过渡颜色类属性
-         （背景 / 文字 / 边框 / 阴影 / SVG 填充），颜色沿时间轴连续变化，没有任何硬边界；
-       · 页面结构一行不动，不重排、不重挂载，图标与文字位置纹丝不动；
-       · 图表是 canvas，CSS 过渡管不到它 → 等颜色过渡结束后再重绘一次，
-         并给图表容器补一段很短的淡入，把「重绘那一帧」盖掉。
-     关掉动效时（系统 reduced-motion 或偏好选了减弱）直接换色，不做过渡。 */
-  const THEME_MS = 620;
+  /* ★ 深浅色切换（2026-11-05 第十四轮再次重做）
+     用户两次反馈「切换生硬」。上一版写的是 CSS 变量插值，逻辑本身没错，但有两个坑：
+       ① 系统开了「减少动画效果」（Windows 辅助功能里很常见）时，CSS 的
+          `@media (prefers-reduced-motion:reduce)` 把过渡整个关成 none，JS 里也
+          直接 return —— 于是这类机器上根本没有任何过渡，就是硬切。
+          现在改为：仍然过渡，只是把时长压到 200ms。
+       ② 图表是 canvas，颜色画在位图上，CSS 过渡管不到 —— 之前等颜色跑完再
+          `render(true)`，canvas 在那一帧整体跳色，观感像「啪」地闪一下。
+          现在改成：先把旧画面快照成一张位图盖在新图表上，再让它淡出，
+          图表颜色是「化开」过去的（见 crossFadeCharts）。
+     主路径仍是变量插值（一组动画、不掉帧）；不支持的浏览器退回逐元素过渡（.theme-fade）。 */
+  const THEME_MS = 620;        /* 正常时长 */
+  const THEME_MS_QUICK = 200;  /* 系统要求减少动效时的时长：仍然过渡，只是更快 */
   /* 能否让「变量本身」过渡：支持 CSS @property 的浏览器可以，
      此时全站只需一组动画（:root 上的 --bg/--text/...），不掉帧；
      不支持的退回逐元素过渡（.theme-fade），慢一点但同样不是硬切。 */
@@ -263,8 +265,59 @@
     catch (e) { varAnimOK = false; }
     return varAnimOK;
   }
-  /* 参数设置页的分段控件与真实偏好对齐。
-     顶栏 ☀/☾ 按钮改主题时也会写偏好，如果不同步，参数页上的「主题」还高亮着旧选项。 */
+  function themeMs() { return prefersReduce() ? THEME_MS_QUICK : THEME_MS; }
+
+  /* ---- canvas 交叉淡化 ----
+     思路：切换过程中先把每个 canvas 的当前画面 drawImage 到一张离屏 canvas，
+     等颜色过渡到一半、图表用新配色重绘之后，把离屏图按原位置盖回去（opacity 1），
+     下一帧开始淡出。用户看到的是「旧图淡出、新图浮现」，而不是位图整体跳色。
+     只在页面真的有图表时才做（.ec / .chart-box 里没有 canvas 就直接跳过）。 */
+  function captureCanvases() {
+    const list = [];
+    document.querySelectorAll('canvas').forEach(function (cv) {
+      const w = cv.width, h = cv.height;
+      if (!w || !h) return;
+      const r = cv.getBoundingClientRect();
+      if (r.width < 4 || r.height < 4) return;
+      let g = null;
+      try {
+        g = document.createElement('canvas');
+        g.width = w; g.height = h;
+        g.getContext('2d').drawImage(cv, 0, 0);
+      } catch (e) { return; }   /* 跨域污染等：放弃这一张，不影响其它 */
+      list.push({ ghost: g, cv: cv });
+    });
+    return list;
+  }
+  function crossFadeCharts(dur) {
+    const old = captureCanvases();
+    if (!old.length) { settlePage(); return; }
+    /* 记下「第几个 canvas」而不是节点引用：重绘会换掉节点，按序号对上就行 */
+    const all = Array.prototype.slice.call(document.querySelectorAll('canvas'));
+    const snap = old.map(function (o) { return { g: o.ghost, i: all.indexOf(o.cv) }; })
+      .filter(function (o) { return o.i >= 0; });
+    try { render(true); } catch (e) { return; }
+    const now = Array.prototype.slice.call(document.querySelectorAll('canvas'));
+    snap.forEach(function (s) {
+      const cv = now[s.i];
+      if (!cv || !cv.parentNode) return;
+      const p = cv.parentNode;
+      const cr = cv.getBoundingClientRect(), pr = p.getBoundingClientRect();
+      if (cr.width < 4 || cr.height < 4) return;
+      const g = s.g;
+      g.className = 'theme-ghost';
+      g.style.cssText = 'position:absolute;pointer-events:none;z-index:6;opacity:1;' +
+        'left:' + (cr.left - pr.left + p.scrollLeft) + 'px;top:' + (cr.top - pr.top + p.scrollTop) + 'px;' +
+        'width:' + cr.width + 'px;height:' + cr.height + 'px;' +
+        'transition-property:opacity;transition-timing-function:linear;transition-duration:' + dur + 'ms';
+      if (getComputedStyle(p).position === 'static') p.style.position = 'relative';
+      p.appendChild(g);
+      requestAnimationFrame(function () { g.style.opacity = '0'; });
+      setTimeout(function () { if (g.parentNode) g.parentNode.removeChild(g); }, dur + 60);
+    });
+    settlePage();
+  }
+  /* 参数设置页的分段控件与真实偏好对齐（顶栏 ☀/☾ 改主题后同步高亮）。 */
   function syncPrefSegs() {
     if (!window.Prefs) return;
     document.querySelectorAll('.pz-seg[data-pref]').forEach(function (seg) {
@@ -284,39 +337,49 @@
       try { localStorage.setItem('goat-theme', next); } catch (e) { }
       syncPrefSegs();
     };
-    const cls = canAnimateVars() ? 'theme-anim' : 'theme-fade';
-    if (!animate || prefersReduce()) {
-      /* 无动画：先摘掉可能残留的过渡类，再直接换色 */
+    if (animate === false) {
       root.classList.remove('theme-anim', 'theme-fade');
       apply();
       settleCharts();
       return;
     }
+    const ms = themeMs();
+    const cls = canAnimateVars() ? 'theme-anim' : 'theme-fade';
     root.classList.remove('theme-anim', 'theme-fade');
+    /* 时长交给 CSS 变量，reduced-motion 的媒体查询也只读它，两边永远一致 */
+    try { root.style.setProperty('--theme-dur', ms + 'ms'); } catch (e) { }
     root.classList.add(cls);
+    /* 先按旧值算一次样式，保证过渡有「起点」；否则某些浏览器会把两帧合并成硬切 */
+    void root.offsetWidth;
     apply();
     clearTimeout(switchTheme._t);
-    switchTheme._t = setTimeout(function () {
+    clearTimeout(switchTheme._t2);
+    /* 图表在过渡走到一半时换成新配色：此时变量已接近终值，叠加旧画面淡出，
+       视觉上是「化开」，不会在全站颜色定型的同一瞬间再闪一下。 */
+    switchTheme._t = setTimeout(function () { crossFadeCharts(Math.max(240, Math.round(ms * 0.75))); },
+      Math.round(ms * 0.5));
+    switchTheme._t2 = setTimeout(function () {
       root.classList.remove(cls);
-      settleCharts();
-    }, THEME_MS);
+      root.style.removeProperty('--theme-dur');
+    }, ms + 40);
   }
-  /* 颜色过渡结束：重绘一次（图表要拿新配色重建），并给图表容器一段淡入，
-     否则 canvas 会在这一帧「啪」地换色。整体 DOM 重建发生在颜色已经定型之后，
-     所以视觉上只是一次轻微的刷新，不是硬切。 */
-  function settleCharts() {
-    /* 只有真的画了图（页面上存在 .ec 容器）才需要重建：图表颜色写死在 canvas 里，
-       必须用新配色重画一次；纯文字页面重渲染只是白费一次 DOM 重建。 */
-    if (!document.querySelector('.ec')) return;
-    if (!window.Charts || !window.Charts.has || !window.Charts.has()) return;
-    try { render(true); } catch (e) { return; }
+  /* 页面重排 / 重建的统一收尾：只有真的画了图才需要重渲染（图表配色写在 canvas 里）。
+     纯文字页面重渲染只是白费一次 DOM 重建。 */
+  function settlePage() {
     const v = document.getElementById('view');
     if (!v) return;
     v.classList.remove('theme-settle');
     void v.offsetWidth;
     v.classList.add('theme-settle');
-    clearTimeout(settleCharts._t);
-    settleCharts._t = setTimeout(function () { v.classList.remove('theme-settle'); }, 340);
+    clearTimeout(settlePage._t);
+    settlePage._t = setTimeout(function () { v.classList.remove('theme-settle'); }, 340);
+  }
+  /* 无动画路径（首次加载 / 语言切换等）用：只重绘图表，不做淡化 */
+  function settleCharts() {
+    if (!document.querySelector('.ec')) return;
+    if (!window.Charts || !window.Charts.has || !window.Charts.has()) return;
+    try { render(true); } catch (e) { return; }
+    settlePage();
   }
   /* 顶栏按钮：在「浅色 ⇄ 深色」之间翻转，并把结果写进偏好（auto 被显式选择覆盖，
      与主流站点一致；想回到跟随系统就去参数设置页选「跟随系统」）。 */
@@ -1118,82 +1181,71 @@
       const mcr = document.getElementById('mColorReset');
       if (mcr) mcr.addEventListener('click', function () { Pm.resetColors(); render(true); toast(t('ui.ok')); });
 
-      /* ---- 外观与交互（第十三轮新增）----
-         四组分段控件共用一套逻辑：写 Prefs → 立刻生效 → 需要重排的（每页行数）重渲染。
-         主题走 AppTheme.apply()（带 0.62s 颜色过渡），不在这里直接改 data-theme。 */
-      document.querySelectorAll('.pz-seg[data-pref]').forEach(function (seg) {
-        seg.addEventListener('click', function (e) {
-          const btn = e.target.closest ? e.target.closest('[data-pv]') : null;
-          if (!btn || btn.classList.contains('on')) return;
-          const key = seg.getAttribute('data-pref');
-          let val = btn.getAttribute('data-pv');
-          if (key === 'perPage') val = parseInt(val, 10);
-          seg.querySelectorAll('[data-pv]').forEach(function (x) { x.classList.toggle('on', x === btn); });
-          if (!window.Prefs) return;
-          Prefs.set(key, val);
-          if (key === 'theme') { if (window.AppTheme) window.AppTheme.apply(); return; }
-          if (key === 'perPage') { state.page = 1; render(true); }
-        });
-      });
-      const pr = document.getElementById('prefReset');
-      if (pr) pr.addEventListener('click', function () {
-        if (!window.Prefs) return;
-        Prefs.reset();
-        if (window.AppTheme) window.AppTheme.apply();
-        render(true); toast(t('ui.ok'));
-      });
-      /* 六维占比：滑杆 / 数字框改写 b1–b6，榜单按新权重实时重排 */
-      const wPair = function (k) {
-        return {
-          range: document.querySelector('.wrange[data-wdim="' + k + '"]'),
-          num: document.querySelector('.wnum[data-wdim="' + k + '"]')
-        };
-      };
+      /* ---- 「外观与交互」板块已按用户 2026-11-05 要求删除：
+         这里不再有 .pz-seg[data-pref] / #prefReset 的绑定。主题仍由顶栏 ☀/☾ 控制，
+         Prefs 的 density / motion / perPage 保留默认值（cozy / full / 20）。 ---- */
+
+      /* ---- 六维占比（2026-11-05 第十四轮去掉滑杆，改为卡片 + 步进器）----
+         控件：数字框（直接输入，0.1%）与 −/+ 按钮（一次 1%），外加一条只读进度条。
+         改任一维时其余五维**按原比例**分摊剩下的权重，六维合计恒为 100%。 */
+      const WK = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'];
+      const wNum = function (k) { return document.querySelector('.wc-num[data-wdim="' + k + '"]'); };
       const syncWdim = function (src) {
         const w = (Pm.weights ? Pm.weights() : {}) || {};
         let sum = 0;
-        ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'].forEach(function (k) {
+        WK.forEach(function (k) {
           const pct = (w[k] || 0) * 100;
           sum += pct;
-          const pr = wPair(k);
-          if (pr.range && pr.range !== src) pr.range.value = pct.toFixed(1);
-          if (pr.num && pr.num !== src) pr.num.value = pct.toFixed(1);
-          /* 轨道进度填充宽度跟着走（CSS 用 --p 画左半段），否则拖完滑杆颜色还停在旧位置 */
-          if (pr.range) pr.range.style.setProperty('--p', pct.toFixed(1) + '%');
+          const el = wNum(k);
+          if (el && el !== src) el.value = pct.toFixed(1);
+          const bar = document.querySelector('[data-wbar="' + k + '"]');
+          if (bar) bar.style.width = pct.toFixed(2) + '%';
+          const seg = document.querySelector('[data-wseg="' + k + '"]');
+          if (seg) seg.style.width = pct.toFixed(2) + '%';
         });
         const s = document.getElementById('wSum');
         if (s) s.textContent = t('md.weightsSum', { s: sum.toFixed(1) });
       };
-      document.querySelectorAll('[data-wdim]').forEach(function (el) {
+      const applyW = function (k, pctValue) {
+        const f = Math.max(0, Math.min(1, (Number(pctValue) || 0) / 100));
+        const norm = (Pm.weights ? Pm.weights() : {}) || {};
+        const sumOthers = 1 - (norm[k] || 0);
+        WK.forEach(function (j) {
+          const vj = (j === k) ? f
+            : (sumOthers > 0 ? (1 - f) * (norm[j] || 0) / sumOthers : 0);
+          Pm.set('b' + j.slice(1), vj);
+        });
+      };
+      const scheduleW = function () {
+        clearTimeout(window.__wdT);
+        window.__wdT = setTimeout(function () { render(true); }, 420);
+      };
+      document.querySelectorAll('.wc-num[data-wdim]').forEach(function (el) {
         el.addEventListener('input', function () {
           const k = el.getAttribute('data-wdim');
-          if (!k) return;
           const v = parseFloat(el.value);
-          if (isNaN(v)) return;
-          /* 目标：这一维占 f，其余五维**按原比例**分摊剩下的 1−f，
-             于是六维合计始终 = 100%，改一个维度不会把别的维度压成 0。 */
-          const f = Math.max(0, Math.min(1, v / 100));
-          const WK = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'];
-          const norm = (Pm.weights ? Pm.weights() : {}) || {};
-          const sumOthers = 1 - (norm[k] || 0);
-          WK.forEach(function (j) {
-            const vj = (j === k) ? f
-              : (sumOthers > 0 ? (1 - f) * (norm[j] || 0) / sumOthers : 0);
-            Pm.set('b' + j.slice(1), vj);
-          });
-          syncWdim(el);
-          clearTimeout(window.__wdT);
-          window.__wdT = setTimeout(function () { render(true); }, 420);
+          if (!k || isNaN(v)) return;
+          applyW(k, v); syncWdim(el); scheduleW();
+        });
+        /* 失焦时按当前真实权重回填，避免输入「999」后框里留着不可能的数值 */
+        el.addEventListener('blur', function () { syncWdim(null); });
+      });
+      document.querySelectorAll('[data-wstep]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          const k = b.getAttribute('data-wstep');
+          const dir = Number(b.getAttribute('data-dir')) || 1;
+          if (!k) return;
+          const cur = ((Pm.weights ? Pm.weights() : {}) || {})[k] || 0;
+          applyW(k, Math.max(0, Math.min(100, cur * 100 + dir)));
+          syncWdim(null); scheduleW();
         });
       });
-      /* 六维占比的交互已由上面的 [data-wdim] 通用处理器接管
-         （滑杆 + 数字框，改一维其余按比例缩放）。这里只保留合计标签的即时刷新。 */
+      syncWdim(null);
       const wSumEl = document.getElementById('wSum');
       if (wSumEl) {
-        const wk = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'];
         const ww = (Pm.weights ? Pm.weights() : {}) || {};
         let s = 0;
-        wk.forEach(function (j) { s += (ww[j] || 0) * 100; });
+        WK.forEach(function (j) { s += (ww[j] || 0) * 100; });
         wSumEl.textContent = t('md.weightsSum', { s: s.toFixed(1) });
       }
       const wR = document.getElementById('wReset');

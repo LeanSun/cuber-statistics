@@ -257,6 +257,18 @@
       if (s) { const v = JSON.parse(s); Object.keys(PDEF).forEach(function (k) { if (v[k] !== undefined) o[k] = v[k]; }); }
     } catch (e) { }
     pcur = invalidPrefs(o);
+    /* 2026-11-05：参数页的「外观与交互」面板已按用户要求删除，密度 / 动效 / 每页行数
+       不再有调节入口。之前设过非默认值的用户会永远卡在那套显示状态里且无法改回，
+       所以这里做一次性归位（留一个 v2 标记，之后不再覆盖）。 */
+    try {
+      if (!localStorage.getItem('goat-prefs-v2')) {
+        pcur.density = PDEF.density;
+        pcur.motion = PDEF.motion;
+        pcur.perPage = PDEF.perPage;
+        savePrefs();
+        localStorage.setItem('goat-prefs-v2', '1');
+      }
+    } catch (e) { }
     papplyPrefs();
     return pcur;
   }

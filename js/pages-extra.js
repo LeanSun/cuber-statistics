@@ -343,37 +343,21 @@
         '</span>' +
         '<span class="tl-play-tx">' + esc(tx0) + '</span></button>';
 
-      /* ---- 时间轴（2026-11-04 晚第十三轮重做） ----
-         旧版就是一根浏览器原生 range：灰细线 + 小圆点，夹在播放按钮与年份之间，
-         和上面的筛选项贴着、没有边界，看不出「这是一条时间轴」。
-         现在改成一条独立的「传送带」：
-           · 外层 .tl-ctl 做成软底色托盘 + 与上方筛选项拉开间距；
-           · 轨道自绘（6px 圆角 + 强调色进度填充 + 更大的圆形滑块）；
-           · 当前日期用等宽大号字放在轨道上方左侧，右侧提示「← → 快进一年」；
-           · 轨道下方按 5 年一格标刻度，刻度位置按真实日序号折算成百分比，
-             所以选了停办项目（终点提前）时刻度也跟着重排。 */
-      const railMax = Math.max(1, sl.max);
-      let tk = '';
-      for (let y = 2005; y <= 2035; y += 5) {
-        const i = P.tlDateToIdx ? P.tlDateToIdx(y + '-01-01') : 0;
-        const p = i / railMax * 100;
-        if (!i || p < 8 || p > 92) continue;   /* 太靠两端的刻度会与首尾年份叠字，直接丢掉 */
-        tk += '<i class="tl-tick" style="left:' + p.toFixed(2) + '%">' + y + '</i>';
-      }
+      /* ---- 时间轴（2026-11-05 第十四轮改成单行紧凑版） ----
+         上一版是「大号日期 + 提示 + 轨道 + 5 年刻度」四层，托盘高 95px，
+         而里面真正有内容的只有轨道那一行 —— 用户反馈「太高、大部分是空的」。
+         现在压成一行：播放按钮 · 当前日期 · 细轨道 · 终点年 · 时间跳跃，
+         日期改成等宽小字排在轨道左边（不再单独占一行），刻度行整块去掉
+         （轨道上没有任何参考点时反而更干净，日期本身就给出了位置）。
+         托盘高度从 95px 降到 ~40px。 */
       h += '<div class="tl-rail">' +
-        '<div class="tl-rail-top">' +
-          '<span class="tl-year" id="tlYear">' + sl.label + '</span>' +
-          '<span class="tl-rail-hint">' + esc(t('tl.railHint')) + '</span>' +
-        '</div>' +
+        '<span class="tl-year" id="tlYear">' + sl.label + '</span>' +
         '<div class="tl-rail-slot">' +
           '<div class="tl-rail-track" aria-hidden="true"><i class="tl-rail-fill" id="tlRailFill"></i></div>' +
           '<input type="range" id="tlRange" min="' + sl.min + '" max="' + sl.max + '" step="' + sl.step + '" value="' + sl.value + '" aria-label="' + esc(t('tl.title')) + '">' +
         '</div>' +
-        '<div class="tl-rail-ticks" aria-hidden="true">' +
-          '<span class="tl-rail-end l">2003</span>' + tk +
-          /* 终点用 floor：11 月的日期四舍五入会显示成下一年，与上方「2026-11-04」对不上 */
-          '<span class="tl-rail-end r">' + Math.floor(P.tlEndFy ? P.tlEndFy() : 2026) + '</span>' +
-        '</div>' +
+        /* 终点用 floor：11 月的日期四舍五入会显示成下一年，与上方「2026-11-04」对不上 */
+        '<span class="tl-year-end">' + Math.floor(P.tlEndFy ? P.tlEndFy() : 2026) + '</span>' +
         '</div>';
 
       /* 时间跳跃（天/秒）：只影响播放时每秒推进多少天。2026-11-04 起唯一保留的速率项，
@@ -2400,127 +2384,163 @@
   const MD = [
     {
       id: 'overview', h: ['六维模型总览', 'Six-dimension overview'], g: null,
-      simple: ['选手总分由六个维度加权合成：每个维度先独立算出「维度分」（榜首归一为 1000，其余按相对值线性缩放），再乘以该维度的权重 w<sub>d</sub>，加权求和即为总分。旧版七模块模型（M1–M7，含 Elo 对战）已整体停用，不再参与任何榜单。',
-        'A player total is the weighted sum of six dimensions. Each dimension is normalised so the leader scores 1000, then multiplied by its weight w_d. The old seven-module model (M1–M7, including Elo head-to-head) is retired and no longer feeds any ranking.'],
+      simple: ['总分由六个维度加权合成：每维先算出自己的「维度分」（本站刻度满分 1000），再乘权重 w 求和。六维各管一件事——守纪录、上领奖台、在大赛破纪录、长期占据世界前列、与纪录的绝对差距、把人类极限推远多少。旧七模块模型（M1–M7，含 Elo 对战强度）已整体停用。',
+        'A total is the weighted sum of six dimensions. Each dimension first produces its own score on the site scale (full mark 1000), then is multiplied by its weight. The six cover holding records, podium finishes, records broken at championships, long tenure near the top, absolute distance to the WR, and how far the frontier was pushed. The old seven-module model, including Elo head-to-head, is retired.'],
       f: ['$$t=\\sum_{d}w_{d}\\,s_{d},\\qquad s_{d}=1000\\cdot\\frac{x_{d}}{\\max_{p}x_{d}},\\qquad \\sum_{d}w_{d}=1$$',
         '$$w=(\\underbrace{0.45}_{M1},\\underbrace{0.20}_{M3},\\underbrace{0.15}_{M2},\\underbrace{0.15}_{M4},\\underbrace{0.04}_{M6},\\underbrace{0.01}_{M5})$$'],
       detail: [
-        ['六个维度回答六个不同的问题：M1 纪录持有（刷新了多少次纪录，守得久再加分）、M3 大赛表现（锦标赛上突破的加成）、M2 领奖台（拿过多少冠亚季军）、M4 统治力（保持在世界前十有多久）、M6 突破幅度（破纪录瞬间把人类前沿推远多少）、M5 纪录比（最好成绩离世界纪录有多近：100×WR/PB，17 项等权平均）。',
-          'The six dimensions answer six different questions: M1 record ownership (how many times records were broken, plus a holding bonus), M3 championship performance, M2 podiums, M4 dominance (time spent inside the world top ten), M6 breakthrough margin (how far a record pushed the human frontier), M5 WR ratio (how close your PB is to the WR: 100 x WR / PB, equally averaged over 17 events).'],
-        ['维度分先按各维自己的归一基准映射到站点刻度（FULL=1000）再加权，是为了让六个量纲完全不同的维度（M2 原始量级上万、M6 只有几十）能放在同一把尺子上相加。M5 纪录比用 Kinch 绝对刻度 k=100×WR/成绩；方案 A（2026-11-04）起把整维满分压回 1000，即 s5=10×Kinch均值，不再比其他维高一个量级，权重才具有可读的含义。',
-          'Each dimension is mapped onto the site scale (FULL=1000) before weighting so that dimensions with wildly different raw magnitudes (M2 in the tens of thousands, M6 in the tens) can be summed on one ruler. M5 uses the absolute Kinch scale k = 100 x WR / PB; since Plan A (2026-11-04) its full mark is back to 1000 (s5 = 10 x mean Kinch), no longer an order of magnitude above the other dimensions, so the weights mean what they say.'],
-        ['跨维相关性已逐对审查（只在两维都非零的人身上算）：目前有两对超过 0.7 — M1 × M6 = 0.769（仅 281 人，且 M6 权重只有 4%）、M1 × M4 = 0.732。二者都是语义近邻（刷新纪录 ⇔ 打得狠 / 长期在世界前十），分年代桶内不降，判定为真实机制而非时代混杂，处置方式是标注并在权重上压制。',
-          'All 15 dimension pairs were checked on players non-zero in both: two pairs now exceed 0.7 - M1 x M6 = 0.769 (only 281 players, M6 weighted just 4%) and M1 x M4 = 0.732. Both are semantic neighbours (breaking records vs. raw margin / long top-ten tenure), stable inside decade buckets, so they are documented and discounted by weight.']
+        ['M1 与 M6 是同一件事实的两面，刻意拆开：M1 只问「这条纪录被你独占了多少天」（持有），M6 只问「你把它往前推了多深」（幅度）。上一版把两者混在一条公式里，等于同一份数学算两遍，2026-10-25 起分家。',
+          'M1 and M6 are two sides of one fact, deliberately split: M1 asks only how long a record was held outright, M6 asks only how far it was pushed. The previous version mixed both into one formula, double-counting the same mathematics, and they were separated on 2026-10-25.'],
+        ['维度分是「相对刻度」：每个维度都按**当前筛选范围内的榜首**归一成 1000，因此总榜、各项目榜、女子榜、某年截止榜各自有一套基准，跨榜之间不能直接比数值大小，只能比同一榜内的顺序。唯一的例外是 M5：它用 Kinch 绝对刻度，不随筛选范围变化。',
+          'Dimension scores are relative: each is normalised so that the leader inside the current filter scores 1000. The overall board, per-event boards, the womens board and any as-of cut therefore each have their own baseline, so numbers are comparable only inside one board, not across boards. M5 is the only exception, being on the absolute Kinch scale.'],
+        ['数据来自 WCA 官方导出（2026-10-15 快照）。性别、项目、成绩口径（单次 / 平均 / 合计）与 as-of 年份都不是对总分做截断，而是在六维引擎里逐维重算，因此每一种切法都与总榜同一套口径。',
+          'Data comes from the official WCA export (2026-10-15 snapshot). Gender, event, result track (single / average / combined) and as-of date all recompute every dimension inside the engine rather than truncating a total, so every cut shares one definition.'],
+        ['跨维相关性逐对审查过（只在两维都非零的人身上算）：M1 × M6 = 0.769（仅 281 人，M6 权重只有 4%）、M1 × M4 = 0.732。两对都是语义近邻（破纪录多 ⇔ 推得狠 / 在榜久），分年代桶内不降，判为真实机制而非时代混杂，处置方式是标注 + 在权重上压制。',
+          'All dimension pairs were checked on players non-zero in both: M1 x M6 = 0.769 (only 281 players, M6 weighted 4%) and M1 x M4 = 0.732. Both are semantic neighbours (more records vs. bigger margins / longer tenure), stable inside decade buckets, so they are documented and discounted by weight rather than merged.']
       ]
     },
     {
       id: 'm1', h: ['M1 · 纪录持有（权重 45%）', 'M1 · Record ownership (45%)'], g: 'm1',
-      simple: ['核心是「你刷新过多少次纪录」：每刷新一次记一份分值，级别越高、属地竞争越激烈越值钱。守得久只是加分项（最多 +50%），不再决定分数高低。',
-        'The core is how many times you broke records: each improvement scores once, worth more at a higher tier and in a deeper field. Holding long is only a bonus (up to +50%).'],
-      f: ['$$M_{1}=\\sum_{\\text{段}}\\Bigl(\\sum_{k}\\lambda^{\\,n_{k}-1}\\Bigr)\\,V_{L}\\,\\rho_{s}\\,f_{L}\\,w_{e}\\left(1+\\kappa\\,\\frac{\\min(T,30\\,\\text{y})}{30\\,\\text{y}}\\right)$$',
-        '$$\\lambda=0.90\\ (\\text{同线递减}),\\qquad \\kappa=0.50\\ (\\text{持有上限}),\\qquad V_{L}\\in\\{\\text{WR},\\text{CR},\\text{NR}\\}$$'],
+      simple: ['不看「你破了几次」，看「你破完之后独自占着这条纪录多少天」。把每条纪录阶梯按选手切成「占有段」，段内刷几次都不进公式——从破纪录那天算起，直到被别人打破为止。级别越高（WR > CR > NR）、属地竞争越激烈、年代越晚，同样的天数越值钱。',
+        'It is not about how many times you broke a record but how many days you held the line outright. Every record ladder is cut into ownership runs; refreshes inside a run never enter the formula. The clock starts on the day you break it and stops when someone else does. Higher tiers, deeper fields and later eras make the same days worth more.'],
+      f: ['$$M_{1}=\\sum_{\\text{段}}\\frac{\\min(T,30\\,\\text{y})}{365}\\,V_{L}\\,\\rho_{s}\\,f_{L}\\,w_{e}$$',
+        '$$V_{L}=\\{WR:1.0,\\ CR:0.4,\\ NR:0.15\\},\\qquad T=\\tau_{\\text{end}}-\\tau_{\\text{start}}\\ (\\text{封顶 30 年})$$'],
       detail: [
-        ['每一次刷新记 1 份基础分：同一选手在同一条纪录线（项目×轨道×级别×属地）上第 n 次刷新按 λ<sup>n−1</sup> 递减（λ = 0.9），所以「反复刷同一条线」的边际收益越来越低。V<sub>L</sub> 是层级价值（WR 1.0 / CR 0.4 / NR 0.15），ρ<sub>s</sub> 是属地竞争密度，f<sub>L</sub> 是时代折算。',
-          'Each improvement scores one base unit: the n-th refresh on the same record line (event x track x level x territory) is discounted by λ^(n-1) with λ = 0.9, so farming one line gives diminishing returns. V_L is the tier value (WR 1.0 / CR 0.4 / NR 0.15), rho_s the territorial field density, f_L the era factor.'],
-        ['守得久只作乘子：守满 30 年把这一段放大到 1.5 倍（κ = 0.5），时长是加分项而非主轴；「领先幅度」仍归 M6。防刷分：一条小国 NR 的基础分约 0.15 × ρ（小国 ρ 约 0.001~0.02），即使把一条线刷到底，整个生涯的 NR 合计也压在 1 条 WR 之下 —— 实测全站纯 NR 得分最高者仅约 0.31 分，而 1 条 WR 约 0.8~1.5 分。',
-          'Holding is only a multiplier: 30 years caps the segment at 1.5x (kappa = 0.5), so duration is a bonus, not the axis; the margin still belongs to M6. Anti-farming: a small-country NR is worth roughly 0.15 x rho (rho about 0.001-0.02), so even a full career of NRs stays below one WR - the highest pure-NR score on the site is about 0.31, while one WR is about 0.8-1.5.'],
-        ['纪录按「刷新当时所代表的国家」归属（取 WCA 成绩表里的登记国，而不是选手今天的国籍）。换过代表国的选手，早年的 NR 仍记在原国家名下 —— 例如 Max Xiong（熊锐明，2015XION03）现籍加拿大，他 2018–2022 年的 10 条中国纪录全部保留在中国。选手页会在纪录明细里标注「当时代表」。',
-          'Records belong to the country the competitor represented at the time (taken from the registered country on each WCA result, not the nationality shown on the profile today). For competitors who switched, earlier NRs stay with the original country - Max Xiong (2015XION03) now represents Canada, yet all ten of his Chinese records from 2018-2022 remain Chinese. The player page tags such rows with "Represented".'],
-        ['同一条原则也用在**国家总分榜**：总分对每一条得分是线性可加的，因此按「这条得分发生年份所代表的国家」分组求和就能精确拆分（各国之和 ≡ 个人总分，无近似分摊）。全站共 311 位换过代表国的选手被拆到 399 段，所以一位换籍选手会在多个国家的人数里各计一次；未换籍的选手照旧只计入当前国籍。',
-          'The same principle applies to the country leaderboard: the total is linear in each contribution, so grouping by the country represented in the year a contribution was earned splits it exactly (country parts sum to the player total, no pro-rating). 311 players have competed for more than one country (399 segments), so a switcher counts once in each country; everyone else still counts only for their current country.']
+        ['占有段怎么切：一条阶梯 = （项目 × 轨道 × 级别 × 属地），把上面所有被官方承认的纪录提交按时间排好，连续的同一人算一段。段首是本段第一次提交，段末是**下一位选手**第一次提交（也就是纪录被抢走的那天）；若这一段到现在还有效，段末取数据快照日。因此段长由别人决定，本人无法自己延长。',
+          'How runs are cut: a ladder is one combination of event, track, level and territory. All officially recognised record submissions on it are ordered in time and consecutive ones by the same person form a run. A run starts at its first submission and ends at the next person first submission, that is, the day the record was taken; an unbroken run ends at the snapshot date. Its length is therefore decided by others.'],
+        ['为什么不用「破纪录次数」：拆分成 k 次破同一段进步，得分会是「一次到位」的 k 倍，等于奖励控成绩慢刷。占有段口径下，段内刷 k 次与一次到位完全等价（对数进步的望远镜求和恒等），k 根本不进公式。被抢走后再抢回来算新段，以「抢走者留下的值」为基准重新计时，不继承旧段余温。',
+          'Why not count breaks: splitting one improvement into k submissions would score k times a single jump, rewarding sandbagging. Under ownership runs, k refreshes inside a run are exactly equivalent to one jump, since the telescoping sum of log improvements is identical, so k never appears. Winning a line back starts a new run timed against the value left by the previous holder.'],
+        ['三处差别全部来自「阶梯」本身，不需要特判：WR 按全球切段、CR 按所属洲、NR 按所属国；竞争密度 ρ 取**当年**同一池子的占比（分子分母同年，所以每周更新数据不会让历史分数整体漂移）；时代折算 f = ln(1+N)/ln(1+N基准) 也按级别各自的池子算。',
+          'Three differences follow from the ladder itself: WR runs are global, CR runs continental and NR runs national. Field density uses the same-year pool (numerator and denominator from the same year, so weekly data refreshes do not drift historical scores). The era factor uses the log of the same pool at that level.'],
+        ['一条纪录只归一级：既是 WR 又是 CR/NR 的同一次提交，只按 WR 计一次，不重复计分。追平世界纪录也算「破纪录」（与 WCA 口径一致），同样开启一段新的持有。生涯合计封顶 30 年/段，避免一条远古纪录把整个生涯撑起来。',
+          'Each record counts once at its highest tier: a submission that is both WR and CR/NR scores only as WR. Tying the world record also counts as breaking it, matching WCA practice, and starts a new run. Any single run is capped at 30 years so one ancient record cannot carry a whole career.'],
+        ['防刷分是结构性的，不需要额外规则：小国 NR 的价格约 0.15 × ρ（ρ 常在 0.001–0.02），实测「全站纯 NR 得分最高者」只有约 0.31 分，而一条 WR 约 0.8–1.5 分。CR/NR 保留但只作符号性权重：1 条 WR ≈ 52 条洲纪录。这是有意的设计取向。',
+          'Farming is prevented structurally: a small-country NR is worth roughly 0.15 x field density, which is usually 0.001 to 0.02, and the highest purely national record score on the site is about 0.31 while one WR is about 0.8 to 1.5. Continental and national records remain symbolic: one WR is worth about 52 continental records.'],
+        ['纪录按「刷新当时所代表的国家」归属（取成绩表里登记的国籍，不是今天的现籍）。换过代表国的选手，早年的 NR 仍记在原国家名下；国家总分榜按同一原则分组求和，各国之和精确等于个人总分，不做比例分摊。',
+          'Records belong to the country represented at the time, taken from the registered country on each result rather than the nationality shown today. For competitors who switched, earlier national records stay with the original country, and the country board sums the same way, so the parts add up exactly to the player total.']
       ]
     },
     {
       id: 'm2', h: ['M2 · 领奖台（权重 15%）', 'M2 · Podiums (15%)'], g: 'm2',
-      simple: ['冠亚季军按 1 / 0.6 / 0.4 加权，并按赛事级别（世锦 / 洲锦 / 国锦 / 公开赛）与赛场强度折算。核心是「融合」：本人成绩强度与当场比赛的对手强度各占一半（α = 0.5）。',
-        'Gold/silver/bronze weigh 1 / 0.6 / 0.4, scaled by championship tier and field strength. The core is a blend: own performance and field strength each contribute half (alpha = 0.5).'],
-      f: ['$$M_{2}=\\sum_{i}V(r_{i})\\;K_{c}\\;F^{\\text{CSI}}_{i}\\;\\rho_{s},\\qquad V(1):V(2):V(3)=1:0.6:0.4$$',
-        '$$F^{\\text{CSI}}=\\left(\\frac{\\text{CSI}}{\\text{CSI}_{\\text{ref}}}\\right)^{\\gamma},\\qquad \\gamma=0.8015$$'],
+      simple: ['锦标赛决赛的官方名次：冠军 1、亚军 0.6、季军 0.4，再乘赛事级别的价格（世锦 1.0 / 洲锦 0.4 / 国锦 0.15）、属地规模与时代折算。只认官方名次，不另按单次或平均重排——名次只有一个。',
+        'Official final placings at championships: gold 1, silver 0.6, bronze 0.4, multiplied by the event tier price (worlds 1.0, continental 0.4, national 0.15), field size and an era factor. Only the official placing counts; it is not re-derived from single or average, because a placing is a single fact.'],
+      f: ['$$M_{2}=\\sum_{i}P(r_{i})\\;T_{L}\\;\\rho_{s}\\;f(y)\\;w_{e},\\qquad P(1):P(2):P(3)=1:0.6:0.4$$',
+        '$$T_{L}=\\{WC:1.0,\\ CC:0.4,\\ NC:0.15\\}\\quad(\\text{与 M1 的 }V_{L}\\text{ 同一张表})$$'],
       detail: [
-        ['赛事类型系数 K<sub>OF</sub>：公开赛与国锦 1.0，洲锦与世锦 1.6（参赛资格本身就是壁垒）；外卡 / guest 身份折半。名次权重与「参赛人数越多越难」由 CSI 场次强度统一处理，不再另设人数门槛。',
-          'Event-type factors: opens and nationals 1.0, continental and world championships 1.6 (qualification itself is a barrier); guest entries count half. Field strength CSI handles field size.']
+        ['与 M1 共用同一套函数：级别价格表、属地竞争密度 ρ、时代折算 f、项目权重 w 全部直接复用，不另立口径。理由是「世界冠军」和「世界纪录」属于同一层级的成就，站内若给两个价格，两套模型会互相打架。新增的只有 M1 没有的东西——名次折价 P(pos)。',
+          'M2 reuses the M1 functions wholesale: the tier price table, field density, era factor and event weights are shared, with no second definition. A world title and a world record are the same class of achievement, and giving them different prices would make two models contradict each other. The only new ingredient is the placing discount.'],
+        ['成绩口径切到「单次 / 平均」时，M2 会用该轮决赛的 best 或 average **重排前三**再计价（同一批决赛轮、同一 base，衰减按新序列重算）。这是全站唯一一处「同一场比赛可能给出两个领奖台」的地方，所以它只在用户显式切轨时生效；合计档逐字节不变。',
+          'When the site is switched to single or average, M2 re-ranks the top three of every final by that track before pricing them, using the same finals and baseline with the decay recomputed. This is the only place where one competition can yield two podiums, so it applies only when the track is explicitly switched; the combined track is byte-identical.'],
+        ['入口条件是「进决赛前三」，参赛本身不得分。防止堆小赛靠的是属地规模 ρ：小国冠军的价格本身接近 0，不需要额外的「每届最多计 N 个」规则。多次登台线性累加，是实力的证据而不是漏洞。',
+          'The entry condition is a top-three finish in a final; merely competing scores nothing. Farming small events is handled by field density: a small-country title is already worth almost nothing, so no per-championship cap is needed. Repeat podiums accumulate linearly as evidence of strength.'],
+        ['多区赛（举办国用 XE / XA / XW / XO 这类伪代码）不属于任何国家，归 M3 处理，不进 M2。这样「中华台北、中国香港等地区选手在区域赛的成绩」既不会被记成某个国家的冠军，也不会凭空消失。',
+          'Multi-region championships, whose host country is a pseudo code such as XE, XA, XW or XO, belong to no single country and are handled in M3 rather than M2. Results of regional competitors in those events are therefore neither credited as a national title nor silently dropped.']
       ]
     },
     {
       id: 'm3', h: ['M3 · 大赛表现（权重 20%）', 'M3 · Championship performance (20%)'], g: 'm3',
-      simple: ['记录「在锦标赛现场打破纪录」这一额外含金量：同样的 WR，在世界锦标赛上打出来比在一场周末公开赛上打出来更难。只对锦标赛生效，公开赛不计。',
-        'Captures the extra value of breaking a record on a championship floor: the same WR is harder at Worlds than at a weekend open. Championship results only.'],
-      f: ['$$M_{3}=\\sum_{k}W_{\\text{REC}}(L_{k})\\times W_{\\text{TIER}}(T_{k})$$',
-        '$$W_{\\text{REC}}=\\{\\text{WR}:1.0,\\ \\text{CR}:0.4,\\ \\text{NR}:0.15\\},\\qquad W_{\\text{TIER}}=\\{\\text{WC}:1.0,\\ \\text{CC}:0.6,\\ \\text{NC}:0.4\\}$$'],
+      simple: ['只奖励「在锦标赛现场把纪录打出来」这个动作：同样的 WR，在世锦赛上打出比在周末公开赛上打出更难。按纪录级别（WR/CR/NR）× 赛事级别（世锦/洲锦/国锦）计价，单次与平均各计一次。',
+        'Rewards one specific act: breaking a record on a championship floor, where the same WR is harder than at a weekend open. Priced by record tier (WR / CR / NR) times championship tier (worlds / continental / national), counted once for single and once for average.'],
+      f: ['$$M_{3}=\\sum_{k}W_{\\text{REC}}(L_{k})\\;W_{\\text{TIER}}(T_{k})\\;f(y,e)^{1}$$',
+        '$$W_{\\text{REC}}=\\{1.0,\\ 0.4,\\ 0.15\\},\\qquad W_{\\text{TIER}}=\\{WC:1.0,\\ CC:0.6,\\ NC:0.4\\}$$'],
       detail: [
-        ['它与 M1 并存且各计一次：M1 奖励「刷新了几次」，M3 奖励「在什么场合打出来」，两者不重复。NR 给 0.15 是承认国家纪录也是真实突破，但含金量远低于 WR。',
-          'It coexists with M1 and each counts once: M1 rewards how many times you broke records, M3 rewards the stage. NR gets 0.15 as a real but much weaker breakthrough.']
+        ['只对锦标赛生效：世锦赛 / 洲锦赛 / 国锦赛计入，普通公开赛不计。它与 M1 独立并存、各计一次：M1 奖励「守了多久」，M3 奖励「在什么场合打出来」，两者不重复。同场同项目同类型去重，避免多轮次把同一次突破反复计分。',
+          'Championship results only: world, continental and national championships count, opens do not. M3 coexists with M1 and each counts once: M1 rewards holding, M3 rewards the stage. Duplicates within one competition, event and result kind are removed so multi-round finals cannot double count.'],
+        ['时代折算 f（2026-11-01 起）：f = min(1, ln(1+N(y,e)) / ln(1+基准))，N 是该年该项目的活跃选手数，基准取该项目历史峰值的活跃人数（现役项目即最新年，停办项目取鼎盛年，避免「没有未来基准 → 不打折」的漏洞）。动机很直接：2003 年全世界只有 90 名活跃选手却产出 72 条锦标赛纪录，2026 年 5.2 万人只产出 505 条。',
+          'Era factor since 2026-11-01: the log ratio of the active field that year to the historical peak of that event, with retired events using their peak year so they cannot dodge the discount. The motive is concrete: in 2003 about 90 active competitors produced 72 championship records, while in 2026 some 52,000 produced 505.'],
+        ['开荒不计分（默认）：当某个（范围, 项目, 轨道）在此之前**没有任何成绩**时，第一个被录入的成绩会自动成为 WR/CR/NR —— 它前面没有人可以打破，因此不构成「打破纪录」。典型例子是 2003 年世锦赛 18 条 WR 中的 16 条、以及 1982 年 Minh Thai 的 22.95。判定范围随级别变化：WR 看全球线，CR 看所属洲，NR 看所属国。',
+          'Pioneer results score nothing by default: when a combination of scope, event and track has no earlier result at all, the first entry automatically becomes a record without anyone to beat, so it is not a breakthrough. Examples include 16 of the 18 world records at the 2003 Worlds and Minh Thai 22.95 in 1982. The scope follows the tier: global for WR, continental for CR, national for NR.'],
+        ['不受属地门槛约束：WR/CR/NR 都是客观成就，客场破纪录照样计分。NR 给 0.15 是承认国家纪录也是真实突破，但含金量远低于世界纪录（相邻档 2.5 倍）。',
+          'No home-field requirement: world, continental and national records are objective achievements and count wherever they happen. A national record still earns 0.15 to recognise a real breakthrough, while staying 2.5 times below the next tier.']
       ]
     },
     {
       id: 'm4', h: ['M4 · 统治力（权重 15%）', 'M4 · Dominance (15%)'], g: 'm4',
-      simple: ['对「停留在世界前十」这件事做时间积分：不是看你某一天排第几，而是看你在前十里待了多少天、以什么名次待着、那个年代有多少人在竞争。',
-        'Integrates "staying inside the world top ten" over time: not where you rank on one day, but how many days you stayed there, at what rank, and how many people were competing then.'],
+      simple: ['对「坐在世界前十」这件事做时间积分：不是看你某天排第几，而是看你在前十里待了多少天、以什么名次待着、那个年代有多少人在竞争。名次用 r 的负一次幂加权（第 1 名是第 10 名的十倍），项目之间按项目价加权。',
+        'Integrates time spent inside the world top ten: not where you rank on one day, but how many days you stayed there, at what rank, and how deep the field was then. Rank is weighted by the inverse first power (first is worth ten times tenth), and events are weighted by their price.'],
       f: ['$$M_{4}=\\sum_{e,t}w_{e}\\sum_{\\text{段}}\\frac{\\text{段长}}{365}\\,g(r)\\,f(y),\\qquad g(r)=r^{-1.0}$$',
         '$$f(y)=\\frac{\\ln\\bigl(1+N(y)\\bigr)}{\\ln\\bigl(1+N_{\\text{base}}\\bigr)}$$'],
       detail: [
-        ['名次函数取 r<sup>−1.0</sup>：第 1 名是第 10 名的 10 倍，比主模型的衰减更平缓 —— 长年第 5 与长年第 1 的差距不该被放大到十几倍。年代系数 f(y) 用当年参赛人数的对数比，解决「早年人少所以排名水分大」。',
-          'The rank function r^-1.0 makes No. 1 worth ten times No. 10, gentler than the main curve. The era factor f(y) uses the log ratio of that year competitor count.'],
-        ['当年该项目全球零人参赛时，该年席位直接不计分（取消资格而非打折）—— 否则「没人参赛」会被误读成「压过所有对手」。',
-          'If nobody competed in that event that year, the seat scores nothing at all: absence of rivals must not read as dominance over them.']
+        ['为什么必须重建：WCA 导出里的 ranks_single / ranks_average 只有**导出当日**的快照，没有历史排名序列。要算「保持了多久」只能从 results 逐条重建——某时刻的世界排名 = 所有人截至该时刻的最好成绩排序。做法是逐条扫描 PB 突破点、维护一个长度 10 的前十名单、名单一变就切段记时。',
+          'Why a rebuild is required: the export only carries a snapshot of world rankings for the export date, with no historical series. Tenure can only be rebuilt from the raw results, where the ranking at any moment is the ordering of everyones best result up to that moment. The scan tracks personal-best improvements, maintains a top-ten list of length ten and cuts a segment whenever that list changes.'],
+        ['名次函数取 r 的负一次幂：第 1 名是第 10 名的 10 倍，比主模型的衰减平缓得多 —— 长年第 5 与长年第 1 的差距不该被放大到十几倍。原始事实（世界前十总天数 d10、坐第一总天数 d1）同时保留，选手页可以直接看到这两个数字。',
+          'The rank curve is the inverse first power, making first worth ten times tenth, much gentler than the main model, because a long-term fifth should not be a dozen times behind a long-term first. The raw facts, total days in the top ten and total days at number one, are kept as well and shown on the player page.'],
+        ['方案 F（2026-10-25 拍板）：某项目某年**零人参赛**时，该年的席位一律不计分 —— 当年没有竞争者，那一年的「世界排名」只是小样本内部排序，不构成统治力。取消资格而不是打折，避免「没人参赛」被误读成「压过所有对手」。',
+          'Rule F, decided on 2026-10-25: if an event had no competitors at all in a given year, seats in that year score nothing. With no rivals, the ranking for that year is only an ordering inside a tiny sample and cannot demonstrate dominance. It is voided rather than discounted so that absence of rivals is never read as beating them.'],
+        ['口径边界：只统计正式成绩（DNF −1 / DNS −2 / 无成绩 0 一律剔除）；停办项目（脚拧 / 八板 / 十二板 / 旧规则多盲）的时间线封在停办日，否则「项目死了没人挑战」会白赚十几年席位；多盲成绩是编码值，先解码成 cost 再比较；被取消的赛事不计入。',
+          'Boundaries: only valid results count, with DNF, DNS and empty results dropped. Retired events have their timeline frozen at the retirement date, otherwise a dead event would hand out a decade of free tenure. Multiblind results are decoded before comparison, and cancelled competitions are ignored.']
       ]
     },
     {
       id: 'm5', h: ['M5 · 纪录比（权重 1%）', 'M5 · WR ratio (1%)'], g: 'm5',
       simple: ['唯一用「绝对刻度」的维度：你的最好成绩离世界纪录有多近。每个项目按 k = 100 × WR ÷ PB 打分，世界纪录本人 100 分、慢一倍 50 分；17 个现役项目等权平均，没打过的项目记 0。',
-        'The only dimension on an absolute scale: how close your personal best is to the world record. Each event scores k = 100 x WR / PB (WR holder = 100, twice as slow = 50); the 17 active events are averaged equally, and events you never entered count as zero.'],
+        'The only dimension on an absolute scale: how close your personal best is to the world record. Each event scores k = 100 x WR / PB, so the WR holder gets 100 and twice as slow gets 50. The 17 active events are averaged equally and events you never entered count as zero.'],
       f: ['$$K=\\frac{1}{17}\\sum_{e=1}^{17}k_{e},\\qquad k_{e}=100\\times\\frac{WR_{e}}{PB_{e}},\\qquad s_{5}=10\\,K$$'],
       detail: [
-        ['选轨对齐 kinchranking.com：多盲 / 四盲 / 五盲取单次，三盲 / 最少步取单次与平均的较优值，其余 12 项取平均。成绩口径切到「单次 / 平均」时，本站用对应轨重算，但分母始终是 17 个现役项目，避免缺项把分数抬高。',
-          'Track selection follows kinchranking.com: 333mbf / 444bf / 555bf use single, 333bf / 333fm use the better of single and average, the other 12 use average. Switching the site to Single / Average recomputes M5 from that track alone, while the denominator stays at 17 active events so missing events cannot inflate the score.'],
-        ['k 是相对世界纪录的绝对刻度，不按本站榜首归一；站点分 s₅ = 10 × K（整维满分 1000），显示值除以 10 就能与官方 0–100 的 Kinch 核对。本站用 2026-10-15 的 WCA 导出，比参考站新约 10 个月，WR 变动会带来 1 分左右的正常漂移。',
-          'k is absolute relative to the WR, not normalised against the site leader. The site score s5 = 10 x K (full mark 1000), so dividing by 10 reproduces the official 0-100 Kinch scale. This site uses the 2026-10-15 WCA export, about ten months newer than the reference site, so WR movement causes a normal drift of roughly one point.']
-      ]
+        ['选轨与参考站一致：多盲 / 四盲 / 五盲只有单次榜 → 取单次；三盲 / 最少步 → 单次与平均取较优；其余 12 项 → 取平均。站点切到「单次 / 平均」时用对应轨重算，但分母始终是 17 个现役项目，缺项记 0，避免少打几个项目反而把平均分抬高。',
+          'Track selection follows the reference board: multiblind, four-blind and five-blind use single, three-blind and fewest-moves take the better of single and average, and the other twelve use average. Switching the site to single or average recomputes from that track, while the denominator stays at 17 active events so missing events cannot inflate the mean.'],
+        ['k 是相对世界纪录的绝对刻度，不按本站榜首归一。站点分 s5 = 10 × K（整维满分 1000），所以显示值除以 10 就是官方 0–100 的 Kinch 值，可以直接和参考站核对。',
+          'k is absolute relative to the world record and is not normalised against the site leader. The site score is s5 = 10 x K with a full mark of 1000, so dividing by ten reproduces the official 0 to 100 Kinch value and can be checked against the reference board.'],
+        ['数字对不上先看快照时点：本站用 2026-10-15 的导出，比参考站新约 10 个月，期间世界纪录与个人最好成绩都在动，逐项 k 有升有降，合计差 1 分左右是正常的。曾用三套选轨（全单次 / 全平均 / 两轨取优）反算，没有任何一套能复现参考站的历史数值，说明主因不是选轨而是时间差。',
+          'When numbers disagree, check the snapshot date first: this site uses the 2026-10-15 export, about ten months newer than the reference, during which world records and personal bests both moved, so per-event k rises and falls and a gap of about one point in total is expected. Three alternative track policies were tested against the reference figures and none reproduced them, which points at the time gap rather than the track rule.'],
+        ['权重只有 1%，因为它是截面快照：只反映「现在离纪录多近」，不带任何历史信息，与 M1（守了多久）、M6（推得多远）信息重叠最少但厚度也最薄。默认权重下它的实际加权贡献约为全站 23.9%、前 1000 名 2.3%、前 100 名 0.7%。',
+          'Its weight is only 1 percent because it is a cross-section: it says how close you are right now, carries no history, and is the thinnest of the six. Under the default weights its actual weighted contribution is about 23.9 percent site-wide, 2.3 percent inside the top 1000 and 0.7 percent inside the top 100.']
+      ],
+      link: ['https://wca.cuber.pro/', 'Kinch 参考榜：wca.cuber.pro']
     },
     {
       id: 'm6', h: ['M6 · 突破幅度（权重 4%）', 'M6 · Breakthrough margin (4%)'], g: 'm6',
-      simple: ['每次刷新世界纪录，你究竟把人类前沿往前推了多远。只看相对幅度：从 5.00 打到 4.00 是把极限推远 22%，从 4.00 打到 3.90 只有 2.5%，两者不该同分。',
-        'How far each world record actually pushed the frontier. Only the relative margin counts: 5.00 to 4.00 is 22%, 4.00 to 3.90 is 2.5% - they should not score alike.'],
-      f: ['$$M_{6}=\\sum_{\\text{WR 事件}}\\min\\!\\left(\\ln\\frac{\\text{前值}}{\\text{新值}},\\;0.5\\right)$$'],
+      simple: ['每次刷新世界纪录，你究竟把人类前沿往前推了多远。只看相对幅度：从 5.00 打到 4.00 是把极限推远 22%，从 4.00 打到 3.90 只有 2.5%。并且按同时代难度归一——早期随便一推就是大幅度的时代，不该天然占便宜。',
+        'How far each world record pushed the frontier. Only the relative margin counts: 5.00 to 4.00 is 22 percent while 4.00 to 3.90 is 2.5 percent. It is then normalised by the typical margin of its own era, so an age of easy gains does not get a free head start.'],
+      f: ['$$M_{6}=\\sum_{i}\\min\\!\\left(\\frac{\\text{rawNorm}_{i}}{\\text{eraMedian}},\\;5\\right),\\qquad \\text{rawNorm}_{i}=\\frac{\\min\\bigl(\\ln\\frac{v_{\\text{前}}}{v_{\\text{后}}},0.5\\bigr)}{\\text{ref}_{i}}$$',
+        '$$\\text{ref}_{i}=\\text{同一事件此前 WR 刷新增益的滚动中位数},\\qquad \\text{eraMedian}=\\text{5 年纪元中位数}$$'],
       detail: [
-        ['只统计 WR 链条，且单次刷新截顶 0.5（约 65% 的幅度），避免一条远古的巨幅刷新压过整个生涯；自我刷新同样计分，不做人数或时代折算 —— 这是「高度类」指标，不该被环境稀释。',
-          'Only WR chains count, each refresh capped at 0.5 (about 65% margin) so one ancient jump cannot dominate a career; self-refreshes count too, with no era or field discount - this is a height metric, not an environment metric.'],
-        ['成绩统一折成「越小越强」后再取对数比：time 用厘秒，number 用步数，multi 先解码成 cost = (99 − diff) × 10<sup>5</sup> + 秒。',
-          'All results are folded into a "smaller is stronger" scale before the log ratio: time in centiseconds, FMC in moves, MBLD decoded to cost = (99 - diff) x 1e5 + seconds.']
+        ['两步归一。第一步除以「该事件在此之前的典型增益」：同一项目里，把 4x4 从 30 秒推到 25 秒与把三阶从 6 秒推到 5 秒显然不是同一件事，除以各自的历史典型值后才有可比性；首条刷新没有历史基准，记中性 1 单位。第二步按 5 年纪元回中：把该纪元的 rawNorm 中位数找出来再除一次，于是**任一纪元的典型一次刷新都约等于 1 单位**。',
+          'Two normalisations. First divide by the typical gain of that same event before this moment, because pushing a 4x4 from 30 to 25 seconds is not the same act as pushing a 3x3 from 6 to 5, and only the ratio to their own histories is comparable; the earliest refresh has no history and gets a neutral unit. Then re-centre by five-year era, dividing by the era median so that a typical refresh in any era is worth about one unit.'],
+        ['这就是 2026-10-31「时代平权」升级要解决的问题：原口径直接累加 ln(前值/新值)，早期纪录密度低、提升空间大，后期选手即便打出更硬核的推进也会被清零。平权之后，同一份增益在不同年代得到相近的分数。',
+          'This is what the 2026-10-31 era-equalisation addressed: the raw sum of log ratios let low-density early years with huge headroom dominate, while later competitors were flattened even when their gains were technically harder. After equalisation the same gain scores similarly in different decades.'],
+        ['两处截顶：单次增益先截在 0.5（约 65% 的幅度），防止一条链条断裂或早期粗糙记录造成的假增益；归一后 finalNorm 再截在 5，防止某个极端事件一家独大。自我刷新同样计分，不做人数或时代之外的额外折算 —— 这是「高度类」指标，不该被环境稀释。',
+          'Two caps: a single gain is first capped at 0.5, about a 65 percent margin, to absorb broken chains and rough early records; after normalisation the value is capped again at 5 so that one extreme event cannot dominate. Self-refreshes count too, with no further discount, because this is a height metric rather than an environment metric.'],
+        ['成绩统一折成「越小越强」后再取对数比：time 用厘秒，number 用于最少步（步数即成本），multi 先解码成 cost = (99 − 差) × 100000 + 秒。只统计 WR 链条，不涉 CR/NR —— 国家纪录的领先幅度受本国人数影响太大，放进「人类前沿」会被稀释。',
+          'All results are folded into a smaller-is-stronger scale before the log ratio: centiseconds for time, moves for fewest-moves, and multiblind decoded to a cost of (99 minus solved difference) times 100000 plus seconds. Only world record chains count; continental and national margins depend too much on domestic depth to belong on a human-frontier scale.']
       ]
     },
     {
       id: 'weights', h: ['维度权重与合成', 'Dimension weights'], g: 'weights',
-      simple: ['六维权重由「信息量 + 抗刷分 + 覆盖度」三条原则共同确定，以 M1 为绝对主币（45%），M3 次之（20%），M2 与 M4 并列（各 15%），M5 最低（1%，因为它只是一个截面快照）。',
-        'Weights follow three principles - information content, farming resistance and coverage. M1 is the dominant coin at 45%, M3 next at 20%, M2 and M4 tied at 15% each, and M5 lowest at 1% because it is only a cross-section snapshot.'],
+      simple: ['权重由「信息量 + 抗刷分 + 覆盖度」三条原则确定：M1 是主币（45%），M3 次之（20%，只覆盖锦标赛但含金量高），M2 与 M4 并列（各 15%），M6 因为只有 281 人能得分压到 4%，M5 是纯截面快照给最低的 1%。六者之和恒为 1，可在页面顶部实时调整。',
+        'Weights follow three principles: information content, resistance to farming and coverage. M1 is the main coin at 45 percent, M3 next at 20 percent since it is narrow but dense, M2 and M4 tie at 15 percent, M6 is cut to 4 percent because only 281 players score at all, and M5 gets the floor of 1 percent as a pure cross-section. They always sum to one and are adjustable at the top of this page.'],
       f: ['$$t=0.45\\,s_{M1}+0.20\\,s_{M3}+0.15\\,s_{M2}+0.15\\,s_{M4}+0.04\\,s_{M6}+0.01\\,s_{M5}$$'],
       detail: [
-        ['M1 × M6 = 0.769、M1 × M4 = 0.732 是仅有的两对超标相关：刷新纪录越多 ⇔ 打得越狠 / 在榜越久，属真实机制（M6 只覆盖 281 人、权重 4%，影响有限）。合成时按此折扣理解，不额外合并维度。',
-          'M1 x M6 = 0.769 and M1 x M4 = 0.732 are the only two pairs above threshold: breaking more records goes with a bigger margin and a longer top-ten tenure - a real mechanism (M6 covers only 281 players at 4% weight). Documented rather than merged away.'],
-        ['项目筛选与性别筛选在六维引擎内逐维重算（as-of 年份可任意截取），不是对总分做简单截断；因此「三阶榜」「女子榜」「2015 年为止」都与总榜同一套口径。',
-          'Event, gender and as-of filters recompute every dimension inside the engine rather than truncating a total, so per-event, women and as-of boards share one consistent definition.']
+        ['改权重时其余各维按原比例自动缩放，合计恒为 100%，所以「把 M1 调到 60%」不会把别的维度压成 0，只会等比压缩。顶部页面还提供几套预设（默认 / 平均 / 偏纪录 / 偏大赛），可直接对比同一批选手在不同取向下的名次变化。',
+          'Adjusting one weight rescales the others proportionally so the sum stays at 100 percent, which means raising M1 to 60 percent compresses the rest rather than zeroing them. Several presets are provided so the same players can be compared under different priorities.'],
+        ['相关性处置：M1 × M6 = 0.769、M1 × M4 = 0.732 是仅有的两对超标相关，都是语义近邻且分年代桶内不降，判为真实机制。处置方式是「标注 + 权重压制」（M6 只有 4%），而不是合并维度 —— 合并会丢掉「守得久」与「推得远」的区别。',
+          'On correlation: M1 x M6 at 0.769 and M1 x M4 at 0.732 are the only pairs above threshold, both semantic neighbours that stay correlated inside decade buckets, so they are treated as real mechanisms. The response is to document them and discount by weight rather than merge the dimensions, since merging would erase the difference between holding and pushing.'],
+        ['合成公式是全站唯一的总分口径，选手页、时间轴、竞速图、国家榜用的都是它重算出来的结果，不存在「另一套隐藏公式」。改动会立刻反映到所有榜单。',
+          'This is the only total used anywhere: player pages, the timeline, the race chart and the country board all recompute from it, so there is no hidden second formula. Any change shows up on every board at once.']
       ]
     },
     {
       id: 'uncertainty', h: ['不确定度与敏感性', 'Uncertainty'], g: null,
-      simple: ['模型中有若干参数是主观设定的。那就要问：换一套同样讲得通的主观设定，榜单会不会大变？做法是把参数在「同样合理」的区间内扰动、反复重算。',
-        'Several parameters are set subjectively, so parameters are perturbed within equally reasonable ranges and the model is recomputed.'],
+      simple: ['模型里有若干主观设定的参数。那就要问：换一套同样讲得通的主观设定，榜单会不会大变？做法是把参数在「同样合理」的区间内扰动、反复重算，看名次抖不抖。',
+        'Several parameters are subjective, so the real question is whether an equally defensible alternative would reshuffle the board. Parameters are perturbed inside equally reasonable ranges and the model is recomputed repeatedly.'],
       f: ['$$\\Pr(\\text{rank}_{i}\\le 10)\\ \\text{由多次重抽样的经验分布给出}$$'],
       detail: [
         ['「第 1 名在绝大多数重算里不变」意味着结论硬；「第 7、8 名在近半数重算里互换」意味着这个名次差不可信，本质只是参数选择的产物。这相当于给榜单加一根误差棒。',
-          '"No. 1 unchanged in almost every rerun" is a hard conclusion; "No. 7 and No. 8 swap in nearly half the runs" means that gap is an artefact. This is an error bar for the ranking.']
+          'If the leader survives almost every rerun the conclusion is hard; if seventh and eighth swap in nearly half of them, that gap is an artefact of parameter choice. The result is effectively an error bar for the ranking.'],
+        ['页面上的「权重敏感性」图扫描 M1 权重 0.05 到 0.55，其余五维等比缩放：曲线越平，说明榜首对「纪录到底该占多重」越不敏感。',
+          'The weight-sensitivity chart sweeps the M1 weight from 0.05 to 0.55 while scaling the rest proportionally: the flatter the curve, the less the leader depends on how much records should weigh.']
       ]
     },
     {
       id: 'dataprep', h: ['数据口径与边界', 'Data conventions'], g: null,
-      simple: ['数据源为 WCA 官方数据库导出（TSV 永久链接）。锦标赛识别直接用官方 championships 表，不靠比赛名猜测。旧规则多盲可从数值编码自动判别。',
-        'The source is the official WCA export (TSV permalink). Championships come from the official championships table; old-style MBLD is detected from its encoding.'],
+      simple: ['数据源为 WCA 官方数据库导出（TSV 永久链接）。锦标赛识别直接用官方 championships 表，不靠比赛名猜测；旧规则多盲可从数值编码自动判别；纪录历史没有现成表，需要从 results 逐条重建。',
+        'The source is the official WCA export as a permanent TSV link. Championships come from the official table rather than guesswork on competition names, old-style multiblind is detected from its numeric encoding, and record history has to be rebuilt from the raw results.'],
       f: ['$$\\text{old MBLD}=1SSAATTTTT\\ (\\ge10^{10}),\\qquad \\text{new MBLD}=0DDTTTTTMM\\ (<10^{10})$$'],
       detail: [
-        ['数值约定：−1 为 DNF，−2 为 DNS，0 为无成绩；time 单位为厘秒；number 用于最少步；multi 用于多盲。',
-          'Conventions: -1 DNF, -2 DNS, 0 no result; time in centiseconds; number for FMC; multi for MBLD.'],
-        ['纪录历史没有现成表，需从 results 按日期逐条滚动求最小值来重建 WR / NR / CR 时间轴。国家与洲的归属按成绩发生当时确定。',
-          'No record-history table exists: the timeline is rebuilt by scanning results chronologically. Country and continent follow the time of the result.']
+        ['数值约定：−1 为 DNF，−2 为 DNS，0 为无成绩；time 单位为厘秒；number 用于最少步；multi 用于多盲。所有维度在比较前都先折成「越小越强」的同一方向。',
+          'Conventions: -1 is DNF, -2 is DNS and 0 means no result. Time is in centiseconds, number is used for fewest moves and multi for multiblind. Every dimension folds results into a smaller-is-stronger direction before comparing.'],
+        ['纪录历史需按日期逐条滚动求最小值来重建 WR / CR / NR 时间轴；国家与洲的归属按成绩发生当时确定，而不是按今天的现籍。这条规则同时决定了 M1 的归属、M3 的判定范围和 M4 的排名重建。',
+          'Record timelines are rebuilt by scanning results chronologically for running minima at world, continental and national scope. Country and continent follow the time of the result rather than current nationality, a rule that drives M1 attribution, M3 scope and the M4 rebuild alike.']
       ]
     }
   ];
@@ -2537,16 +2557,15 @@
     const SW = (P.util.sixW && P.util.sixW()) || (M.meta && M.meta.sixWeights) || { m1: 0.45, m2: 0.15, m3: 0.20, m4: 0.15, m5: 0.01, m6: 0.04 };
     const SN = (M.meta && M.meta.sixNames) || { m1: '纪录持有', m2: '领奖台', m3: '大赛表现', m4: '统治力', m5: '纪录比', m6: '突破幅度' };
 
-    /* ---- 六维占比自定义：每行「滑杆 + 数字框」，全站榜单立即重排 ----
-       旧版是六根竖柱 + 上下拖动柱顶调高度：柱子只有 40 来像素高，
-       拖 1 像素就是 2 个多百分点，根本拖不准，触屏上还会误触页面滚动。
-       现在换成横向滑杆（行程长、可直接点轨道跳位、键盘方向键可微调）
-       加上一个数字输入框（精确到 0.5%），两者双向同步。
-       改某一维时其余各维按原比例自动缩放，六维合计恒为 100%。
-
-       ★ 2026-11-04 晚（第十三轮）页面重排：预设从「一行 select + 两个按钮」的窄条
-         收进权重卡片，做成 chips；恢复默认 / 平均分配 / 恢复全部 统一放到卡片底栏。
-         整页顺序：六维权重 → 外观与交互 → 模型说明（目录）→ 模块配色。 */
+    /* ---- 六维占比自定义（2026-11-05 第十四轮重排） ----
+       前几版依次是「六根竖柱拖动」→「六条横向滑杆 + 数字框」，
+       用户反馈滑杆太占地方、也不好看。现在改成卡片式：
+         · 顶部一条「堆叠总览条」，六段按各自权重占宽，占比一眼可读；
+         · 下面 3×2 的卡片网格，每张卡是「色点 + 名称 + −/数字/+ + 细进度条」，
+           高度只有原来一半，也没有滑杆那种「可拖区域」;
+         · 改任一维时，其余五维按原比例缩放，六维合计恒为 100%；
+           步进按钮一次 ±1%，数字框可直接输入（精确到 0.1%）。
+       整页顺序：六维权重 → 模型说明（目录）→ 模块配色。 */
     const CW = (P.util.sixW ? P.util.sixW() : null) || SW;
     let wsum = 0;
     MOD.forEach(function (k) { wsum += (CW[k] || 0); });
@@ -2564,19 +2583,35 @@
     });
     h += '</div>';
 
-    h += '<div class="wslider" id="wChart">';
+    /* 堆叠总览条：宽度直接按权重，颜色与各维主色一致 */
+    h += '<div class="wstack" id="wStack" aria-hidden="true">';
     MOD.forEach(function (k) {
       const pct = (CW[k] || 0) * 100;
-      const nm = SN[k] || modName(k);
-      h += '<div class="wrow" data-wrow="' + k + '">' +
-        '<span class="wrow-name"><i class="wdot" style="background:' + MODC[k] + '"></i>' + esc(nm) + '</span>' +
-        /* --p / --wc：轨道左侧的进度填充宽度与该维主色，让「占比」一眼可读 */
-        '<input type="range" class="wrange" data-wdim="' + k + '" min="0" max="100" step="0.5" ' +
-        'style="--p:' + U.fmt(pct, 1) + '%;--wc:' + MODC[k] + '" ' +
+      if (pct <= 0) return;
+      h += '<i data-wseg="' + k + '" style="width:' + U.fmt(pct, 2) + '%;background:' + MODC[k] + '"></i>';
+    });
+    h += '</div>';
+
+    h += '<div class="wgrid" id="wGrid">';
+    MOD.forEach(function (k) {
+      const pct = (CW[k] || 0) * 100;
+      /* 维度名走 i18n（中英各一套）：M.meta.sixNames 只有中文，英文界面会露出中文。
+         t() 在缺键时返回键名本身，所以要比一次再决定是否退回中文名。 */
+      const nmKey = 'm' + k.slice(1) + '.name';
+      const nmT = t(nmKey);
+      const nm = (nmT && nmT !== nmKey) ? nmT : (SN[k] || modName(k));
+      /* 单行卡：左「色点 + 名称」、右「− 数字 +」，底部一条 3px 进度条（绝对定位，不占行高） */
+      h += '<div class="wcard" data-wrow="' + k + '" style="--wc:' + MODC[k] + '">' +
+        '<span class="wc-hd"><i class="wdot"></i><b>' + esc(nm) + '</b>' +
+        '<span class="wc-badge">M' + k.slice(1) + '</span></span>' +
+        '<span class="wc-ctl">' +
+        '<button type="button" class="wc-btn" data-wstep="' + k + '" data-dir="-1" aria-label="' + esc(nm) + ' −1%">−</button>' +
+        '<input type="number" class="wc-num" data-wdim="' + k + '" min="0" max="100" step="0.1" ' +
         'value="' + U.fmt(pct, 1) + '" aria-label="' + esc(nm) + ' ' + esc(t('player.weight')) + '">' +
-        '<input type="number" class="wnum" data-wdim="' + k + '" min="0" max="100" step="0.5" ' +
-        'value="' + U.fmt(pct, 1) + '" aria-label="' + esc(nm) + ' ' + esc(t('player.weight')) + '">' +
-        '<span class="wrow-unit">%</span>' +
+        '<span class="wc-pct">%</span>' +
+        '<button type="button" class="wc-btn" data-wstep="' + k + '" data-dir="1" aria-label="' + esc(nm) + ' +1%">+</button>' +
+        '</span>' +
+        '<span class="wc-bar"><i data-wbar="' + k + '" style="width:' + U.fmt(pct, 2) + '%"></i></span>' +
         '</div>';
     });
     h += '</div>';
@@ -2588,38 +2623,9 @@
       '<span class="tiny muted pz-note">' + esc(t('md.weightsNote')) + '</span></div>' +
       '</section>';
 
-    /* ---- 外观与交互（第十三轮新增）----
-       四个偏好项，全部即时生效、存 localStorage、只影响显示不改模型：
-       主题 / 界面密度 / 动效 / 榜单每页行数。 */
-    const PF = window.Prefs || null;
-    const pv = function (k, d) { try { return PF ? PF.get(k) : d; } catch (e) { return d; } };
-    const segHtml = function (id, key, opts) {
-      const cur = pv(key, opts[0][0]);
-      return '<div class="seg pz-seg" id="' + id + '" data-pref="' + key + '" role="group">' +
-        opts.map(function (o) {
-          return '<button type="button" data-pv="' + o[0] + '" class="' + (cur === o[0] ? 'on' : '') + '">' + esc(o[1]) + '</button>';
-        }).join('') + '</div>';
-    };
-    const item = function (title, desc, ctrl) {
-      return '<div class="pz-item"><div class="pz-item-t">' + esc(title) + '</div>' +
-        '<p class="pz-item-d">' + esc(desc) + '</p>' + ctrl + '</div>';
-    };
-    h += '<section class="card reveal pz-card pz-prefs" id="pzPrefs">' +
-      '<div class="pz-head"><div class="pz-h-main">' +
-      '<h2 class="pz-title">' + Ic.glyph('lab') + ' ' + esc(t('pz.appear')) + '</h2>' +
-      '<p class="pz-desc">' + esc(t('pz.appearSub')) + '</p></div></div>' +
-      '<div class="pz-grid">' +
-      item(t('pz.theme'), t('pz.themeD'), segHtml('prefTheme', 'theme',
-        [['auto', t('pz.theme.auto')], ['light', t('pz.theme.light')], ['dark', t('pz.theme.dark')]])) +
-      item(t('pz.density'), t('pz.densityD'), segHtml('prefDensity', 'density',
-        [['cozy', t('pz.density.cozy')], ['compact', t('pz.density.compact')]])) +
-      item(t('pz.motion'), t('pz.motionD'), segHtml('prefMotion', 'motion',
-        [['full', t('pz.motion.full')], ['reduced', t('pz.motion.reduced')]])) +
-      item(t('pz.perPage'), t('pz.perPageD'), segHtml('prefPerPage', 'perPage',
-        [[20, '20'], [50, '50'], [100, '100']])) +
-      '</div>' +
-      '<div class="pz-foot"><button class="btn btn-ghost" id="prefReset">' + esc(t('pz.reset')) + '</button>' +
-      '<span class="tiny muted pz-note">' + esc(t('pz.saved')) + '</span></div></section>';
+    /* ---- 「外观与交互」板块已按用户 2026-11-05 要求整块删除 ----
+       主题切换仍在顶栏 ☀/☾；界面密度 / 动效 / 每页行数不再暴露入口
+       （Prefs 里的默认值 cozy / full / 20 继续生效，系统级 reduced-motion 依然尊重）。 */
 
     /* ---- 两栏：左目录 + 右详情（一次只展示一个章节） ---- */
     h += '<div class="md-layout">';
@@ -2655,6 +2661,15 @@
   };
 
   /* 单个章节的 HTML（含简单版 / 详细版切换 + 该章节专属参数） */
+  /* 章节正文：先转义再处理行内标记。
+     以前是直接 esc()，于是文案里的 **加粗** 会把星号原样显示出来；
+     这里补一个最小化的行内语法：**粗体** → <b>，`代码` → <code>。 */
+  function mdInline(s) {
+    let x = esc(s);
+    x = x.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+    x = x.replace(/`([^`]+)`/g, '<code>$1</code>');
+    return x;
+  }
   function mdSectionHtml(s, en, state) {
     const key = s.id;
     const detail = state.mdDetail && state.mdDetail[key] === 'detail';
@@ -2662,12 +2677,17 @@
     h += '<div class="md-sec-head"><span class="md-sec-ic">' + Ic.glyph('book') + '</span><h2>' + s.h[en ? 1 : 0] + '</h2></div>';
     h += '<div class="md-togglebar"><button class="btn md-tgl' + (detail ? '' : ' on') + '" data-mdtgl="simple">' + esc(t('md.simple')) + '</button>' +
       '<button class="btn md-tgl' + (detail ? ' on' : '') + '" data-mdtgl="detail">' + esc(t('md.detail')) + '</button></div>';
-    h += '<div class="md-block md-simple"' + (detail ? ' hidden' : '') + '><p>' + esc(s.simple[en ? 1 : 0]) + '</p></div>';
+    h += '<div class="md-block md-simple"' + (detail ? ' hidden' : '') + '><p>' + mdInline(s.simple[en ? 1 : 0]) + '</p></div>';
     h += '<div class="md-block md-detail"' + (detail ? '' : ' hidden') + '>';
     (s.f || []).forEach(function (f) { h += '<div class="fml">' + f + '</div>'; });
-    (s.detail || []).forEach(function (d) { h += '<p>' + esc(d[en ? 1 : 0]) + '</p>'; });
-    if (s.warn) h += '<div class="warnbox"><b>' + esc(t('md.warn')) + '</b> ' + esc(s.warn[en ? 1 : 0]) + '</div>';
+    (s.detail || []).forEach(function (d) { h += '<p>' + mdInline(d[en ? 1 : 0]) + '</p>'; });
+    if (s.warn) h += '<div class="warnbox"><b>' + esc(t('md.warn')) + '</b> ' + mdInline(s.warn[en ? 1 : 0]) + '</div>';
     h += '</div>';
+    /* 外部参考链接（目前只有 M5 的 Kinch 参考榜）：opt-in，只有章节自己声明才渲染 */
+    if (s.link) {
+      h += '<p class="md-ext"><a href="' + esc(s.link[0]) + '" target="_blank" rel="noopener">' +
+        esc(s.link[1]) + ' ↗</a></p>';
+    }
     if (s.g) {
       const grp = Pm.meta.filter(function (x) { return x.g === s.g; })[0];
       if (grp) {

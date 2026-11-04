@@ -284,7 +284,7 @@ function pearson(xs, ys) {
    *   多盲 / 四盲 / 五盲：只有单次榜 → single
    *   三盲 / 最少步：单次与平均取较优
    *   其余项目：取平均
-   * 与 kinchranking.com 同口径 → 分母是**现役项目数**（17），不是组合数（旧版 33）。 */
+   * 与 wca.cuber.pro 同口径 → 分母是**现役项目数**（17），不是组合数（旧版 33）。 */
   const STRICT_SINGLE = new Set(['333mbf', '444bf', '555bf']);
   const STRICT_BEST = new Set(['333bf', '333fm']);
   /* ⚠️ ranks 里的轨道名是 'single' / 'average'（不是 'avg'），返回值必须与之一致 */
@@ -600,7 +600,7 @@ function pearson(xs, ys) {
   L.push('```');
   L.push('');
   L.push('- 停办项目（`333ft` / `magic` / `mmagic` / `333mbo`）整体不计分；');
-  L.push('- **选轨规则（与 kinchranking.com 一致）**：多盲 `333mbf` / 四盲 / 五盲只有单次榜 → 取 single；');
+  L.push('- **选轨规则（与 wca.cuber.pro 一致）**：多盲 `333mbf` / 四盲 / 五盲只有单次榜 → 取 single；');
   L.push('  三盲 / 最少步 → 单次与平均**取较优**；其余 12 项 → 取 average；');
   L.push('- **单轨独立榜（§3b）不套用上述选轨**：单次档只取 `ranks_single`、平均档只取');
   L.push('  `ranks_average`，分母仍是 17 个现役项目（没有该轨成绩的项目记 0）；');
