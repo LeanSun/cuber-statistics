@@ -1,6 +1,14 @@
 /**
- * M5 · 当前排名（Current World Rank）· M5-F2
+ * M5 · 当前排名（Current World Rank）· M5-KINCH
  * ═══════════════════════════════════════════════════════════════════════
+ * ★ 现行口径（2026-11-04，用户拍板）：**严格 Kinch**
+ *     k = 100 × WR / PB（WR 持有者 100，慢一倍 50）
+ *     M5 = (1/17) × Σ_e k_e，N = 17 现役项目、缺项记 0
+ *     每项目只取一条轨：333mbf/444bf/555bf→single，333bf/333fm→单次与平均取较优，其余→average
+ *   同时报告「单次轨 / 平均轨」两套独立榜（§3b），与站点成绩口径筛选同源。
+ *   ⚠ 下方 M5-F1 / F2 / F3 的大段说明是**历史封存叙述**（名次制、衰减、分段比值），
+ *     公式与旋钮均已不再生效，只为保留决策依据。真正的计分见 §3c / §5b。
+ *
  * M5 问的是「**此刻你持有**着什么位置」，与 M1–M4 的「**已经做过多少**」严格区分：
  *   M1 纪录持有  M2 领奖台总量  M3 锦标赛破纪录  M4 历史占席时长
  *   M5 = 此刻你**持有**世界各项目榜单的第几名（纯名次，无时间项）
@@ -534,6 +542,27 @@ function pearson(xs, ys) {
     return out;
   })();
 
+  /* ── 5d. 单轨 Kinch 独立榜（2026-11-04）─────────────────────────────────
+   * 站点「成绩口径 = 单次 / 平均」时，M5 必须换成对应轨道的 k，而不是照抄综合档。
+   * 与 m5_facts.js 的 k_single / k_avg 同式：每个项目只取该轨的 k，
+   * 分母恒为 N_COMBOS（17 个现役项目），没有该轨成绩的项目记 0。
+   * 这里只出报告榜；站点实际数值走 M5_facts.tsv → sixdim.js --track。 */
+  const trackTop = (tr) => {
+    const m = new Map();
+    for (const x of ranks) {
+      if (x.tr !== tr || !(x.sc > 0)) continue;
+      if (CFG.SKIP_RETIRED && RETIRED[x.ev] != null) continue;
+      let q = m.get(x.pid);
+      if (!q) { q = { sum: 0, n: 0 }; m.set(x.pid, q); }
+      q.sum += x.sc; q.n++;
+    }
+    return [...m.entries()].map(([pid, q]) => ({
+      pid, name: pName.get(pid) || pid, v: q.sum / (N_COMBOS || 1), n: q.n,
+    })).sort((a, b) => b.v - a.v || a.name.localeCompare(b.name)).slice(0, 25);
+  };
+  const topSingle = trackTop('single');
+  const topAvg = trackTop('average');
+
   /* ── 6. 报告 ─────────────────────────────────────────────────────── */
   const FOCUS = ['Feliks Zemdegs', 'Max Park', 'Tymon Kolasiński', 'Timofei Tarasenko',
     'Yiheng Wang (王艺衡)', 'Stanley Chapel'];
@@ -566,6 +595,8 @@ function pearson(xs, ys) {
   L.push('- 停办项目（`333ft` / `magic` / `mmagic` / `333mbo`）整体不计分；');
   L.push('- **选轨规则（与 kinchranking.com 一致）**：多盲 `333mbf` / 四盲 / 五盲只有单次榜 → 取 single；');
   L.push('  三盲 / 最少步 → 单次与平均**取较优**；其余 12 项 → 取 average；');
+  L.push('- **单轨独立榜（§3b）不套用上述选轨**：单次档只取 `ranks_single`、平均档只取');
+  L.push('  `ranks_average`，分母仍是 17 个现役项目（没有该轨成绩的项目记 0）；');
   L.push('- 与旧 M5-F3 的差别：旧版 1000 分制 + 按项目标定 D0 + 前1%拉伸/长尾压缩 + 加权求和；');
   L.push('  新版 100 分制 + 纯 WR/PB 比值 + 每项目单轨等权平均（分母 17，不是旧双轨口径的 33）。');
   L.push('');
@@ -588,6 +619,20 @@ function pearson(xs, ys) {
       ' | ' + p.parts.length + ' | #' + p.bestRank + ' | ' +
       (lc == null ? '—' : new Date(lc * 86400000).toISOString().slice(0, 10)) + ' | ' + gap + 'y |');
   });
+  L.push('');
+  L.push('## 3b 单轨独立榜（成绩口径「单次 / 平均」）');
+  L.push('');
+  L.push('> 每项目只取该轨的 Kinch 分，**分母恒为 ' + N_COMBOS + ' 个现役项目**、缺项记 0；');
+  L.push('> 站点切到「单次 / 平均」时 M5 走的是这两套（`M5_facts.tsv` 的 `k_single` / `k_avg`）。');
+  L.push('> 综合档（上表）按官方规则每项目取一条轨，故分数一般高于任一单轨档。');
+  L.push('');
+  L.push('| # | 单次轨选手 | 单次 Kinch | 平均轨选手 | 平均 Kinch |');
+  L.push('|---|---|---:|---|---:|');
+  for (let i = 0; i < 25; i++) {
+    const s = topSingle[i], a = topAvg[i];
+    L.push('| ' + (i + 1) + ' | ' + (s ? s.name : '—') + ' | ' + (s ? F(s.v) : '—') +
+      ' | ' + (a ? a.name : '—') + ' | ' + (a ? F(a.v) : '—') + ' |');
+  }
   L.push('');
   L.push('## 4 头部选手拆解');
   L.push('');

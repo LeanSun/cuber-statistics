@@ -71,7 +71,8 @@
   function regionName(r) { const o = M.regions[r]; return o ? (t.isEn() ? o.en : o.zh) : (r || '—'); }
   /* 实力条（0.02~1）：改由六维的 M4 统治力维驱动（榜首=1），不再用旧 Elo 峰值。 */
   function strength(p) { return Math.max(0.02, Math.min(1, (p.six ? (p.six.m4 || 0) : 0) / 100)); }
-  /* 成绩口径：总计 / 单次 / 平均 —— 只替换 M1 纪录分，其余模块不变 */
+  /* 成绩口径：总计 / 单次 / 平均 —— 模块明细里只替换 M1 纪录分；
+     六维向量（含 M5 当前排名）由下方 sixVec 按 p.sixS / p.sixA 整体切换。 */
   function modsOf(p, tab, rt) {
     const mods = tab === 'peak' ? p.pk : p.m;
     if (rt !== 'single' && rt !== 'avg') return mods;
@@ -145,7 +146,8 @@
      但该比例因人而异（333 上 0.46–0.63），且混入了归一化分母差（三档的 mx 不同），
      项目内排序会被打乱 —— 实测 333 单次真实第 1 在榜内第 31、真实第 6 在第 313、
      真实前 1000 只有 564 人进榜内前 1000。
-     现改为：切到单次/平均时按需拉 etl/score/sixev_{single,avg}.tsv.gz（2.0 / 1.8MB），
+     现改为：切到单次/平均时按需拉 etl/score/sixev_{single,avg}.tsvz（约 3.2 / 3.0MB），
+     ⚠ 扩展名必须是 .tsvz 且 URL 不能带 ?v=（.gz 会被浏览器当下载资源，fetch 拿到 204 空响应），
      用 DecompressionStream 解压后按 (pid, ev) 直接取精确六维分；首屏零成本。
      未就绪 / 不支持解压时仍退回旧近似，加载完成自动重渲染。 */
   const SIXEV = { single: null, avg: null };

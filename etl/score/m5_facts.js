@@ -13,12 +13,18 @@
  *       cost = 成绩（多盲解码为 cost，统一「越小越强」）
  *       WR   = 该年末世界最佳
  *       k    = 100 × WR / cost            ← 单事件 Kinch 分（0..100，WR 持有者 = 100）
- *     **选轨（2026-11-04 改严格口径）**：每个项目只留一条轨 ——
+ *   ★★ 2026-11-04 追加「单次 / 平均独立口径」：一行同时带三套 k ——
+ *       score(c[5]) = 综合档（Kinch 严格选轨）；k_single(c[6])；k_avg(c[7])。
+ *       sixdim.js 按 --track 取对应列：both→c[5]、single→c[6]、avg→c[7]，
+ *       分母 N 恒为现役项目数 17（不随口径变小），没有该轨成绩的项目记 0。
+ *       ⚠ 只用 rows 里「出现的 ev 集合」当分母会在 avg 档掉到 16（333mbf 无平均榜），
+ *         导致平均档全员虚高——分母必须与口径解耦。
+ *     **综合档选轨（与 kinchranking.com 一致）**：每个项目只留一条轨 ——
  *       多盲 333mbf / 四盲 / 五盲 → single；三盲 / 最少步 → 单次与平均取较优；其余 → avg。
- *     输出 kind 固定写 `best`，sixdim 据此把分母算成「现役项目数」（17）。
+ *     kind 列恒写 `best`（兼容既有读取方），rank 列只表示综合档名次。
  *     聚合（项目等权平均、缺项=0）在 sixdim.js 里做：M5 = (1/17) × Σ k。
  *   · 旧 M5-F2（w_e × rank^-GAMMA）与 M5-F3（分段比值）均已废。
- *   · 深度：**最新年份全量**（站点取用的快照）；历史年份限前 100
+ *   · 深度：**最新年份全量**（站点取用的快照）；历史年份每轨各限前 100 再取并集
  *     ——45 年 × 全量会膨胀到 ≈1GB，而 sixdim.js 是整表载入，会 OOM。
  *   · 停办项目（EV_RETIRED_DAY ≤ 年末）不计分。
  *
@@ -26,7 +32,7 @@
  *     （year ≤ asOf 的最大 year），不是跨年求和。
  *
  * 运行：node --max-old-space-size=8192 etl/score/m5_facts.js    （约 60-90s）
- * 产出：M5_facts.tsv（year, pid, ev, kind, rank, score）
+ * 产出：M5_facts.tsv（year, pid, ev, kind, rank, score, k_single, k_avg）
  * ============================================================================= */
 const path = require('path');
 const fs = require('fs');
@@ -148,7 +154,8 @@ async function main() {
       if (v < s.b || (v === s.b && d < s.bd)) { s.b = v; s.bd = d; }
       if (d > s.ld) s.ld = d;
     }
-    /* 快照：① 逐 (项目,轨道) 算 WR 与 k；② 按 Kinch 官方选轨合并成「每项目一个分」 */
+    /* 快照：① 逐 (项目,轨道) 算 WR 与 k；② 按 Kinch 官方选轨合并出综合档，
+       并保留两条单轨 k 供 --track single/avg 使用 */
     const kByEv = new Map();          // ev → {single: Map(pi→k), avg: Map(pi→k)}
     for (const [ck, m] of state) {
       const ei = ck >> 1, kind = ck & 1;
@@ -175,28 +182,45 @@ async function main() {
     /* 选轨规则（与 kinchranking.com 一致）：多盲/四盲/五盲 → single；三盲/最少步 → 取较优；其余 → avg */
     for (const [ev, slot] of kByEv) {
       const rule = STRICT_SINGLE.has(ev) ? 'single' : STRICT_BEST.has(ev) ? 'best' : 'avg';
-      const chosen = new Map();       // pi → k
+      const chosen = new Map();       // pi → 综合档 k
       if (rule !== 'avg') for (const [pi, k] of slot.single) chosen.set(pi, k);
       for (const [pi, k] of slot.avg) {
         if (rule === 'single') continue;              // 只认单次榜的项目忽略 avg
         if (rule === 'avg') { chosen.set(pi, k); continue; }
         if (k > (chosen.get(pi) || 0)) chosen.set(pi, k);   // best：取较优
       }
-      const rows = [...chosen.entries()].sort((a, b) => b[1] - a[1]);
-      const take = (y === LAST_YEAR) ? rows.length : Math.min(deep, rows.length);
-      for (let rk = 1; rk <= take; rk++) {
-        const [pi, k] = rows[rk - 1];
-        /* kind 固定写 'best'：一个项目只剩一条轨的分，sixdim 据此把分母算成「项目数」 */
-        facts.push(`${y}\t${pidArr[pi]}\t${ev}\tbest\t${rk}\t${k.toFixed(6)}`);
+      /* ★ 三轨并集：综合档取 avg 的项目里，「只有单次成绩、没打过平均」的人
+         在 chosen 中根本不存在。若只按 chosen 出行，切到「单次」口径时这些人
+         会整片消失（筛选看似生效实则丢人）。故三轨各自取 top-N 再取并集。 */
+      const byBest = [...chosen.entries()].sort((a, b) => b[1] - a[1]);
+      const bySingle = [...slot.single.entries()].sort((a, b) => b[1] - a[1]);
+      const byAvg = [...slot.avg.entries()].sort((a, b) => b[1] - a[1]);
+      const lim = (y === LAST_YEAR) ? Infinity : deep;
+      const want = new Set();
+      for (const arr of [byBest, bySingle, byAvg]) {
+        const n = Math.min(lim, arr.length);
+        for (let i = 0; i < n; i++) want.add(arr[i][0]);
+      }
+      const rankOf = new Map();
+      const bn = Math.min(lim, byBest.length);
+      for (let rk = 1; rk <= bn; rk++) rankOf.set(byBest[rk - 1][0], rk);
+      for (const pi of want) {
+        const kb = chosen.get(pi) || 0;
+        const ks = slot.single.get(pi) || 0;
+        const ka = slot.avg.get(pi) || 0;
+        if (!(kb > 0 || ks > 0 || ka > 0)) continue;
+        /* kind 固定写 'best'（兼容既有读取方）；score = 综合档 k，后两列 = 单轨 k */
+        facts.push(`${y}\t${pidArr[pi]}\t${ev}\tbest\t${rankOf.get(pi) || 0}` +
+          `\t${kb.toFixed(6)}\t${ks.toFixed(6)}\t${ka.toFixed(6)}`);
       }
     }
     if (y % 5 === 0) log(`… ${y} 快照完成 (${((Date.now() - t0) / 1000).toFixed(0)}s)`);
   }
   fs.writeFileSync(path.join(__dirname, 'M5_facts.tsv'),
-    'year\tpid\tev\tkind\trank\tscore\n' + facts.join('\n') + '\n', 'utf8');
+    'year\tpid\tev\tkind\trank\tscore\tk_single\tk_avg\n' + facts.join('\n') + '\n', 'utf8');
   console.log(`已写 M5_facts.tsv（${num(facts.length)} 行）耗时 ${((Date.now() - t0) / 1000).toFixed(0)}s`);
 }
-const CFG_DEPTH = 100;           // 仅**历史年份**的深度上限（最新年份全量，见 LAST_YEAR）
+const CFG_DEPTH = 100;           // 仅**历史年份**每轨的深度上限（三轨取并集；最新年份全量，见 LAST_YEAR）
 const LAST_YEAR = 2026;          // 最新年份**全量**输出（站点实际取用的快照）
 /* ── Kinch 官方选轨规则（与 kinchranking.com 一致；2026-11-04 起严格口径）──
  *   多盲 / 四盲 / 五盲：只有单次榜 → single

@@ -522,7 +522,8 @@
     }
 
     if (route === 'rank' || route === 'timeline') {
-      /* 成绩口径：总计 / 单次 / 平均（只影响纪录分 M1） */
+      /* 成绩口径：总计 / 单次 / 平均 —— 六维整体按轨切换（含 M5 当前排名 Kinch），
+         不再只是 M1 纪录分；具体见 pages-core 的 sixVec / ensureSixEv。 */
       h += '<div class="fgroup"><span class="flabel">' + esc(t('rank.type')) + '</span><div class="fctl">';
       [['all', 'rank.type.all'], ['single', 'rank.type.single'], ['avg', 'rank.type.avg']].forEach(function (x) {
         h += '<button class="chip' + ((state.recType || 'all') === x[0] ? ' on' : '') + '" data-type="' + x[0] + '" title="' + esc(t('rank.type.d')) + '">' + esc(t(x[1])) + '</button>';

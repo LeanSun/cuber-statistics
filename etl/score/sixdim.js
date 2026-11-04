@@ -29,7 +29,8 @@
  *   M2_facts.tsv  (pid,name,ev,tier,pos,year,compId,base,decay)  ← m2m3_balance.js
  *   M3_facts.tsv  (pid,ev,type,lvl,tier,year,add)                ← m3_record_bonus.js
  *   M4_facts.tsv  (pid,ev,track,year,contrib)                    ← m4_dominance.js
- *   M5_facts.tsv  (year,pid,ev,kind,rank,score)                  ← m5_facts.js
+ *   M5_facts.tsv  (year,pid,ev,kind,rank,score,k_single,k_avg)   ← m5_facts.js
+ *                   ※ --track both→score / single→k_single / avg→k_avg（2026-11-04 起）※
  *   M6_by_record.tsv (pid,event,kind,date,prev,new,gain,capped_gain,ref,raw_norm,final_norm,same) ← m6_lead.js
  *                   ※ M6 取 c[10]=final_norm（时代平权版）；c[7]=capped_gain 为旧口径，勿用 ※
  *
@@ -263,25 +264,33 @@ for (const dim of OPT.dims) {
     }
     if (bestYear >= 0) {
       /* 严格 Kinch：M5 = (1/N) × Σ_e (k/100)，N = 现役项目数（17），缺项按 0 计。
-         M5 已按项目选好唯一一条轨（facts 的 kind 恒为 'best'），故**不受 --track 影响**：
-         单次/平均两轨交付表里 M5 同值，这是口径本身使然（Kinch 没有「单次版/平均版」）。
+         ★ 2026-11-04：M5_facts.tsv 新增 c[6]=k_single / c[7]=k_avg，
+           --track 现在**真正**切换 M5：both→c[5]、single→c[6]、avg→c[7]。
+           三套共用同一个分母 N 与 EVSUM（口径只换分子，不换刻度），
+           否则 avg 档因 333mbf 无平均榜会让 N 从 17 掉到 16、全员虚高。
+         ⚠ 分母的项目集合取自**综合档**（c[5]>0），与 --track 无关；
+           --ev 单项目查询仍沿用既有的 N=1 行为（诊断用）。
          这里把 per-event 值编码成 v = EVSUM·(k/100)/N/evW(ev)，
          使下游既有公式仍成立：s5 = Σ_ev v·evW·FULL/Σw = EVSUM·(1/N)Σ(k/100)·FULL/Σw。
          （maxOf['M5'] 随后压成 1，见合成段） */
+      const kCol = OPT.track === 'single' ? 6 : OPT.track === 'avg' ? 7 : 5;
       const fr = rows.filter((c) => +c[0] === bestYear
         && (!OPT.ev || c[2] === OPT.ev));
-      const evs = new Set();
-      for (const c of fr) evs.add(c[2]);
-      const N = evs.size || 1;
+      const denomEvs = new Set();
+      if (OPT.ev) denomEvs.add(OPT.ev);
+      else for (const c of rows) {
+        if (+c[0] === bestYear && (+c[5] || 0) > 0) denomEvs.add(c[2]);
+      }
+      const N = denomEvs.size || 1;
       let EVSUM = 0;
-      for (const ev of evs) EVSUM += evW(ev);
+      for (const ev of denomEvs) EVSUM += evW(ev);
       for (const c of fr) {
-        const k = +c[5] || 0;
+        const k = +c[kCol] || 0;
         if (!(k > 0)) continue;
         const v = EVSUM * (k / 100) / N / evW(c[2]);
         put(c[1], c[2], v, isCross(c[1]) ? ctyOfYear(c[1], +c[0]) : null);
       }
-      console.log(`# M5 快照取 ${bestYear} 年末（严格 Kinch：N=${N} 个现役项目，EVSUM=${EVSUM.toFixed(4)}）`);
+      console.log(`# M5 快照取 ${bestYear} 年末（track=${OPT.track} → c[${kCol}]，N=${N} 个现役项目，EVSUM=${EVSUM.toFixed(4)}）`);
     }
   } else if (dim === 'M6') {
     for (const ln of load('M6_by_record.tsv').slice(1)) {
