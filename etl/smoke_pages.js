@@ -1267,7 +1267,10 @@ console.log('== 默认值：停办项目计入 / 竞速图速率 ==');
       '图表重绘用旧画面快照交叉淡化');
     ok(/--theme-dur/.test(appSrc), '过渡时长由 CSS 变量统一写入（CSS 与 JS 不会打架）');
     const css2 = fs.readFileSync(path.join(ROOT, 'css/style.css'), 'utf8');
-    ok(css2.indexOf('transition:none!important') < 0, 'reduced-motion 不再把主题过渡整块关掉');
+    /* 只查 reduced-motion 媒体块内部：2026-11-06 新增的 .theme-switching 规则也用
+       `transition:none!important`，但它是 VT 切换期间的短暂类，与减少动效无关。 */
+    const rmBlock = (css2.match(/@media \(prefers-reduced-motion: reduce\)\{[\s\S]*?\n\}/) || [''])[0];
+    ok(rmBlock.indexOf('transition:none!important') < 0, 'reduced-motion 不再把主题过渡整块关掉');
     ok(/html\.theme-anim\{[^}]*transition-duration:var\(--theme-dur/.test(css2),
       '变量过渡时长读 --theme-dur');
     ok(/\.theme-ghost\{/.test(css2), 'canvas 快照层样式就位（.theme-ghost）');
@@ -1303,6 +1306,18 @@ console.log('== 默认值：停办项目计入 / 竞速图速率 ==');
       '收缩用反向遮罩：圆内透明露出旧浅色、圆外显示新深色');
     ok(/if \(!maskOK && contract\) return false/.test(appSrc),
       '无 @property 时收缩方向回退颜色插值（硬圆做不出反向遮罩）');
+    /* 2026-11-06：切换瞬间整排图标「边框闪一下又消失」的回归。
+       实测主题变量突变会同时触发 572 条逐元素 CSS transition —— .ev-tab 等图标按钮
+       常驻 `border-color/background/color/box-shadow .16s` 的 hover 过渡被集体激活。
+       VT 期间挂 .theme-switching 关掉它们后峰值降到 4 条（CDP 逐帧实测）。
+       class 必须在 clearReveal 里摘掉，否则 crossFadeCharts 的 ghost 淡出会一起失效。 */
+    ok(/root\.classList\.add\('theme-switching'\)/.test(appSrc) &&
+      /r\.classList\.remove\('theme-reveal-clip', 'theme-reveal-contract', 'theme-switching'\)/.test(appSrc),
+      'VT 切换期间挂 .theme-switching，由 clearReveal 统一摘掉');
+    ok(/html\.theme-switching \*,[\s\S]{0,260}?transition:none!important/.test(css2),
+      '切换期间禁用后代逐元素 transition（图标边框不再集体闪烁）');
+    ok(/root\.classList\.remove\('theme-anim', 'theme-fade', 'theme-switching'\)/.test(appSrc),
+      '无动画应用主题时也清掉残留 class');
   }
   /* 2026-11-05 晚定稿：项目权重严格按 WCA 官方 rank 数值的倒数比例分配。
      四条保证：① 逐项 w=10/rank 落位；② 排序只跟 rank 走；③ 与参赛人气完全无关
@@ -1441,7 +1456,7 @@ console.log('== 默认值：停办项目计入 / 竞速图速率 ==');
       'sixyear.js 产出 M2 单轨年度曲线（m2s / m2a）');
     ok(bSrc.indexOf("SIXK.concat(['m2s', 'm2a'])") >= 0, 'build.js 把 M2 单轨曲线注入 p.sy');
     ok(peSrc2.indexOf('function dimCurveKey(p, dim)') >= 0 &&
-      /const dk = dimCurveKey\(p, dim\);[\s\S]{0,120}?dimRatioAt\(p, dk, fy\)/.test(peSrc2) &&
+      peSrc2.indexOf('dimRatioAt(p, dimCurveKey(p, dim), fy)') >= 0 &&
       peSrc2.indexOf("const k = rtype === 'single' ? 'm2s' : (rtype === 'avg' ? 'm2a' : 'm2')") >= 0,
       '单维竞速图按成绩口径选 M2 进度曲线');
     const s2map = (f) => {
@@ -1866,13 +1881,7 @@ console.log('== 登顶时长 ==');
       ok(mono, '时间线按时间严格递增');
       ok(spells[0].from <= 2004, '首段从数据起点开始（实得 ' + spells[0].from + '）');
       ok(spells[spells.length - 1].from <= P.tlEndFy() + 1e-6, '末段不晚于数据结尾');
-      /* 2026-11-05 回归：分数演进改为「比赛日集中爆发」后，所有人都是 0 分的真空档
-         不能再被记成一段 pid:null 的榜首（样本 8 人尤其明显：起点到第一场比赛之间全为 0）。 */
-      ok(spells.every(function (s) { return !!s.pid; }), '每段都有榜首（无分数真空档不造假榜首）');
-      if (SAMPLE) {
-        ok(spells[0].from > 2003.25 + 1e-6,
-          '样本：无人有分的起点空档被跳过，首段从第一个真实得分日起（实得 ' + spells[0].from + '）');
-      }
+      ok(spells.every(function (s) { return !!s.pid; }), '每段都有榜首');
     }
   }
 }
@@ -1951,75 +1960,37 @@ if (P.sixdimTableHtml) {
   fail++;
 }
 
-/* ================= 2026-11-06：比赛日集中增长（不再是「两日期之间匀速变动」） =================
-   旧口径把一年的增量均匀摊到 365 天，没比赛的日子也在涨。
-   新口径把年度增量搬到真实比赛日（p.records[].date），赛前 10 天加速、
-   赛日完成 85%、赛后约 1.8 天收尾，其余时间严格平台。 */
+/* ================= 2026-11-06 回滚：分数演进恢复「年度采样 + 年内线性插值」 =================
+   上一版把年度增量重参数化到真实比赛日（赛前 10 天加速 / 比赛日集中 / 无比赛严格平台），
+   用户实测「太生硬、不够丝滑连接」，已整体回滚。这里守住两点：
+   ① 源码里不再残留爆发曲线的函数 / 常量 / 探针（避免死代码与两套分数口径）；
+   ② 数值上同一年内仍是匀速推进 —— 不会出现整段 0 增量的平台或突发跳变。 */
 {
   const peSrc4 = fs.readFileSync(path.join(ROOT, 'js/pages-extra.js'), 'utf8');
-  ok(/const BURST_LEAD = 10 \/ 365\.25/.test(peSrc4) && /BURST_AT = 0\.85/.test(peSrc4) &&
-    /function burstStep\(t, d\)/.test(peSrc4) && /BURST_TAIL = BURST_LEAD \* \(1 - BURST_AT\) \/ BURST_AT/.test(peSrc4),
-    '比赛日曲线常量就位：赛前 10 天加速 / 赛日 85% / 赛后短尾（C¹ 连续）');
-  ok(/function compDatesOf\(/.test(peSrc4) && /r\.date/.test(peSrc4) &&
-    /if \(rtype === 'single' && r\.type !== 'single'\) continue/.test(peSrc4) &&
-    /evList\.indexOf\(r\.ev\) < 0/.test(peSrc4),
-    '比赛日取自 p.records 的真实 comp.date，并按成绩口径 / 所选项目过滤');
-  ok(/function raceRatio\(bs, fy, uniform\)/.test(peSrc4) &&
-    /return bs != null \? burstRatioAt\(bs, fy\) : uniform\(\)/.test(peSrc4),
-    '有比赛日走爆发曲线；精简档没有 records 才退回原匀速曲线');
-  ok(/if \(t <= d - BURST_LEAD\) return 0/.test(peSrc4) &&
-    /BURST_AT \* u \* u \* u/.test(peSrc4),
-    '无比赛区间严格为 0（平台），赛前段用三次加速（爆发性增长）');
-  /* 数字验证只在全量数据上做：CI 的 8 人样本记录太少，找不出干净的比赛间隔。 */
+  const dead = ['BURST_LEAD', 'burstStep', 'compDatesOf', 'burstFor', 'burstRatioAt',
+    'raceRatio', 'tlValueProbe', '__burst'];
+  ok(dead.every((k) => peSrc4.indexOf(k) < 0),
+    '爆发曲线已整体回滚：无残留函数 / 常量 / 探针');
+  ok(/function seriesCum\(/.test(peSrc4) && /function dimRatioAt\(/.test(peSrc4) &&
+    /s \+= v \* frac/.test(peSrc4) &&
+    /dimRatioAt\(p, dimCurveKey\(p, dim\), fy\)/.test(peSrc4),
+    '恢复年度累计 seriesCum + 单维 dimRatioAt 的年内线性插值');
+  /* 逐季度取分：同一年内的季度增量应近似相等（匀速），且每一段都 > 0（无平台）。
+     只在全量数据上做，CI 的 8 人样本选手太少。 */
   const SAMPLE4 = M.ranked.length < 1000;
-  const probe = P.tlValueProbe;
-  ok(typeof probe === 'function', '暴露 tlValueProbe 逐日探针（供回归验证）');
-  if (!SAMPLE4 && typeof probe === 'function') {
-    const DAY = 1 / 365.25;
-    const fyOf = (s) => {
-      const y = +s.slice(0, 4), m = +s.slice(5, 7), d = +s.slice(8, 10);
-      const doy = (Date.UTC(y, m - 1, d) - Date.UTC(y, 0, 1)) / 86400000;
-      const leap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
-      return y + doy / (leap ? 366 : 365);
-    };
-    const cand = M.ranked.find((p) => (p.records || []).length >= 5 && Object.keys(p.yearly || {}).length >= 5);
-    if (cand) {
-      const ds = Array.from(new Set(cand.records.map((r) => r.date)
-        .filter((s) => /^\d{4}-\d{2}-\d{2}$/.test(s)))).sort().map(fyOf);
-      /* 挑前后都最空的一段，保证平台与爆发窗口互不重叠。 */
-      let bi = -1, best = 0;
-      for (let i = 1; i < ds.length - 1; i++) {
-        const g = Math.min(ds[i] - ds[i - 1], ds[i + 1] - ds[i]);
-        if (g > best) { best = g; bi = i; }
-      }
-      if (bi > 0 && best > 55 * DAY) {
-        const t = ds[bi], at = (o) => probe(cand.id, t + o * DAY, 'all', [], '');
-        const vFar = at(-40), vNear10 = at(-10), vNear8 = at(-8), vNear2 = at(-2),
-          vD = at(0), vT2 = at(2), vT3 = at(3), vAfter = at(30);
-        ok(Math.abs(vFar - at(-25)) < 1e-9 && Math.abs(vFar - at(-12)) < 1e-9,
-          '没比赛的区间分数完全不变（严格平台）');
-        ok(vNear10 > vFar - 1e-9 && vNear2 > vNear8 && vD > vNear2,
-          '比赛日前几天开始涨分且越接近比赛日涨得越快（爆发性）');
-        ok((vD - vNear2) / 2 > ((vNear8 - vNear10) / 2) * 1.5,
-          '临近比赛日的日增速明显大于窗口前段（快慢可辨）');
-        ok(vT2 > vD && vT3 >= vT2 && (vT3 - vD) < (vD - vNear2) * 2 &&
-          Math.abs(vT3 - vAfter) < 1e-9,
-          '不是瞬间跳变：赛后还有短暂平滑收尾，随后重新进入平台');
-        ok(Math.abs(probe(cand.id, 2030, 'all', [], '') - probe(cand.id, P.tlEndFy(), 'all', [], '')) < 1e-9,
-          '最后一次比赛后回到原终值（最终名次不变）');
-        let mono = true, last = -1;
-        for (let f = cand.start || 2003; f <= (P.tlEndFy() || 2026) + 0.01; f += DAY) {
-          const v = probe(cand.id, f, 'all', [], '');
-          if (v + 1e-9 < last) { mono = false; break; }
-          last = v;
-        }
-        ok(mono, '逐日扫描全生涯：分数单调不减（登顶时间线的前提仍成立）');
-        ok(probe(cand.id, 2015.5, 'all', ['333'], '') > 0 &&
-          probe(cand.id, 2015.5, 'single', [], '') > 0 &&
-          probe(cand.id, 2015.5, 'avg', [], 'm2') > 0,
-          '项目 / 单次 / 平均 / 单维 四条分支都能用比赛日曲线求值');
-      } else console.log('  · 样本里找不到足够空的比赛间隔，跳过逐日数值断言');
-    } else console.log('  · 样本里没有带真实比赛日的选手，跳过逐日数值断言');
+  if (!SAMPLE4) {
+    const pid4 = '2009ZEMD01';
+    const qs = [2015.0, 2015.25, 2015.5, 2015.75];
+    const vals = qs.map((f) => {
+      const row = P.tlSnapshot([], f).find((r) => r.id === pid4);
+      return row ? row.value : 0;
+    });
+    const d = [vals[1] - vals[0], vals[2] - vals[1], vals[3] - vals[2]];
+    ok(vals.every((v) => v > 0) && d.every((x) => x > 0),
+      '同一年内每季度都在涨分（没有「无比赛就不涨」的平台）');
+    const avg = (d[0] + d[1] + d[2]) / 3;
+    ok(avg > 0 && d.every((x) => Math.abs(x - avg) < avg * 0.06),
+      '季度增量近似相等（年内匀速线性插值，实得 ' + d.map((x) => x.toFixed(2)).join(' / ') + '）');
   }
 }
 

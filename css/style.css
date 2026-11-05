@@ -141,6 +141,19 @@ html.theme-fade *::after{
   transition-timing-function:cubic-bezier(.34,.12,.2,1)!important;
   transition-delay:0s!important;
 }
+/* ★ 2026-11-06：View Transitions 主路径期间，视觉过渡由圆形揭示独占。
+   DOM 里 .ev-tab 等图标按钮常驻 `border-color/background/color/box-shadow .16s`
+   的 hover 过渡；主题变量在 apply() 里瞬间改变，会同时触发 500+ 条逐元素
+   transition —— 表现为切换瞬间整排图标「边框闪一下，随后消失」。
+   JS 在 circleReveal 里给 <html> 挂 .theme-switching、clearReveal 时摘掉，
+   这里统一关掉后代的 transition。选择器不含 :root 自身，所以回退路径的
+   变量插值不受影响；也只关 transition、不关 animation（chartSettle / evPop 照常）。
+   注意 crossFadeCharts 的 .theme-ghost 是在 class 移除之后才创建，淡出不受影响。 */
+html.theme-switching *,
+html.theme-switching *::before,
+html.theme-switching *::after{
+  transition:none!important;
+}
 /* 图表重绘那一帧：颜色过渡结束后 canvas 要重建，给容器补一段极短的淡入把「啪」那一下盖掉 */
 @keyframes chartSettle{from{opacity:.35}to{opacity:1}}
 .theme-settle .chart-box,.theme-settle .ec{animation:chartSettle .3s ease both}

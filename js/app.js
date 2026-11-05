@@ -370,7 +370,7 @@
       '--reveal-feather', '--reveal-glow'].forEach(function (k) {
       try { r.style.removeProperty(k); } catch (e) { }
     });
-    r.classList.remove('theme-reveal-clip', 'theme-reveal-contract');
+    r.classList.remove('theme-reveal-clip', 'theme-reveal-contract', 'theme-switching');
     try { r.style.removeProperty('--theme-dur'); } catch (e) { }
   }
   function circleReveal(next, apply, o, ms) {
@@ -397,6 +397,13 @@
     } catch (e) { }
     root.classList.toggle('theme-reveal-contract', contract);
     if (!maskOK) root.classList.add('theme-reveal-clip');
+    /* ★ 2026-11-06：切换期间关掉 DOM 里的逐元素 CSS transition。
+       .ev-tab 等图标按钮常驻 `border-color/background/color/box-shadow .16s`
+       （本来只给 hover 用），主题变量一变就同时触发 500+ 条过渡 —— 用户看到
+       整排图标「边框闪一下又消失」。视觉过渡由 VT 圆形揭示独占，DOM 层应当硬切。
+       类在 clearReveal 里移除；crossFadeCharts 的 ghost 淡出在移除之后才创建，
+       所以它自己的 opacity 过渡不受影响。 */
+    root.classList.add('theme-switching');
     deferCharts = true;
     let vt;
     try { vt = document.startViewTransition(function () { apply(); }); }
@@ -447,7 +454,7 @@
       syncPrefSegs();
     };
     if (animate === false) {
-      root.classList.remove('theme-anim', 'theme-fade');
+      root.classList.remove('theme-anim', 'theme-fade', 'theme-switching');
       apply();
       settleCharts();
       return;
