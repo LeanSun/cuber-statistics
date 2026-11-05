@@ -226,16 +226,20 @@
     applyGradientEgg();
     if (window.matchMedia) {
       const mq = window.matchMedia('(prefers-color-scheme: dark)');
-      const onSys = function () { if (themePref() === 'auto') switchTheme(sysDark() ? 'dark' : 'light', true); };
+      const onSys = function () { if (themePref() === 'auto') switchTheme(sysDark() ? 'dark' : 'light', true, 'center'); };
       if (mq.addEventListener) mq.addEventListener('change', onSys);
       else if (mq.addListener) mq.addListener(onSys);
     }
   }
+  /* 圆形扩散期间先别重绘图表：View Transition 拍的是「改完主题那一瞬」的快照，
+     若此刻就把 canvas 换成新配色，快照里图表是新色、VT 结束后又拿旧画面淡出，
+     会出现「先变新 → 退回旧 → 再化开」的闪回。留到 VT 结束再走 crossFadeCharts。 */
+  let deferCharts = false;
   function applyTheme(th) {
     document.documentElement.setAttribute('data-theme', th);
     const ic = document.getElementById('themeIcon');
     if (ic) ic.textContent = th === 'dark' ? '☾' : '☀';
-    if (window.Charts) window.Charts.refresh();
+    if (window.Charts && !deferCharts) window.Charts.refresh();
   }
   /* 是否要「不动画」：偏好里选了减弱，或系统开了减少动效 */
   function prefersReduce() {
@@ -328,7 +332,98 @@
       });
     });
   }
-  function switchTheme(next, animate) {
+  /* ---- 深浅色切换：从点击处圆形扩散（2026-11-05 晚） ----
+     更早一版也用过 View Transitions，但当时把新主题渲染成整页静态截图，
+     clip-path 是一条硬圆边，扫过瞬间整页定型 → 用户反馈「唰一下、很生硬」。
+     这一版保留「从鼠标点下的地方向外扩散」的空间感，改掉三处硬感：
+       ① 新层不用硬 clip-path，改用 radial-gradient 羽化遮罩（边缘渐隐带）；
+       ② 新层自身 opacity .88 → 1，扫过的区域是「化开」而不是「啪」地换掉；
+       ③ 圆周挂一圈目标主题色的柔光（drop-shadow），吃掉新旧色差的硬边界。
+     图表是 canvas：切换期间先不重绘，VT 结束后再走 crossFadeCharts 的旧画面
+     快照淡出（见 deferCharts），否则会出现「先变新 → 退回旧 → 再化开」的闪回。
+     不支持 View Transitions 的浏览器 → 回退到下面的变量插值 / .theme-fade；
+     系统开了「减少动效」→ 只把时长压到 200ms，绝不关成 none。 */
+  let lastPointer = null;
+  document.addEventListener('pointerdown', function (e) {
+    if (e.clientX > 0 || e.clientY > 0) lastPointer = { x: e.clientX, y: e.clientY };
+  }, true);
+  function revealOrigin(hint) {
+    if (hint && typeof hint === 'object' && hint.x > 0 && hint.y > 0) return hint;
+    if (hint !== 'center' && lastPointer) return lastPointer;
+    const b = document.getElementById('themeBtn');
+    if (b) {
+      const r = b.getBoundingClientRect();
+      if (r.width) return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    }
+    return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+  }
+  let revealSeq = 0;
+  function clearReveal(seq) {
+    if (seq != null && seq !== revealSeq) return;  /* 连点时别清掉后一次的参数 */
+    const r = document.documentElement;
+    ['--reveal-r', '--reveal-x', '--reveal-y', '--reveal-max',
+      '--reveal-feather', '--reveal-glow'].forEach(function (k) {
+      try { r.style.removeProperty(k); } catch (e) { }
+    });
+    r.classList.remove('theme-reveal-clip');
+    try { r.style.removeProperty('--theme-dur'); } catch (e) { }
+  }
+  function circleReveal(next, apply, o, ms) {
+    const root = document.documentElement;
+    const seq = ++revealSeq;
+    const W = window.innerWidth, H = window.innerHeight;
+    /* 半径取到四角最远点，保证圆能覆盖整屏 */
+    const R = Math.hypot(Math.max(o.x, W - o.x), Math.max(o.y, H - o.y)) + 48;
+    const maskOK = canAnimateVars();  /* @property 可用 → 羽化遮罩；否则硬圆 clip 兜底 */
+    try {
+      root.style.setProperty('--reveal-r', '0px');
+      root.style.setProperty('--reveal-x', o.x + 'px');
+      root.style.setProperty('--reveal-y', o.y + 'px');
+      root.style.setProperty('--reveal-max', R + 'px');
+      root.style.setProperty('--reveal-feather', (ms <= 250 ? 12 : 38) + 'px');
+      root.style.setProperty('--reveal-glow',
+        next === 'dark' ? 'rgba(13,17,23,.30)' : 'rgba(255,255,255,.55)');
+    } catch (e) { }
+    if (!maskOK) root.classList.add('theme-reveal-clip');
+    deferCharts = true;
+    let vt;
+    try { vt = document.startViewTransition(function () { apply(); }); }
+    catch (e) {
+      deferCharts = false; clearReveal(seq);
+      return false;
+    }
+    vt.ready.then(function () {
+      const kf = maskOK
+        ? [{ '--reveal-r': '1px', opacity: '.88' }, { '--reveal-r': R + 'px', opacity: '1' }]
+        : [{ clipPath: 'circle(0px at ' + o.x + 'px ' + o.y + 'px)' },
+           { clipPath: 'circle(' + R + 'px at ' + o.x + 'px ' + o.y + 'px)' }];
+      try {
+        root.animate(kf, {
+          duration: ms,
+          easing: 'cubic-bezier(.22,.61,.36,1)',
+          fill: 'forwards',
+          pseudoElement: '::view-transition-new(root)'
+        });
+      } catch (e) { }
+    }).catch(function () { });
+    const done = function () {
+      if (seq !== revealSeq) return;
+      deferCharts = false;
+      clearReveal(seq);
+      clearTimeout(switchTheme._t3);
+      crossFadeCharts(Math.max(240, Math.round(ms * 0.7)));
+    };
+    vt.finished.then(done).catch(function () {
+      if (seq !== revealSeq) return;
+      deferCharts = false; clearReveal(seq); clearTimeout(switchTheme._t3);
+    });
+    /* 兜底：页面被隐藏等情况下 finished 可能不 resolve，别把 deferCharts 卡住 */
+    switchTheme._t3 = setTimeout(function () {
+      if (deferCharts && seq === revealSeq) done();
+    }, ms + 900);
+    return true;
+  }
+  function switchTheme(next, animate, origin) {
     const root = document.documentElement;
     const cur = root.getAttribute('data-theme');
     if (cur === next && !animate) return;
@@ -343,17 +438,21 @@
       settleCharts();
       return;
     }
+    clearTimeout(switchTheme._t);
+    clearTimeout(switchTheme._t2);
+    clearTimeout(switchTheme._t3);
     const ms = themeMs();
-    const cls = canAnimateVars() ? 'theme-anim' : 'theme-fade';
-    root.classList.remove('theme-anim', 'theme-fade');
     /* 时长交给 CSS 变量，reduced-motion 的媒体查询也只读它，两边永远一致 */
     try { root.style.setProperty('--theme-dur', ms + 'ms'); } catch (e) { }
+    if (cur !== next && typeof document.startViewTransition === 'function' &&
+        circleReveal(next, apply, revealOrigin(origin), ms)) return;
+    /* 回退路径（老浏览器 / VT 不可用）：仍是原来的颜色插值，功能不丢 */
+    const cls = canAnimateVars() ? 'theme-anim' : 'theme-fade';
+    root.classList.remove('theme-anim', 'theme-fade');
     root.classList.add(cls);
     /* 先按旧值算一次样式，保证过渡有「起点」；否则某些浏览器会把两帧合并成硬切 */
     void root.offsetWidth;
     apply();
-    clearTimeout(switchTheme._t);
-    clearTimeout(switchTheme._t2);
     /* 图表在过渡走到一半时换成新配色：此时变量已接近终值，叠加旧画面淡出，
        视觉上是「化开」，不会在全站颜色定型的同一瞬间再闪一下。 */
     switchTheme._t = setTimeout(function () { crossFadeCharts(Math.max(240, Math.round(ms * 0.75))); },
@@ -383,12 +482,16 @@
   }
   /* 顶栏按钮：在「浅色 ⇄ 深色」之间翻转，并把结果写进偏好（auto 被显式选择覆盖，
      与主流站点一致；想回到跟随系统就去参数设置页选「跟随系统」）。 */
-  function toggleTheme() {
+  function toggleTheme(evt) {
     const next = effectiveTheme() === 'dark' ? 'light' : 'dark';
     try { if (window.Prefs) Prefs.set('theme', next); } catch (e) { }
-    switchTheme(next, true);
+    /* 鼠标点击 → 从点击处扩散；键盘触发的 click 坐标恒为 0，交给 revealOrigin 回退 */
+    const o = (evt && evt.clientX > 0 && evt.clientY > 0)
+      ? { x: evt.clientX, y: evt.clientY } : 'center';
+    switchTheme(next, true, o);
   }
-  /* 供参数设置页的「主题」分段控件调用：偏好已写好，这里只负责带过渡地应用 */
+  /* 供参数设置页的「主题」分段控件调用：偏好已写好，这里只负责带过渡地应用。
+     扩散原点用最近一次指针位置（就是用户刚点下的那个分段按钮）。 */
   window.AppTheme = {
     apply: function () { switchTheme(effectiveTheme(), true); },
     current: effectiveTheme,

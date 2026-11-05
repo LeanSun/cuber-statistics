@@ -64,21 +64,21 @@
   --gold:#f0c04a; --silver:#c9d2de; --bronze:#d99a6c;
 }
 
-/* ============ 深浅色切换的过渡（2026-11-04 晚第十三轮重做） ============
-   上一版是 View Transitions 的圆形揭示：把新主题渲染成一张**静态截图**从按钮处扫过去，
-   边界是一条硬圆，扫过瞬间整页定型 —— 观感是「唰一下」，用户反馈「还是很生硬」。
-   这一版改成**真正的颜色插值**，分两条路径：
+/* ============ 深浅色切换的过渡（2026-11-05 晚第十五轮：圆形扩散） ============
+   历史（这块的教训值得留着）：
+   - 第十三轮：View Transitions 圆形揭示 —— 把新主题做成整页**静态截图**从按钮处
+     扫过去，clip-path 是一条硬圆边，扫过瞬间整页定型，反馈「唰一下、很生硬」。
+   - 第十四轮：改成纯颜色插值。把主题色注册成 <color> 自定义属性，切换时只在
+     :root 上跑一段变量过渡，全站元素每帧按新变量重新解析颜色 —— 只有 ONE 组
+     动画，实测掉帧 13 → 0；canvas 另用旧画面快照交叉淡化。生硬解决了，但
+     用户仍想要「从鼠标点下的地方圆形向外扩散」的空间感。
+   - 第十五轮（当前）：主路径回到 View Transitions，但换掉旧版的三处硬感 ——
+     羽化遮罩代替硬 clip-path、新层轻微渐入代替瞬间定型、圆周柔光环吃掉色差边。
+     见下方「圆形扩散」一节。第十四轮的插值整套保留为**回退路径**：
+     Safari < 18 / 老 Firefox 等没有 startViewTransition 时不丢功能。
 
-   ① 主路径（支持 CSS @property）：把主题用到的颜色变量注册成 <color> 类型，
-      于是它们自己可以过渡。切换时只在 :root 上跑一段 0.62s 的变量过渡，
-      全站元素每帧按新变量重新解析颜色 —— 只有 ONE 组动画，
-      实测掉帧 13 → 0（同一台无头 Chrome、同一个榜单页）。
-   ② 回退路径（Safari < 16.4 / Firefox < 128）：给 <html> 挂 .theme-fade，
-      逐元素过渡 background-color / color / border-color / fill / stroke。
-      代价是高一些，但保证老浏览器也不是硬切。
-
-   两条路径都**不碰** transform / opacity / 尺寸：那些属于交互与布局，
-   混进来会让按钮的 hover 变钝、页面抖动。阴影与渐变不参与插值（代价大且几乎看不出）。 */
+   两条路径都不碰 transform / 尺寸：那些属于交互与布局，混进来会让按钮 hover
+   变钝、页面抖动。阴影与渐变不参与插值（代价大且几乎看不出）。 */
 @property --bg{syntax:"<color>";inherits:true;initial-value:#f6f8fb}
 @property --bg-elev{syntax:"<color>";inherits:true;initial-value:#ffffff}
 @property --bg-soft{syntax:"<color>";inherits:true;initial-value:#eef2f7}
@@ -153,6 +153,38 @@ html.theme-fade *::after{
   html.theme-anim,html.theme-anim body{transition-duration:var(--theme-dur,.2s)!important}
   html.theme-fade,html.theme-fade *{transition-duration:var(--theme-dur,.2s)!important}
   .theme-settle .chart-box,.theme-settle .ec{animation:none!important}
+}
+
+/* ============ 圆形扩散（View Transitions 主路径） ============
+   JS 在点击时把原点 (--reveal-x/--reveal-y)、终态半径 (--reveal-max)、
+   羽化宽度 (--reveal-feather) 写到 <html>，再用 WAAPI 把 --reveal-r 从 1px
+   动画到覆盖全屏的半径。这里只负责「怎么显示」：
+     · 关掉 VT 默认的 cross-fade（否则新旧两层会互相淡入淡出，圆形边界变糊）；
+     · 新层用 radial-gradient 遮罩，边缘 --reveal-feather 宽度是渐隐带，
+       不是一刀切的硬圆 —— 这是消除「唰一下」的关键；
+     · drop-shadow 沿裁切圆周挂一圈目标主题色柔光，进一步吃掉新旧色差。
+   不支持 @property 的浏览器（无法动画 --reveal-r）由 JS 加 .theme-reveal-clip，
+   退回 clip-path 硬圆：仍有圆形扩散，只是没有羽化边。 */
+@property --reveal-r{syntax:"<length>";inherits:true;initial-value:0px}
+::view-transition-old(root),
+::view-transition-new(root){
+  animation:none!important;
+  mix-blend-mode:normal;
+  display:block;
+}
+::view-transition-old(root){z-index:1}
+::view-transition-new(root){
+  z-index:2;
+  -webkit-mask-image:radial-gradient(circle var(--reveal-r) at var(--reveal-x,50%) var(--reveal-y,50%),
+    #000 calc(100% - var(--reveal-feather,38px)),rgba(0,0,0,0) 100%);
+  mask-image:radial-gradient(circle var(--reveal-r) at var(--reveal-x,50%) var(--reveal-y,50%),
+    #000 calc(100% - var(--reveal-feather,38px)),rgba(0,0,0,0) 100%);
+  filter:drop-shadow(0 0 14px var(--reveal-glow,transparent));
+}
+html.theme-reveal-clip::view-transition-new(root){
+  -webkit-mask-image:none;mask-image:none;
+  clip-path:circle(0px at var(--reveal-x,50%) var(--reveal-y,50%));
+  filter:none;
 }
 
 /* ============ 界面偏好（参数设置 → 外观与交互） ============

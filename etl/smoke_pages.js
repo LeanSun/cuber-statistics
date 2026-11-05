@@ -1236,10 +1236,16 @@ console.log('== 默认值：停办项目计入 / 竞速图速率 ==');
     ok(/__tlArrowHandler/.test(appSrc), '左右方向键监听已接入（且每次挂载替换旧监听）');
     ok(/ArrowRight' ?\? ?365 ?: ?-365/.test(appSrc), '方向键步长为 365 天（1 年）');
     ok(/wasPlaying/.test(appSrc) && /startPlay\(\)/.test(appSrc), '按键后沿用原播放状态');
-    ok(/theme-anim/.test(appSrc) && appSrc.indexOf('startViewTransition') < 0,
-      '深浅色切换改为颜色插值（不再用 View Transitions 截图扫过）');
+    ok(/startViewTransition/.test(appSrc) && /--reveal-r/.test(appSrc),
+      '深浅色切换走 View Transitions 圆形扩散（半径可动画）');
+    ok(/lastPointer/.test(appSrc) && /--reveal-x/.test(appSrc) && /clientX/.test(appSrc),
+      '扩散原点取鼠标点击坐标（键盘/系统触发回退按钮中心）');
     ok(/canAnimateVars/.test(appSrc) && /theme-fade/.test(appSrc),
       '主题切换有主路径 + 老浏览器回退路径');
+    ok(/theme-anim/.test(appSrc) && /typeof document\.startViewTransition === 'function'/.test(appSrc),
+      '不支持 View Transitions 时回退到颜色插值（功能不丢）');
+    ok(/deferCharts/.test(appSrc) && /vt\.finished/.test(appSrc) && /switchTheme\._t3/.test(appSrc),
+      'VT 期间延迟图表重绘，结束后才交叉淡化（避免先新后旧的闪回）');
     /* 2026-11-05：reduced-motion 下不再「直接跳色」，改成 200ms 的短过渡；
        图表用 canvas 快照交叉淡化，避免重绘那一帧整体跳色。 */
     ok(/THEME_MS_QUICK/.test(appSrc) && /themeMs\(\)/.test(appSrc),
@@ -1260,6 +1266,17 @@ console.log('== 默认值：停办项目计入 / 竞速图速率 ==');
       '切换动画由 :root 上的变量过渡承担（一组动画而非逐元素）');
     ok(/html\.theme-fade,[\s\S]{0,200}?transition-property:background-color/.test(css2),
       '回退路径逐元素过渡颜色属性');
+    /* 2026-11-05 晚：圆形扩散。旧断言曾禁止 startViewTransition（第十三轮硬圆被否），
+       这一版用羽化遮罩 + 渐入 + 柔光环重做，断言改为检查「不生硬」的结构保证。 */
+    ok(/@property --reveal-r\{syntax:"<length>"/.test(css2),
+      '扩散半径注册为 <length>，可被 WAAPI 逐帧动画');
+    ok(/::view-transition-new\(root\)\{[\s\S]{0,600}?mask-image:radial-gradient/.test(css2),
+      '新主题层用羽化圆形遮罩（不是一刀切的硬圆边界）');
+    ok(/::view-transition-old\(root\),[\s\S]{0,220}?animation:none/.test(css2),
+      '关掉 VT 默认 cross-fade，圆形边界才不会被淡入淡出糊掉');
+    ok(/drop-shadow\(0 0 \d+px var\(--reveal-glow/.test(css2),
+      '圆周柔光环吃掉新旧主题的色差硬边');
+    ok(/theme-reveal-clip/.test(css2), '无 @property 的浏览器回退 clip-path 圆形扩散');
   }
   ok(hR.indexOf('tlRateReset') < 0, '「恢复默认」按钮随三项调节一起删除');
   ok(hR.indexOf('msToast') >= 0, '重大事件有右下角弹出提示的容器');
