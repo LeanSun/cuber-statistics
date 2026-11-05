@@ -1217,13 +1217,14 @@ console.log('== 默认值：停办项目计入 / 竞速图速率 ==');
   ok(hR.indexOf('id="tlRatejump"') >= 0, '保留「时间跳跃」数字输入框');
   ok(hR.indexOf('tlRatejumpCap') < 0, '时间跳跃的滑杆已删除（只留数字框）');
   ok(hR.indexOf('tlRateanim') < 0 && hR.indexOf('tlRatefps') < 0, '动画时长 / 重绘间隔的调节项已删除');
-  ok(hR.indexOf('tl-jump') >= 0, '时间跳跃收进播放控件行（.tl-jump）');
+  ok(hR.indexOf('tl-jump-mid') >= 0, '时间跳跃已挪到筛选行居中（.tl-jump-mid）');
   /* ★ 2026-11-05（第十四轮）：时间轴压成单行紧凑版 —— 去掉大号日期行、
      左右键提示、5 年刻度行，托盘高度从 95px 降到 ~40px。 */
   ok(hR.indexOf('class="tl-rail"') >= 0, '时间轴用自绘轨道 .tl-rail（不再是裸 range）');
   ok(hR.indexOf('id="tlRailFill"') >= 0, '轨道带强调色进度填充 .tl-rail-fill');
-  ok(hR.indexOf('class="tl-year"') >= 0 && hR.indexOf('class="tl-year-end"') >= 0,
-    '日期与终点年份都排在轨道同一行');
+  ok(hR.indexOf('class="tl-year tl-year-big"') >= 0 && hR.indexOf('class="tl-year-end"') >= 0 &&
+    hR.indexOf('tl-year-big') > hR.indexOf('tl-year-end'),
+    '大号当前日期在轨道右侧、终点年份仍贴在轨道末尾');
   ok(hR.indexOf('tl-rail-ticks') < 0 && hR.indexOf('tl-tick') < 0, '刻度行已删除（不再占一层高度）');
   ok(hR.indexOf('tl-rail-top') < 0, '大号日期那一行已删除');
   ok(hR.indexOf('快进 1 年') < 0 && hR.indexOf('jumps one year') < 0, '去掉「← → 各快进 1 年」的说明文字');
@@ -1238,7 +1239,7 @@ console.log('== 默认值：停办项目计入 / 竞速图速率 ==');
   {
     const appSrc = fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8');
     ok(/__tlArrowHandler/.test(appSrc), '左右方向键监听已接入（且每次挂载替换旧监听）');
-    ok(/ArrowRight' ?\? ?365 ?: ?-365/.test(appSrc), '方向键步长为 365 天（1 年）');
+    ok(/const dayStep = onRail \? 1 : 365/.test(appSrc), '方向键双步长：选中进度条 1 天、否则 365 天（1 年）');
     ok(/wasPlaying/.test(appSrc) && /startPlay\(\)/.test(appSrc), '按键后沿用原播放状态');
     ok(/startViewTransition/.test(appSrc) && /--reveal-r/.test(appSrc),
       '深浅色切换走 View Transitions 圆形扩散（半径可动画）');
@@ -1281,39 +1282,44 @@ console.log('== 默认值：停办项目计入 / 竞速图速率 ==');
     ok(/drop-shadow\(0 0 \d+px var\(--reveal-glow/.test(css2),
       '圆周柔光环吃掉新旧主题的色差硬边');
     ok(/theme-reveal-clip/.test(css2), '无 @property 的浏览器回退 clip-path 圆形扩散');
-    /* 2026-11-05 晚：用户要求浅→深扩散、深→浅收缩，且整体速率放慢。 */
+    /* 2026-11-05 晚二次调整：浅→深收缩、深→浅扩散（与上一版方向相反），速率不变。 */
     ok(/THEME_MS = 900/.test(appSrc) && /THEME_MS_QUICK = 280/.test(appSrc),
       '主题切换放慢到 900ms（减少动效 280ms）');
     ok(/theme-reveal-contract/.test(appSrc) &&
-      /const contract = root\.getAttribute\('data-theme'\) === 'dark' && next === 'light'/.test(appSrc),
-      '方向由「当前主题 → 目标主题」判定：深→浅才收缩');
+      /const contract = root\.getAttribute\('data-theme'\) !== 'dark' && next === 'dark'/.test(appSrc),
+      '方向由「当前主题 → 目标主题」判定：浅→深才收缩（深→浅扩散）');
     ok(/const r0 = contract \? R \+ 'px' : '1px'/.test(appSrc) &&
       /const r1 = contract \? '1px' : R \+ 'px'/.test(appSrc),
       '扩散 1px→R / 收缩 R→1px 共用一条半径动画，起止互换');
     ok(/--reveal-r', contract \? R \+ 'px' : '0px'/.test(appSrc),
       '收缩首帧半径设为 R（避免先闪一下全浅色）');
     ok(/html\.theme-reveal-contract::view-transition-new\(root\)\{[\s\S]{0,420}?rgba\(0,0,0,0\) calc\(100% - var\(--reveal-feather/.test(css2),
-      '收缩用反向遮罩：圆内透明露出旧深色、圆外显示新浅色');
+      '收缩用反向遮罩：圆内透明露出旧浅色、圆外显示新深色');
     ok(/if \(!maskOK && contract\) return false/.test(appSrc),
       '无 @property 时收缩方向回退颜色插值（硬圆做不出反向遮罩）');
   }
-  /* 2026-11-05 晚：项目权重方案 A（WCA 官方序位骨架，人气只留 6% 话语权）。
-     排序关系 + 公式自洽双保险，防止以后有人把公式改回「权重 ≡ 人气」。 */
+  /* 2026-11-05 晚定稿：项目权重严格按 WCA 官方 rank 数值的倒数比例分配。
+     四条保证：① 逐项 w=10/rank 落位；② 排序只跟 rank 走；③ 与参赛人气完全无关
+     （换一份假 stat 也算不出别的数）；④ 停办项走表尾档，不被 996–999 压成 0。 */
   {
     const RN = require(path.join(ROOT, 'etl/score/runs.js'));
     const W = RN.EV_WEIGHT_V2, C = RN.WEIGHT_V2_CFG;
-    ok(W['333'] === 1 && W['444'] > W.pyram && W['555'] > W.skewb &&
-      W['666'] > W.clock && W['333mbf'] < W.pyram,
-      '项目权重以官方序位为骨架（金字塔/斜转不再靠人数排前列）');
-    const P = (r) => (180 - r + C.rankBonus) / C.rankSpan;
-    const expect = (ev) => C.floor + (1 - C.floor) * Math.pow(P(RN.EV_OFFICIAL_RANK[ev]), C.gamma)
-      * (1 - C.popShare + C.popShare * RN.scaleOf(ev));
-    ok(Math.abs(W.pyram - expect('pyram')) < 1e-9 &&
-      Math.abs(W.skewb - expect('skewb')) < 1e-9 && Math.abs(W['666'] - expect('666')) < 1e-9,
-      '方案 A 公式落位：金字塔/斜转/六阶权重与官方 rank 骨架一致');
-    ok(RN.EV_OFFICIAL_RANK['333'] === 10 && RN.EV_OFFICIAL_RANK.pyram === 130 &&
-      C.popShare === 0.06 && C.gamma === 1.05,
-      '官方 rank 表与三档旋钮就位（ε=.06 / γ=1.05）');
+    ok(C.mode === 'rank-ratio' && C.anchorRank === 10 && C.popShare === 0,
+      '权重口径切到「按官方 rank 比例」：无 floor / γ / 人气旋钮');
+    ok(W['333'] === 1 && Math.abs(W['222'] - .5) < 1e-12 &&
+      Math.abs(W['444'] - 1 / 3) < 1e-12 && Math.abs(W['333mbf'] - 10 / 180) < 1e-12,
+      '逐项落位：333=1、222=.5、444=1/3、333mbf=1/18（w=10/rank）');
+    const rankKeys = Object.keys(RN.EV_OFFICIAL_RANK).filter((e) => RN.EV_OFFICIAL_RANK[e] < 990);
+    ok(rankKeys.length === 17 && rankKeys.every((e) =>
+      Math.abs(W[e] - C.anchorRank / RN.EV_OFFICIAL_RANK[e]) < 1e-12),
+      '全部 17 个现役项目严格等于 anchorRank / rank');
+    ok(W['444'] > W.pyram && W['555'] > W.skewb && W['666'] > W.clock && W['333mbf'] < W.pyram,
+      '排序跟随官方序位（金字塔/斜转不再靠人数排前列）');
+    const W2 = RN.buildWeightV2({ stat: { '333': { pr: 1, ar: 1 }, '333mbf': { pr: 9, ar: 9 } } });
+    ok(Math.abs(W2['333mbf'] - W['333mbf']) < 1e-12,
+      '权重与参赛人数完全无关：塞一份假人气表也算不出不同权重');
+    ok(Math.abs(W['333ft'] - 10 / C.retiredRank * C.retiredDiscount) < 1e-12,
+      '停办项按表尾 rank=190 计再乘 0.85，不被 996–999 墓碑位压成 0');
   }
   ok(hR.indexOf('tlRateReset') < 0, '「恢复默认」按钮随三项调节一起删除');
   ok(hR.indexOf('msToast') >= 0, '重大事件有右下角弹出提示的容器');
@@ -1381,6 +1387,39 @@ console.log('== 默认值：停办项目计入 / 竞速图速率 ==');
       '超长姓名走无缝跑马灯（第二份文字 + 按实测像素平移）');
     ok(/function crownNameFit\(nm\)/.test(peSrc) && /oneW > nm\.clientWidth \+ 8/.test(peSrc),
       '只有装不下时才滚动（带 8px 容差，短名保持静止）');
+  }
+  {
+    /* ---- 2026-11-05 晚（第十五轮）：时间跳跃归位 / 日期右移放大 / 进度条逐日微调 ---- */
+    const cs3 = fs.readFileSync(path.join(ROOT, 'css/style.css'), 'utf8');
+    const ap3 = fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8');
+    const iJump = hR.indexOf('tl-jump-mid');
+    ok(/class="tl-jump tl-jump-mid"/.test(hR) && iJump > 0 &&
+      iJump > hR.indexOf('tlViewSeg') && iJump < hR.indexOf('tlCrown') &&
+      hR.indexOf('class="tl-ctl"') > iJump,
+      '时间跳跃与「图表切换 / 六维筛选」同一行、且已离开播放托盘');
+    /* 两侧等宽 spacer 夹住药丸：不能再用 absolute + left:50%（会盖住六维按钮）。 */
+    const jumpTail = hR.slice(hR.indexOf('tlDimSeg'), hR.indexOf('tlCrown'));
+    ok((jumpTail.match(/class="spacer"/g) || []).length === 2 &&
+      jumpTail.indexOf('class="spacer"') < jumpTail.indexOf('tl-jump-mid'),
+      '药丸两侧各一枚等宽 spacer，在左右控件之间的空白区居中');
+    ok(/\.tl-top \.spacer\{flex:1 1 0/.test(cs3) &&
+      /\.tl-top \.tl-jump\.tl-jump-mid\{[^}]*position:relative/.test(cs3) &&
+      /\.tl-top \.tl-jump\.tl-jump-mid\{[^}]*height:34px/.test(cs3) &&
+      cs3.indexOf('left:50%;bottom:0') < 0,
+      '不再绝对定位（避免遮挡按钮），高度 34px 与 36px 分段按钮齐平');
+    ok(/max-width:1180px\)\{[\s\S]{0,320}?tl-jump\.tl-jump-mid\{flex:0 0 100%/.test(cs3),
+      '窄屏回退独占一行居中，不与筛选按钮重叠');
+    ok(/class="tl-year tl-year-big" id="tlYear"/.test(hR) &&
+      hR.indexOf('tl-year-big') > hR.indexOf('tl-rail-slot'),
+      '当前日期移到时间轴最右侧（轨道之后）');
+    ok(/\.tl-year-big\{[^}]*font-size:22px/.test(cs3) &&
+      /\.tl-year-big\{[^}]*text-align:right/.test(cs3),
+      '日期加大到 22px 并右对齐');
+    ok(/const onRail = tg === range \|\| document\.activeElement === range \|\| window\.__tlRailPicked/.test(ap3) &&
+      /const dayStep = onRail \? 1 : 365/.test(ap3),
+      '进度条被选中时 ←/→ 按 1 天微调，其余情况仍是 1 年');
+    ok(/window\.__tlRailPickHandler\) document\.removeEventListener/.test(ap3),
+      '进度条选中态的全局监听每次 mount 先摘后挂（不叠加）');
   }
   {
     /* ---- 2026-11-04：M2 领奖台必须真的按「单次 / 平均」拆轨 ----

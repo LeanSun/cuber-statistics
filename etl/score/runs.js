@@ -370,22 +370,28 @@ const NORM_CAP = 3;
  * 开根号是广度与深度之间的折中：六阶落在 0.60 附近，介于二阶与盲拧之间。
  *
  * 2026-11-05 起改用「方案 A」：以 WCA 官方项目序位为骨架，人气只留 6% 话语权。
+ * 2026-11-05 晚（用户拍板）：再去掉所有人为旋钮，权重**严格按官方 rank 数值的
+ * 倒数比例**分配 —— 不再有 floor / γ / 声望变换 / 人气修正。
  *
- *   P_e = clamp((180 - rank_e + K) / span, 0..1)         停办项 = retiredMin
- *   w_e = floor + (1 - floor) · P_e^γ · (1 - ε + ε · s_pop_e)
- *   w_333 ≡ 1（钉死）；停办项再 × retiredDiscount
+ *   w_e = rank_333 / rank_e = 10 / rank_e        （三阶 rank 10 ⇒ w ≡ 1）
+ *   停办项 rank 996–999 是「墓碑位」不是序位，按表尾下一档 rank=190 计，
+ *   再乘 retiredDiscount（历史项目仍在，但不再与现役项目同价）。
  *
- * 为什么要换自变量：旧公式 w = .30 + .70·s_pop^.75 的唯一自变量是「规模」，
+ * 为什么是倒数：rank 是 WCA 人工维护的显示序号，以 10 为间隔，
+ * 10 : 20 : 30 : … : 180 = 1 : 2 : 3 : … : 18。按这个「比例」给权重，
+ * 就是序位每往后一档，权重按其倍数递减（10/20 = 1/2、10/180 = 1/18）。
+ * 于是 333 : 222 : 444 : … : 333mbf = 1 : .5 : .333 : … : .0556，极差 18:1。
+ *
+ * 演进过程：旧公式 w = .30 + .70·s_pop^.75 的唯一自变量是「规模」，
  * 于是权重排序 ≡ 人气排序 —— 金字塔 .7294 排第 3、斜转 .6298 排第 6，
  * 而五阶 .5391、六阶 .3996、七阶 .3848 全被压在后面。调 γ 只会让所有项目
- * 一起挤到地板，改变不了排序，必须换掉自变量本身。
+ * 一起挤到地板，改变不了排序，必须换掉自变量本身。方案 A 换成官方序位骨架
+ * （P=(180-rank+20)/190，人气只留 6%），排序纠正了但仍带三个旋钮；
+ * 现在用户要求「就按官网给的这个 rank 比例」，于是把旋钮全部撤掉。
  *
- * 结构保证：P 由官方 rank 单调映射，与参赛人数无关；三阶 P=1、w 钉死 1；
- * 值域 [floor, 1]，冷门项目不会被压到 0（压到 0 等于取消这个项目）；
- * s_pop 只作为 (1-ε+ε·s_pop) 的 6% 微调，不再决定名次。
- *
- * 旋钮：γ 下压强度、K 冷门保护、ε 人气话语权、floor 地板。
- * 敏感性对照：node etl/score/compare_v2.js（扫 γ）。
+ * 结构保证：w 只由官方 rank 决定，与参赛人数完全无关；三阶 w 钉死 1；
+ * 单调性严格跟随 rank；值域 (0, 1]，不需要地板（比例本身就是地板）。
+ * 表外新项目（如未来转正的 FTO）走 floor 兜底，不会被误判成高权重。
  *
  * 停办项目（脚拧 / 八板 / 十二板 / 旧多盲）单独乘 retiredDiscount：
  * 它们的历史份额是"当年"的，今天已不再产出新纪录，含金量应再降一档。
@@ -399,10 +405,11 @@ const NORM_CAP = 3;
      `update Events set rank = ...` 手工调整过一次顺序。
    数值以 10 为间隔，便于在两项之间插入新项目；停办项被推到 996–999，
    2026 年新增的 FTO 先占 810（2027-01-02 起官方，本站 21 项里没有它）。
-   为什么可以当「声望骨架」：这套顺序由 WCA 官方长期人工维护，大致按魔方
+   为什么可以当「权重比例」：这套顺序由 WCA 官方长期人工维护，大致按魔方
    家族与项目历史分组（NxN 在前、形状类居中、盲拧/多盲在后），与技术跨度、
    传统地位同向，且**完全不受参赛人数影响** —— 正好替换掉旧公式中
-   「权重 ≡ 人气排序」这个自变量。它只是代理量，不是官方评级。 */
+   「权重 ≡ 人气排序」这个自变量。它只是代理量，不是官方评级。
+   本站现在直接取 10/rank 作权重，不再对它做任何变换。 */
 const EV_OFFICIAL_RANK = {
   '333': 10, '222': 20, '444': 30, '555': 40, '666': 50, '777': 60,
   '333bf': 70, '333fm': 80, '333oh': 90,
@@ -411,13 +418,18 @@ const EV_OFFICIAL_RANK = {
   '333ft': 996, magic: 997, mmagic: 998, '333mbo': 999,
 };
 const WEIGHT_V2_CFG = {
-  floor: 0.24,          // 地板：官方序位最靠后的项目也保留 24% 权重
-  gamma: 1.05,          // 对「官方声望 P」的下压弹性
-  rankBonus: 20,        // K：冷门保护（三阶 rank 10 → P=(180-10+20)/190=1）
-  rankSpan: 190,        // = 180 - 10 + K
-  popShare: 0.06,       // ε：人气只留 6% 话语权（旧公式是 100%）
-  retiredMin: 0.10,     // 停办项 P 下限（rank 996+ 直接代入会算出负数）
-  retiredDiscount: 0.85,
+  mode: 'rank-ratio',    // 2026-11-05 晚：严格按 WCA events.rank 数值的倒数比例
+  anchorRank: 10,        // 三阶的官方 rank，w = anchorRank / rank_e ⇒ 三阶恒 1
+  retiredRank: 190,      // 停办项 rank 996–999 是墓碑位；按表尾 180 的下一档计
+  retiredDiscount: 0.85, // 停办项再降一档
+  /* ↓ 以下字段只保留给历史诊断脚本（scan_evstat / compare_v2 / m4_* 等）当兜底，
+       主公式已完全不用它们；floor 只用于「不在 rank 表里的新项目」的兜底权重。 */
+  floor: 0.24,
+  gamma: 1,
+  rankBonus: 0,
+  rankSpan: 190,
+  popShare: 0,
+  retiredMin: 0.10,
 };
 
 /** 原始观测量（相对三阶），**全量重算于 2026-10-24**。
@@ -506,29 +518,26 @@ function scaleOf(ev, stat) {
   return Math.max(0, Math.min(1, st.pr * Math.sqrt(Math.max(0, st.ar))));
 }
 
-/** 官方序位 → 声望 P ∈ [0,1]。三阶恒 1；停办项固定 retiredMin；
- *  未来新增项目若不在表里，保守按停办项下限处理（不会被误判成高权重）。 */
+/** 官方序位 → 权重比例 P = anchorRank / rank。三阶恒 1；停办项按 retiredRank；
+ *  表外项目走 floor 兜底（不会被误判成高权重）。 */
 function prestigeOf(ev, cfg) {
   const c = cfg || WEIGHT_V2_CFG;
-  if (EV_RETIRED.has(ev)) return c.retiredMin;
+  if (EV_RETIRED.has(ev)) return c.anchorRank / c.retiredRank;
   const r = EV_OFFICIAL_RANK[ev];
-  if (r == null) return c.retiredMin;
-  return Math.max(0, Math.min(1, (180 - r + c.rankBonus) / c.rankSpan));
+  return r == null ? c.floor : c.anchorRank / r;
 }
 
 /**
- * 方案 A：由「WCA 官方项目序位 + 少量人气修正」算出 v2 权重（2026-11-05）。
- * 纯函数，可任意改 cfg 做敏感性分析。
- * @param {{floor?:number,gamma?:number,popShare?:number,rankBonus?:number,rankSpan?:number,retiredMin?:number,retiredDiscount?:number,stat?:object}} [cfg]
+ * 按 WCA 官方 rank 数值的倒数比例分配项目权重（2026-11-05 晚定稿）。
+ * 纯函数；cfg 里的 stat 只决定「给哪些项目出权重」，不影响任何一项的数值。
+ * @param {{anchorRank?:number,retiredRank?:number,retiredDiscount?:number,stat?:object}} [cfg]
  */
 function buildWeightV2(cfg) {
   const c = { ...WEIGHT_V2_CFG, ...(cfg || {}) };
   const stat = c.stat || EV_STAT;
   const out = {};
   for (const ev of Object.keys(stat)) {
-    const P = prestigeOf(ev, c);
-    const pop = scaleOf(ev, stat);
-    let w = c.floor + (1 - c.floor) * Math.pow(P, c.gamma) * (1 - c.popShare + c.popShare * pop);
+    let w = prestigeOf(ev, c);
     if (EV_RETIRED.has(ev)) w *= c.retiredDiscount;
     out[ev] = ev === '333' ? 1 : w;      // 三阶钉死 1.000，不吃浮点误差
   }

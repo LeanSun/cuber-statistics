@@ -332,17 +332,17 @@
       });
     });
   }
-  /* ---- 深浅色切换：浅→深扩散、深→浅收缩（2026-11-05 晚） ----
+  /* ---- 深浅色切换：浅→深收缩、深→浅扩散（2026-11-05 晚二次调整） ----
      更早一版也用过 View Transitions，但当时把新主题渲染成整页静态截图，
      clip-path 是一条硬圆边，扫过瞬间整页定型 → 用户反馈「唰一下、很生硬」。
      这一版保留「从鼠标点下的地方」这个空间原点，改掉三处硬感：
        ① 新层不用硬 clip-path，改用 radial-gradient 羽化遮罩（边缘渐隐带）；
        ② 新层自身 opacity .88 → 1，扫过的区域是「化开」而不是「啪」地换掉；
        ③ 圆周挂一圈目标主题色的柔光（drop-shadow），吃掉新旧色差的硬边界。
-     方向由「当前主题 → 目标主题」决定（2026-11-05 用户要求）：
-       浅 → 深：新层（深色）圆内可见，r 从 1px 长到覆盖全屏 = 扩散；
-       深 → 浅：新层（浅色）圆外可见、圆内透明（露出旧深色），
-                r 从覆盖全屏缩到 1px = 深色圆向点击点收拢消失、浅色从外围合拢。
+     方向由「当前主题 → 目标主题」决定（2026-11-05 晚用户二次调整，与上一版相反）：
+       浅 → 深：新层（深色）圆外可见、圆内透明（露出旧浅色），
+               r 从覆盖全屏缩到 1px = 浅色圆向点击点收拢消失、深色从外围合拢；
+       深 → 浅：新层（浅色）圆内可见，r 从 1px 长到覆盖全屏 = 浅色扩散。
      两条路径共用 --reveal-r，只是起止值与 CSS 遮罩渐变方向相反。
      图表是 canvas：切换期间先不重绘，VT 结束后再走 crossFadeCharts 的旧画面
      快照淡出（见 deferCharts），否则会出现「先变新 → 退回旧 → 再化开」的闪回。
@@ -379,13 +379,14 @@
     const W = window.innerWidth, H = window.innerHeight;
     /* 半径取到四角最远点，保证圆能覆盖整屏 */
     const R = Math.hypot(Math.max(o.x, W - o.x), Math.max(o.y, H - o.y)) + 48;
-    const contract = root.getAttribute('data-theme') === 'dark' && next === 'light';
+    const contract = root.getAttribute('data-theme') !== 'dark' && next === 'dark';
     const maskOK = canAnimateVars();  /* @property 可用 → 羽化遮罩；否则硬圆 clip 兜底 */
     /* 无 @property 只能做「圆内可见」的硬圆 clip-path，做不出收缩需要的
-       「圆外可见」反向遮罩，首帧会整屏跳色 —— 该方向直接回退颜色插值。 */
+       「圆外可见」反向遮罩，首帧会整屏跳色 —— 该方向直接回退颜色插值。
+       现在「收缩」落在浅→深，所以老浏览器里浅→深走颜色插值、深→浅走硬圆扩散。 */
     if (!maskOK && contract) return false;
     try {
-      /* 首帧半径必须是动画起点：扩散 0、收缩 R（否则收缩先闪一下全浅色） */
+      /* 首帧半径必须是动画起点：扩散 0、收缩 R（否则收缩先闪一下目标主题整屏） */
       root.style.setProperty('--reveal-r', contract ? R + 'px' : '0px');
       root.style.setProperty('--reveal-x', o.x + 'px');
       root.style.setProperty('--reveal-y', o.y + 'px');
@@ -1183,19 +1184,40 @@
         jumpNum.addEventListener('blur', function () { applyJump(jumpNum.value, true); });
         jumpNum.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); jumpNum.blur(); } });
       }
-      /* ★ 2026-11-04 晚（第十三轮）：全局 ← / → 调时间，每次 1 年，且**保持原有状态**
-         —— 原本在演进就从新位置继续演进（速度不变），原本暂停就仍然暂停。
-         只在「本页 + 竞速图（存在 #tlRange）+ 焦点不在输入控件」时生效；
+      /* ★ 2026-11-05 晚（第十五轮）：全局 ← / → 调时间。
+         · 进度条被选中（鼠标点/拖过轨道、或它持有焦点）→ 每次 **1 天**；
+         · 其余情况（点在图表 / 页面空白处）→ 每次 **1 年（365 天）**。
+         两种步长都「保持原有状态」：原本在演进就从新位置继续演进（速度不变），
+         原本暂停就仍然暂停。只在「本页 + 竞速图（存在 #tlRange）」时生效；
          每次 mount 先摘掉上一轮的监听器（否则重渲染一次就多挂一个，一次跳好几年）。
-         滑块自己获得焦点时不吃这两个键：那里浏览器原生按「天」步进，更精细。 */
+
+         ⚠ 以前对 INPUT 一律 return，交给 range 的原生键盘行为按 step=1 走一天，
+         但那样只改 DOM 的 value、不会同步 state.tlFy / 图表 / 播放状态；而且用户
+         点完轨道再按左右键时焦点常常已经不在滑杆上，体感就是「选中了进度条
+         却还是一次跳一年」。现在这一步统一由这里接管，并 preventDefault 掉原生
+         步进（不挡就会一次走两格）。 */
+      /* 进度条「选中态」跨重渲染保存：点轨道内置 true，点页面其它地方置 false。
+         捕获阶段挂一次即可，旧的先摘掉，避免每 render 一层叠加。 */
+      window.__tlRailPicked = false;
+      if (window.__tlRailPickHandler) document.removeEventListener('pointerdown', window.__tlRailPickHandler, true);
+      window.__tlRailPickHandler = function (ev) {
+        const t = ev.target;
+        window.__tlRailPicked = !!(t && range &&
+          (t === range || (range.parentNode && range.parentNode.contains(t))));
+      };
+      document.addEventListener('pointerdown', window.__tlRailPickHandler, true);
+      if (range) range.addEventListener('focus', function () { window.__tlRailPicked = true; });
       function onTlArrow(e) {
         if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
         if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
         const tg = e.target;
-        if (tg && (tg.tagName === 'INPUT' || tg.tagName === 'TEXTAREA' || tg.tagName === 'SELECT' || tg.isContentEditable)) return;
+        if (tg && tg !== range &&
+          (tg.tagName === 'INPUT' || tg.tagName === 'TEXTAREA' || tg.tagName === 'SELECT' || tg.isContentEditable)) return;
         if (!range || !document.body.contains(range)) return;
+        const onRail = tg === range || document.activeElement === range || window.__tlRailPicked;
+        const dayStep = onRail ? 1 : 365;
         const max = +range.max;
-        const next = Math.max(+range.min, Math.min(max, (+range.value) + (e.key === 'ArrowRight' ? 365 : -365)));
+        const next = Math.max(+range.min, Math.min(max, (+range.value) + (e.key === 'ArrowRight' ? dayStep : -dayStep)));
         e.preventDefault();
         if (next === +range.value) return;            /* 已经在头 / 尾，无处可去 */
         const wasPlaying = !!state.tlPlaying;

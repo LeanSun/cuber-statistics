@@ -259,6 +259,13 @@
     if (state.tlFy != null && state.tlFy > tlEnd) state.tlFy = tlEnd;
     const sl = tlSlider(step, fy);
     const rate = loadRate();
+    /* 时间跳跃（天/秒）：2026-11-05 晚用户要求挪到「图表切换 / 六维筛选」同一行、
+       水平居中。抽成一段字符串，两个视图共用；它只影响播放，放在筛选行更顺手。 */
+    const jumpHtml = '<label class="tl-jump tl-jump-mid" title="' + esc(t('tl.rate.jumpTip')) + '">' +
+      '<span>' + esc(t('tl.rate.jump')) + '</span>' +
+      '<input type="number" id="tlRatejump" min="' + RATE_META.jump.min + '" max="' + RATE_META.jump.max +
+      '" step="1" value="' + rate.jump + '" aria-label="' + esc(t('tl.rate.jump')) + '">' +
+      '<b>' + esc(RATE_META.jump.unit()) + '</b></label>';
 
     /* 2026-11-01 用户要求删掉页面顶部那段说明文字（「历史地位随时间的推移而演变…」）；
        第五轮又要求把两个视图各自的说明（.tl-desc）也删掉，图表直接贴着控件开始。 */
@@ -292,6 +299,13 @@
       });
       h += '</div></div>';
     }
+    /* ★ 2026-11-05 晚：时间跳跃移到这一行，夹在左右两组控件之间水平居中
+       （.tl-jump-mid）。两侧各放一枚等宽 .spacer，由 flex 自动把药丸推到空白区正中；
+       不用 absolute + left:50% —— 这一行左侧两组筛选按钮本身就有 755px，
+       真正的「整行几何中点」正好落在六维按钮上，绝对居中最先版本会盖住最后两颗按钮。
+       高度 34px 与 .tl-top .seg 的 36px 对齐，底边贴齐。窄屏回退见 css。 */
+    h += '<span class="spacer"></span>';
+    if (view !== 'lane') h += jumpHtml;   /* 纪录持有图没有播放控件，不显示无效的时间跳跃 */
     h += '<span class="spacer"></span>';
     /* 登顶时长徽标（2026-11-01 用户要求，第五轮再挪到**整行最右端**）：常驻显示。
        内容是「某选手登顶（当前榜单第一）已持续多久」，随筛选范围（世界 / 亚洲 / 中国 …，
@@ -321,9 +335,9 @@
     /* 「3 期滑动平滑」已按需求移除：它只在中间帧起作用，用户感知不到差别反而多一个开关。 */
     h += '</div>';
 
-    /* 动画速率自定义：2026-11-04 用户要求只保留「时间跳跃」一项，并且去掉滑杆
-       （只留数字输入），位置从独立一行收进上面的播放控件行 —— 它本来就只影响播放。
-       动画时长 / 重绘间隔不再开放调节，回落到 RATE_DEF 的内部默认值（100ms / 20ms）。 */
+    /* 动画速率自定义：2026-11-04 曾把「时间跳跃」收进播放控件行、去掉滑杆只留数字框；
+       2026-11-05 晚用户再要求挪到上方「图表切换 / 六维筛选」同一行水平居中，
+       见上面的 jumpHtml。动画时长 / 重绘间隔仍不开放调节，回落 RATE_DEF 内部默认值。 */
 
     /* 两个视图的说明文字（「纪录持有图：每个项目一条泳道…」/「分数竞速图：横向条形…」）
        已按用户 2026-11-01 第五轮要求整块删除 —— 图表直接贴着控件开始，少一层噪声。 */
@@ -346,12 +360,11 @@
       /* ---- 时间轴（2026-11-05 第十四轮改成单行紧凑版） ----
          上一版是「大号日期 + 提示 + 轨道 + 5 年刻度」四层，托盘高 95px，
          而里面真正有内容的只有轨道那一行 —— 用户反馈「太高、大部分是空的」。
-         现在压成一行：播放按钮 · 当前日期 · 细轨道 · 终点年 · 时间跳跃，
-         日期改成等宽小字排在轨道左边（不再单独占一行），刻度行整块去掉
-         （轨道上没有任何参考点时反而更干净，日期本身就给出了位置）。
-         托盘高度从 95px 降到 ~40px。 */
+         现在压成一行：播放按钮 · 细轨道 · 终点年 · 大号当前日期（右侧），
+         日期改成大号等宽字排在托盘最右（不再夹在轨道左边，也不单独占一行），
+         刻度行整块去掉（轨道上没有任何参考点时反而更干净，日期本身就给出了位置）。
+         托盘高度约 48px。 */
       h += '<div class="tl-rail">' +
-        '<span class="tl-year" id="tlYear">' + sl.label + '</span>' +
         '<div class="tl-rail-slot">' +
           '<div class="tl-rail-track" aria-hidden="true"><i class="tl-rail-fill" id="tlRailFill"></i></div>' +
           '<input type="range" id="tlRange" min="' + sl.min + '" max="' + sl.max + '" step="' + sl.step + '" value="' + sl.value + '" aria-label="' + esc(t('tl.title')) + '">' +
@@ -359,14 +372,9 @@
         /* 终点用 floor：11 月的日期四舍五入会显示成下一年，与上方「2026-11-04」对不上 */
         '<span class="tl-year-end">' + Math.floor(P.tlEndFy ? P.tlEndFy() : 2026) + '</span>' +
         '</div>';
-
-      /* 时间跳跃（天/秒）：只影响播放时每秒推进多少天。2026-11-04 起唯一保留的速率项，
-         去掉滑杆只留数字框，并挪进这一行贴着播放按钮 / 时间条，调它时不用再上下找。 */
-      h += '<label class="tl-jump" title="' + esc(t('tl.rate.jumpTip')) + '">' +
-        '<span>' + esc(t('tl.rate.jump')) + '</span>' +
-        '<input type="number" id="tlRatejump" min="' + RATE_META.jump.min + '" max="' + RATE_META.jump.max +
-        '" step="1" value="' + rate.jump + '" aria-label="' + esc(t('tl.rate.jump')) + '">' +
-        '<b>' + esc(RATE_META.jump.unit()) + '</b></label>';
+      /* ★ 当前日期：2026-11-05 晚用户要求「放到右侧、加大显示」。
+         从轨道左边挪到整条托盘的最右端，字号 13 → 22px，等宽数字避免逐日播放时抖动。 */
+      h += '<span class="tl-year tl-year-big" id="tlYear">' + sl.label + '</span>';
       h += '</div>';
     }
 
