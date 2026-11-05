@@ -435,10 +435,28 @@ ok(h9.indexOf('tlChart') >= 0, '泳道图渲染');
 
 const hA = tryRender('另类统计', () => P.topics(Object.assign({}, base, { topicTab: 'rec' })));
 ok(hA.length > 100, '另类统计渲染');
-ok(hA.indexOf('data-topicev=') >= 0, '另类统计有项目筛选条');
 ok(hA.indexOf('data-topicboard=') >= 0, '另类统计有指标切换');
-const nEvBtn = (hA.match(/data-topicev="/g) || []).length;
-ok(nEvBtn === M.events.length + 1, '项目筛选含全部 ' + M.events.length + ' 个项目（含停办），实际按钮 ' + nEvBtn);
+/* ★ 2026-11-05（第十五轮）：趣味统计的筛选面板统一到顶部筛选条。
+   正文里那套两行带文字、只能单选的「按项目筛选」整块删除；
+   app.js 的 renderFilterBar 不再为 topics 走特判，三页输出同一份两行结构。 */
+ok(hA.indexOf('data-topicev=') < 0 && hA.indexOf('按项目筛选') < 0,
+  '趣味统计正文不再有第二套项目筛选面板（项目图标统一到顶部）');
+const appFb = fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8');
+const fbFn = appFb.slice(appFb.indexOf('function renderFilterBar'), appFb.indexOf('function updateSummary'));
+ok(fbFn.indexOf('frow-ev') >= 0 && fbFn.indexOf('data-evtab') >= 0 && fbFn.indexOf('data-type') >= 0,
+  '顶部筛选条含第一行项目图标与第二行成绩口径');
+ok(!/if \(route !== 'topics'\)/.test(fbFn) && !/else if \(route === 'topics'\)/.test(fbFn),
+  'renderFilterBar 内没有 topics 分支（三页共用同一份渲染）');
+ok((fbFn.match(/class="frow frow-ev"/g) || []).length === 1 && (fbFn.match(/id="fgReset"/g) || []).length === 1,
+  '筛选条各控件只渲染一份');
+ok(/route === 'rank' \|\| route === 'timeline' \|\| route === 'topics'[\s\S]{0,220}q\.g/.test(appFb),
+  'g= / country= 在三个榜单页都能解析（刷新后分组不丢）');
+const hA333 = tryRender('另类统计（顶部选了单个项目）',
+  () => P.topics(Object.assign({}, base, { topicTab: 'rec', evSel: ['333'] })));
+ok(hA333.indexOf(t('top.eventFiltered')) >= 0, '顶部项目筛选后有口径提示');
+const hASingle = tryRender('另类统计（成绩口径=单次）',
+  () => P.topics(Object.assign({}, base, { topicTab: 'rec', recType: 'single' })));
+ok(hASingle.indexOf(t('top.typeNote')) >= 0, '成绩口径切换后有该页口径说明');
 
 console.log('== 另类统计：项目筛选真的改变指标 ==');
 const tp = Object.assign({}, base, { topicTab: 'rec', topicBoard: 'wrCount' });
@@ -458,6 +476,31 @@ ok(allWr !== evWr || all.length !== one.length, '单项目榜单与全项目榜�
 const poolCN = P.util.topicPool(Object.assign({}, base, { geo: 'CN' }));
 ok(typeof P.util.topicPool === 'function', 'topicPool 存在（另类统计页套用全局筛选）');
 ok(poolCN.length <= M.ranked.length, '地区筛选后候选池不增：' + poolCN.length + '/' + M.ranked.length);
+/* 顶部筛选条的三类项目操作（点图标多选 / 点预设分组 / 切成绩口径）都必须真实收窄候选池 */
+const poolAll = P.util.topicPool(Object.assign({}, base, {}));
+const pool333 = P.util.topicPool(Object.assign({}, base, { evSel: ['333'] }));
+const poolMulti = P.util.topicPool(Object.assign({}, base, { evSel: ['333', '222'] }));
+ok(SAMPLE || (pool333.length > 0 && pool333.length < poolAll.length),
+  '顶部项目图标单选真实生效：' + pool333.length + '/' + poolAll.length);
+ok(poolMulti.length >= pool333.length && poolMulti.length <= poolAll.length,
+  '顶部项目图标多选按并集生效：' + poolMulti.length);
+const pg = M.presetGroups.filter(g => g.id !== 'all')[0];
+const poolGroup = pg ? P.util.topicPool(Object.assign({}, base, { group: pg.id })) : [];
+ok(SAMPLE || !pg || (poolGroup.length > 0 && poolGroup.length <= poolAll.length),
+  '顶部预设分组真实生效：' + (pg ? pg.id : '(none)') + ' ' + poolGroup.length);
+/* 成绩口径在趣味统计页改变的是**纪录类指标的数值**，不是候选人数
+   （与 total 榜切轨只换六维分、不换人一致） */
+const bSum = a => a.reduce((x, r) => x + r.v, 0);
+const bAll = M.board('rec', 'wrCount', 12, '', null, 'all');
+const bSingle = M.board('rec', 'wrCount', 12, '', null, 'single');
+const bAvg = M.board('rec', 'wrCount', 12, '', null, 'avg');
+ok(SAMPLE || (bSingle.length > 0 && bAvg.length > 0), '单次 / 平均轨都能取到纪录榜');
+ok(bSum(bSingle) <= bSum(bAll) && bSum(bAvg) <= bSum(bAll),
+  '按轨 WR 数不超过总计：' + bSum(bSingle) + ' / ' + bSum(bAvg) + ' ≤ ' + bSum(bAll));
+ok(SAMPLE || bSum(bSingle) !== bSum(bAll) || bSum(bAvg) !== bSum(bAll),
+  '切成绩口径后纪录数值真实变化（不是假控件）');
+ok(P.util.topicPool(Object.assign({}, base, { recType: 'single' })).length === poolAll.length,
+  '切成绩口径不改变候选人数（三页操作语义一致）');
 const boardCN = M.board('rec', 'wrCount', 12, '', poolCN);
 ok(boardCN.every(r => poolCN.some(x => x.id === r.p.id)), '榜单选手全部来自筛选后的池');
 

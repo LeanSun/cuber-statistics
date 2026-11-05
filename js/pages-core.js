@@ -480,21 +480,36 @@
     sixEvProbe: function (rt, pid) { return SIXEV[rt] ? (SIXEV[rt].get(pid) || null) : null; }
   };
 
-  /* 另类统计页的候选池：套用顶部筛选条（国家 / 大洲 / 性别 / 年份区间 /
-     预设分组 / 事件多选 / 停办项目），使全局筛选在该页同样生效 */
+  /* 另类统计页的候选池（2026-11-05 第十五轮重写）：
+     趣味统计的项目筛选已经统一到顶部筛选条（预设 chips + 项目图标多选），
+     所以这里必须与 P.filtered 用**同一套**筛选口径：
+       · 显式点选项目 → state.evSel（自定义分组走 state.customIds）
+       · 预设分组 → eventSet(state)（含「不计入停办项目」的收窄）
+       · 地区 / 性别 / 年份区间 → 与总榜一致
+       · 成绩口径不在这里砍人：它改变的是指标数值（calc.statsTrack 按轨重算
+         纪录类指标），与总榜切轨只换分、不换人一致。
+     以前这里只认 state.topicEvent 单选，点顶部项目图标 / 预设 chips 完全没反应。 */
   function topicPool(state) {
-    const pool = (state.group && state.group !== 'all') ? eventSet(state)
-      : ((state.evSel && state.evSel.length) ? state.evSel
-         : (state.topicEvent ? [state.topicEvent] : null));
+    const evSel = state.evSel || [];
+    const custom = state.group === 'custom' ? (state.customIds || []) : [];
+    const sel = evSel.length ? evSel : (custom.length ? custom : null);
+    const scoped = (state.group && state.group !== 'all') || (sel && sel.length);
+    const groupPool = (state.group && state.group !== 'all') ? eventSet(state) : null;
     return M.ranked.filter(function (p) {
       if (state.geo) {
         if (state.geo.indexOf('cont:') === 0) { if (M.continentOf[p.country] !== state.geo.slice(5)) return false; }
         else if (p.country !== state.geo) return false;
       }
+      if (state.country && p.country !== state.country) return false;
+      if (state.continent && M.continentOf[p.country] !== state.continent) return false;
+      if (state.region && M.regionOf[M.continentOf[p.country]] !== state.region) return false;
       if (state.gender && state.gender !== 'all' && genderOf(p.gender) !== state.gender) return false;
       if (state.y0 && p.end < state.y0) return false;
       if (state.y1 && p.start > state.y1) return false;
-      if (pool && !(p.events || []).some(function (e) { return pool.indexOf(e) >= 0; })) return false;
+      if (sel) { if (!(p.events || []).some(function (e) { return sel.indexOf(e) >= 0; })) return false; }
+      else if (scoped && state.group !== 'custom' && groupPool) {
+        if (!(p.events || []).some(function (e) { return groupPool.indexOf(e) >= 0; })) return false;
+      }
       if (!state.retired && (p.events || []).some(function (e) { return (M.EV[e] || {}).retired; })
         && !(p.events || []).some(function (e) { return !(M.EV[e] || {}).retired; })) return false;
       return true;

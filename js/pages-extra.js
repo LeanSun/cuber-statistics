@@ -2196,26 +2196,26 @@
        否则顶部筛选条在另类统计页会完全失效 */
     const pool = P.util.topicPool(state);
 
-    /* 二级筛选表头：按项目过滤（停办项目也可用，与筛选条口径一致）。
-       结构与顶部筛选条一致：.fgroup > .flabel + .fctl，视觉上与其他两页同一个控件系统。 */
-    const te = state.topicEvent || '';
-    h += '<div class="row topic-fbar reveal">';
-    h += '<div class="fgroup"><span class="flabel">' + esc(t('top.eventFilter')) + '</span>' +
-      '<div class="fctl"><div class="ev-strip ev-strip-topic" role="group" aria-label="' + esc(t('top.eventFilter')) + '">';
-    h += '<button class="ev-tab' + (!te ? ' on' : '') + '" data-topicev="">' + esc(t('f.all')) + '</button>';
-    M.events.slice().sort(function (a, b) { return (a.retired ? 1 : 0) - (b.retired ? 1 : 0) || a.rank - b.rank; })
-      .forEach(function (e) {
-        h += '<button class="ev-tab' + (te === e.id ? ' on' : '') + (e.retired ? ' retired' : '') + '" data-topicev="' + e.id + '" title="' + esc(t.isEn() ? e.en : e.zh) + '">' +
-          window.Icons.event(e.id) + '<span>' + esc(t.isEn() ? e.en : e.zh) + '</span></button>';
-      });
-    h += '</div></div></div>';
-    h += '</div>'; /* /.topic-fbar（项目筛选） */
+    /* ★ 2026-11-05（第十五轮）：项目筛选统一到**顶部筛选条**。
+       以前这里另放一套「按项目筛选」按钮（两行、带文字、只能单选 state.topicEvent），
+       与另外两页的「预设 chips + 纯图标多选」既不同构、也不同操作。
+       现在正文不再重复渲染项目控件，直接读全局 state.group / state.evSel；
+       候选池 topicPool 已经按它们过滤过。
+       只有当范围恰好落在**单个项目**上，才把该项目 id 传给 M.board，
+       启用「该项目上的真实指标」（evStatOf）；多项目 / 预设组时按全项目 stats 排名。 */
+    const sel = state.evSel || [];
+    let te = '';
+    if (sel.length === 1) te = sel[0];
+    else if (!sel.length && state.group && state.group !== 'all' && M.EV[state.group]) te = state.group;
+    const evScoped = sel.length > 0 || (state.group && state.group !== 'all');
+    const rt = state.recType || 'all';
 
     const defs = M.boards[tab] || [];
     h += '<div class="note-box reveal">' + Ic.glyph('info') + '<div>' + esc(t('top.' + tab + '.d')) +
       (tab === 'part' ? ' <b>' + esc(t('stat.mbldNote')) + '</b>' : '') +
       (tab === 'medal' ? ' ' + esc(t('top.medal.d')) : '') +
-      (te ? ' <b>' + esc(t('top.eventFiltered')) + '</b>' : '') + '</div></div>';
+      (evScoped ? ' <b>' + esc(t('top.eventFiltered')) + '</b>' : '') +
+      (rt !== 'all' ? ' <b>' + esc(t('top.typeNote')) + '</b>' : '') + '</div></div>';
 
     /* 指标筛选：同一 tab 下只展示选中的一个排行，其余通过此处切换 */
     const tbKey = (state.topicBoard && defs.some(function (b) { return b.k === state.topicBoard; })) ? state.topicBoard : (defs[0] && defs[0].k);
@@ -2223,8 +2223,10 @@
       h += '<div class="row topic-fbar reveal">';
       h += '<div class="fgroup"><span class="flabel">' + esc(t('top.board')) + '</span>' +
         '<div class="fctl"><div class="seg" role="group" aria-label="' + esc(t('top.board')) + '">';
+      /* 用 .seg 原生按钮，不要再套 .chip：两条 CSS 会抢背景色
+         （.seg button.on 白底 vs .chip.on 强调色），选中块还会顶到 .flabel 上。 */
       defs.forEach(function (b) {
-        h += '<button class="chip' + (b.k === tbKey ? ' on' : '') + '" data-topicboard="' + b.k + '">' + esc(t('stat.' + b.k)) + '</button>';
+        h += '<button class="' + (b.k === tbKey ? 'on' : '') + '" data-topicboard="' + b.k + '">' + esc(t('stat.' + b.k)) + '</button>';
       });
       h += '</div></div></div>';
       h += '</div>'; /* /.topic-fbar（排行切换） */
@@ -2232,7 +2234,9 @@
 
     const d = defs.filter(function (b) { return b.k === tbKey; })[0];
     if (d) {
-      const list = M.board(tab, d.k, 12, te, pool);
+      /* rt 透传给 calc.board：选「单次 / 平均」时纪录类指标按该轨重算，
+         与另外两页「切成绩口径 → 数值变」的操作语义一致（人数不变）。 */
+      const list = M.board(tab, d.k, 12, te, pool, rt);
       if (list.length) {
         h += '<div class="card reveal board-card"><div class="card-head"><h2>' + esc(t('stat.' + d.k)) + '</h2>' +
           '<span class="tiny muted">' + (t.isEn() ? 'Top' : '前') + ' ' + list.length + '</span></div>';

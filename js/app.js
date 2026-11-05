@@ -428,7 +428,9 @@
     const fresh = rawHash !== hashConsumed;
     hashConsumed = rawHash;
     if (!fresh) return;
-    if (route === 'rank') {
+    /* 三个榜单页共用同一套筛选条，所以 g=（预设分组）/ country=（地区）也统一生效；
+       此前只有 rank 解析，趣味统计页刷新后 URL 里的分组会被丢掉。 */
+    if (route === 'rank' || route === 'timeline' || route === 'topics') {
       if (q.g) state.group = q.g;
       if (q.country) state.geo = q.country;
     }
@@ -596,137 +598,118 @@
       const m = String(u).match(/^(\d{4})/);
       return m ? +m[1] : new Date().getFullYear();
     })();
-    /* 两行布局（2026-10-29 用户要求）：
-       第一行 = 预设分组 + 项目图标（项目多、必须独占一行）；
-       第二行 = 国家/地区 · 性别 · 成绩口径 · 时间 · 停办 · 重置 · 计数，
-       全部塞进同一个 .frow，保证它们从同一基线起排、按同一套行高对齐。 */
+    /* ★ 2026-11-05（第十五轮）：三个榜单页共用**同一套**筛选条。
+       以前趣味统计页只有第二行的一半（缺预设分组 / 项目图标 / 成绩口径），
+       把「按项目筛选」单独塞在正文里做成两行带文字的按钮，既不同构也不同操作
+       （那边是单选 state.topicEvent，这边是多选 state.evSel + 预设组）。
+       现在三页都渲染相同的两行：
+         第一行 = 预设分组 chips + 项目图标多选；
+         第二行 = 地区 · 性别 · 成绩口径 · 时间区间 · 停办项目 · 重置 · 计数。
+       项目状态统一走 state.group / state.evSel，URL 里也用同一套 g= 参数。 */
     let h = '<div class="filterbar-inner">';
-    if (route !== 'topics') h += '<div class="frow frow-ev">';
+    h += '<div class="frow frow-ev">';
 
-    /* ---------- 预设分组（快速筛选） + 事件图标多选（仅总榜 / 图表可视化；趣味统计页用页面内筛选） ---------- */
-    if (route !== 'topics') {
-      h += '<div class="fgroup ev-fgroup">';
-      h += '<div class="fctl presets" id="fgGroup">';
-      const presets = [{ id: 'all', zh: t('f.all'), en: t('f.all') }].concat(M.presetGroups.filter(function (g) { return g.id !== 'all'; }));
-      presets.forEach(function (g) {
-        const on = state.group === g.id && !(state.evSel && state.evSel.length);
-        h += '<button class="chip' + (on ? ' on' : '') + '" data-group="' + g.id + '">' + esc(t.isEn() ? g.en : g.zh) + '</button>';
-      });
-      h += '</div>';
-      /* 趣味统计页用页面内的「项目筛选」(data-topicev) 作为唯一项目筛选，
-         顶部不再重复渲染项目图标条，避免上下两套互相打架。 */
-      h += '<div class="ev-strip" id="fgEvents" role="group" aria-label="' + esc(t('f.events')) + '">';
-      const evSel = state.evSel || [];
-      const gids = (P.groupEventIds ? P.groupEventIds(state) : null);
-      const inSet = function (id) { return evSel.indexOf(id) >= 0 || (gids && gids.indexOf(id) >= 0); };
-      const activeEv = M.events.filter(function (e) { return !e.retired; });
-      const retiredEv = M.events.filter(function (e) { return e.retired; });
-      /* 停办的四个项目（魔表以外的 Magic / Master Magic / 三阶脚拧 / 三阶多盲旧制）
-         与现行项目放在**同一行**、排在最后（用户要求：不要再单独占一行）。
-         未勾选「含停办项目」时仍可悬停看名字，但点击无效（由 click 处理器拦截）。 */
-      h += '<div class="ev-row">';
-      const evBtn = function (e) {
-        const on = inSet(e.id);
-        const nm = t.isEn() ? e.en : e.zh;
-        /* 项目名称浮层：原生 title 有 1 秒延迟且位置由系统决定，
-           这里改用 body 级浮层，并指定出现在**鼠标上方**（data-tip-pos="top"）。 */
-        /* 排除态：停办项目且当前「不计入」（state.retired=false）时打 excluded 标记，
-           由 CSS 给虚线边框 + 更淡 + 斜杠，明确提示它此刻不进榜单。
-           切换「计入/不计入」开关会整页重渲染，按钮的 excluded 类随之增减。 */
-        const excluded = e.retired && !state.retired;
-        const tip = excluded ? (nm + (t.isEn() ? ' · discontinued · currently excluded' : ' · 停办项目 · 当前不计入')) :
-          (e.retired ? (nm + (t.isEn() ? ' · discontinued' : ' · 停办项目')) : nm);
-        return '<button class="ev-tab' + (on ? ' on' : '') + (e.retired ? ' retired' : '') + (excluded ? ' excluded' : '') + '" data-evtab="' + e.id + '"' +
-          ' data-tip="' + esc(tip) + '" data-tip-pos="top" aria-label="' + esc(nm) + '">' + window.Icons.event(e.id) + '</button>';
-      };
-      activeEv.forEach(function (e) { h += evBtn(e); });
-      if (retiredEv.length) {
-        h += '<span class="ev-sep" aria-hidden="true"></span>';
-        retiredEv.forEach(function (e) { h += evBtn(e); });
-      }
-      h += '</div>';
-      h += '</div>';
-      h += '</div>';
-      h += '</div>';   /* /frow-ev */
+    /* ---------- 预设分组（快速筛选） + 事件图标多选 ---------- */
+    h += '<div class="fgroup ev-fgroup">';
+    h += '<div class="fctl presets" id="fgGroup">';
+    const presets = [{ id: 'all', zh: t('f.all'), en: t('f.all') }].concat(M.presetGroups.filter(function (g) { return g.id !== 'all'; }));
+    presets.forEach(function (g) {
+      const on = state.group === g.id && !(state.evSel && state.evSel.length);
+      h += '<button class="chip' + (on ? ' on' : '') + '" data-group="' + g.id + '">' + esc(t.isEn() ? g.en : g.zh) + '</button>';
+    });
+    h += '</div>';
+    h += '<div class="ev-strip" id="fgEvents" role="group" aria-label="' + esc(t('f.events')) + '">';
+    const evSel = state.evSel || [];
+    const gids = (P.groupEventIds ? P.groupEventIds(state) : null);
+    const inSet = function (id) { return evSel.indexOf(id) >= 0 || (gids && gids.indexOf(id) >= 0); };
+    const activeEv = M.events.filter(function (e) { return !e.retired; });
+    const retiredEv = M.events.filter(function (e) { return e.retired; });
+    /* 停办的四个项目与现行项目放在**同一行**、排在最后（用户要求：不要再单独占一行）。
+       未勾选「含停办项目」时仍可悬停看名字，但点击无效（由 click 处理器拦截）。 */
+    h += '<div class="ev-row">';
+    const evBtn = function (e) {
+      const on = inSet(e.id);
+      const nm = t.isEn() ? e.en : e.zh;
+      /* 项目名称浮层：原生 title 有 1 秒延迟且位置由系统决定，
+         这里改用 body 级浮层，并指定出现在**鼠标上方**（data-tip-pos="top"）。
+         排除态：停办项目且当前「不计入」时打 excluded 标记，由 CSS 给虚线边框 + 更淡 + 斜杠。 */
+      const excluded = e.retired && !state.retired;
+      const tip = excluded ? (nm + (t.isEn() ? ' · discontinued · currently excluded' : ' · 停办项目 · 当前不计入')) :
+        (e.retired ? (nm + (t.isEn() ? ' · discontinued' : ' · 停办项目')) : nm);
+      return '<button class="ev-tab' + (on ? ' on' : '') + (e.retired ? ' retired' : '') + (excluded ? ' excluded' : '') + '" data-evtab="' + e.id + '"' +
+        ' data-tip="' + esc(tip) + '" data-tip-pos="top" aria-label="' + esc(nm) + '">' + window.Icons.event(e.id) + '</button>';
+    };
+    activeEv.forEach(function (e) { h += evBtn(e); });
+    if (retiredEv.length) {
+      h += '<span class="ev-sep" aria-hidden="true"></span>';
+      retiredEv.forEach(function (e) { h += evBtn(e); });
     }
+    h += '</div>';
+    h += '</div>';
+    h += '</div>';
+    h += '</div>';   /* /frow-ev */
+
     h += '<div class="frow frow-meta">';
 
-    /* ---------- 地区（大洲 / 国家合并为单一下拉；已移除 WCA 地区分组） ----------
-       ★ 2026-11-02 用户要求：名称由「国家 / 地区」改为「地区」，并支持**手动输入搜索**。
-       原生 <select> 只能按首字母跳转、且只认当前语言的显示名（中文界面下敲 "china" 找不到中国），
-       所以改成一个自绘 combobox：输入框 + 下拉列表，匹配串同时包含
-       中文名 / 英文名 / ISO2 三套写法，中英文界面下都能搜。 */
-    if (route === 'rank' || route === 'timeline' || route === 'topics') {
-      h += '<div class="fgroup"><span class="flabel">' + esc(t('f.region')) + '</span><div class="fctl">';
-      h += '<div class="geo-combo" id="fgGeoBox" data-open="0">';
-      h += '<input id="fgGeoQ" class="geo-input" type="text" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="fgGeoMenu" placeholder="' + esc(t('f.searchPh')) + '" value="' + esc(geoLabel(state.geo)) + '" data-label="' + esc(geoLabel(state.geo)) + '" data-geo="' + esc(state.geo || '') + '">';
-      h += '<span class="geo-caret" aria-hidden="true"></span>';
-      h += '<div class="geo-menu" id="fgGeoMenu" role="listbox">';
-      const contOrder = ['As', 'NAm', 'SAm', 'Eu', 'Af', 'Oc'];
-      const cn = P.util.countryName;
-      /* 搜索串 = 中文名 + 英文名 + ISO2（含小写），于是「中国 / China / cn」都能命中 */
-      const mt = function (zh, en, iso) {
-        return esc((zh + ' ' + en + ' ' + iso + ' ' + iso.toLowerCase()).toLowerCase());
-      };
-      h += '<button type="button" class="geo-opt' + (!state.geo ? ' on' : '') + '" data-geo="" data-s="' + mt(t('f.all'), 'all', '') + '">' + esc(t('f.all')) + '</button>';
-      h += '<div class="geo-grp">' + esc(t.isEn() ? 'Continents' : '大洲') + '</div>';
-      contOrder.forEach(function (c) {
-        const v = 'cont:' + c;
-        const zh = M.continents[c].zh, en = M.continents[c].en;
-        h += '<button type="button" class="geo-opt' + (state.geo === v ? ' on' : '') + '" data-geo="' + v + '" data-s="' + mt(zh, en, c) + '">' + esc(t.isEn() ? en : zh) + '</button>';
-      });
-      h += '<div class="geo-grp">' + esc(t.isEn() ? 'Countries / regions' : '国家 / 地区') + '</div>';
-      const fixed = ['CN', 'HK', 'MO', 'TW'];
-      fixed.concat(M.countryList.slice().sort()).filter(function (iso, i, a) { return a.indexOf(iso) === i; }).forEach(function (iso) {
-        const zh = (M.countriesZh && M.countriesZh[iso]) || cn(iso) || iso;
-        const en = M.countries[iso] || iso;
-        h += '<button type="button" class="geo-opt' + (state.geo === iso ? ' on' : '') + '" data-geo="' + iso + '" data-s="' + mt(zh, en, iso) + '">' + esc(t.isEn() ? en : zh) + '</button>';
-      });
-      h += '<div class="geo-none">' + esc(t.isEn() ? 'No matching region' : '没有匹配的地区') + '</div>';
-      h += '</div></div></div></div>';
-    }
+    /* ---------- 地区（大洲 / 国家合并为单一下拉；支持手动输入搜索） ----------
+       自绘 combobox：输入框 + 下拉列表，匹配串同时包含中文名 / 英文名 / ISO2，
+       中英文界面下都能搜（原生 select 只认当前语言的首字母）。 */
+    h += '<div class="fgroup"><span class="flabel">' + esc(t('f.region')) + '</span><div class="fctl">';
+    h += '<div class="geo-combo" id="fgGeoBox" data-open="0">';
+    h += '<input id="fgGeoQ" class="geo-input" type="text" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="fgGeoMenu" placeholder="' + esc(t('f.searchPh')) + '" value="' + esc(geoLabel(state.geo)) + '" data-label="' + esc(geoLabel(state.geo)) + '" data-geo="' + esc(state.geo || '') + '">';
+    h += '<span class="geo-caret" aria-hidden="true"></span>';
+    h += '<div class="geo-menu" id="fgGeoMenu" role="listbox">';
+    const contOrder = ['As', 'NAm', 'SAm', 'Eu', 'Af', 'Oc'];
+    const cn = P.util.countryName;
+    const mt = function (zh, en, iso) {
+      return esc((zh + ' ' + en + ' ' + iso + ' ' + iso.toLowerCase()).toLowerCase());
+    };
+    h += '<button type="button" class="geo-opt' + (!state.geo ? ' on' : '') + '" data-geo="" data-s="' + mt(t('f.all'), 'all', '') + '">' + esc(t('f.all')) + '</button>';
+    h += '<div class="geo-grp">' + esc(t.isEn() ? 'Continents' : '大洲') + '</div>';
+    contOrder.forEach(function (c) {
+      const v = 'cont:' + c;
+      const zh = M.continents[c].zh, en = M.continents[c].en;
+      h += '<button type="button" class="geo-opt' + (state.geo === v ? ' on' : '') + '" data-geo="' + v + '" data-s="' + mt(zh, en, c) + '">' + esc(t.isEn() ? en : zh) + '</button>';
+    });
+    h += '<div class="geo-grp">' + esc(t.isEn() ? 'Countries / regions' : '国家 / 地区') + '</div>';
+    const fixed = ['CN', 'HK', 'MO', 'TW'];
+    fixed.concat(M.countryList.slice().sort()).filter(function (iso, i, a) { return a.indexOf(iso) === i; }).forEach(function (iso) {
+      const zh = (M.countriesZh && M.countriesZh[iso]) || cn(iso) || iso;
+      const en = M.countries[iso] || iso;
+      h += '<button type="button" class="geo-opt' + (state.geo === iso ? ' on' : '') + '" data-geo="' + iso + '" data-s="' + mt(zh, en, iso) + '">' + esc(t.isEn() ? en : zh) + '</button>';
+    });
+    h += '<div class="geo-none">' + esc(t.isEn() ? 'No matching region' : '没有匹配的地区') + '</div>';
+    h += '</div></div></div></div>';
 
-    if (route === 'rank' || route === 'timeline' || route === 'topics') {
-      h += '<div class="fgroup"><span class="flabel">' + esc(t('f.gender')) + '</span><div class="fctl">';
-      [['all', 'f.gender.all'], ['M', 'f.gender.m'], ['F', 'f.gender.f']].forEach(function (g) {
-        h += '<button class="chip' + (state.gender === g[0] ? ' on' : '') + '" data-gender="' + g[0] + '">' + esc(t(g[1])) + '</button>';
-      });
-      h += '</div></div>';
-    }
+    /* ---------- 性别 ---------- */
+    h += '<div class="fgroup"><span class="flabel">' + esc(t('f.gender')) + '</span><div class="fctl">';
+    [['all', 'f.gender.all'], ['M', 'f.gender.m'], ['F', 'f.gender.f']].forEach(function (g) {
+      h += '<button class="chip' + (state.gender === g[0] ? ' on' : '') + '" data-gender="' + g[0] + '">' + esc(t(g[1])) + '</button>';
+    });
+    h += '</div></div>';
 
-    if (route === 'rank' || route === 'timeline') {
-      /* 成绩口径：总计 / 单次 / 平均 —— 六维整体按轨切换（含 M5 纪录比 Kinch），
-         不再只是 M1 纪录分；具体见 pages-core 的 sixVec / ensureSixEv。 */
-      h += '<div class="fgroup"><span class="flabel">' + esc(t('rank.type')) + '</span><div class="fctl">';
-      [['all', 'rank.type.all'], ['single', 'rank.type.single'], ['avg', 'rank.type.avg']].forEach(function (x) {
-        h += '<button class="chip' + ((state.recType || 'all') === x[0] ? ' on' : '') + '" data-type="' + x[0] + '" title="' + esc(t('rank.type.d')) + '">' + esc(t(x[1])) + '</button>';
-      });
-      h += '</div></div>';
+    /* ---------- 成绩口径：总计 / 单次 / 平均 ----------
+       总榜 / 图表可视化切换六维轨（p.sixS / p.sixA）；趣味统计页按轨重算纪录类
+       指标（calc.statsTrack）。三页都是「切口径 → 数值变、人数不变」。 */
+    h += '<div class="fgroup"><span class="flabel">' + esc(t('rank.type')) + '</span><div class="fctl">';
+    [['all', 'rank.type.all'], ['single', 'rank.type.single'], ['avg', 'rank.type.avg']].forEach(function (x) {
+      h += '<button class="chip' + ((state.recType || 'all') === x[0] ? ' on' : '') + '" data-type="' + x[0] + '" title="' + esc(t('rank.type.d')) + '">' + esc(t(x[1])) + '</button>';
+    });
+    h += '</div></div>';
 
-      h += '<div class="fgroup"><span class="flabel">' + esc(t('f.period')) + '</span><div class="fctl">';
-      h += '<select id="fgY0"><option value="">1982</option>';
-      for (let y = 2003; y <= YMAX; y++) h += '<option value="' + y + '"' + (state.y0 === y ? ' selected' : '') + '>' + y + '</option>';
-      h += '</select><span class="tiny muted">–</span>';
-      h += '<select id="fgY1"><option value=""' + (state.y1 == null ? ' selected' : '') + '>' + esc(t('f.now')) + '</option>';
-      for (let y = 2003; y <= YMAX; y++) h += '<option value="' + y + '"' + (state.y1 === y ? ' selected' : '') + '>' + y + '</option>';
-      h += '</select></div></div>';
+    /* ---------- 时间区间 ---------- */
+    h += '<div class="fgroup"><span class="flabel">' + esc(t('f.period')) + '</span><div class="fctl">';
+    h += '<select id="fgY0"><option value="">1982</option>';
+    for (let y = 2003; y <= YMAX; y++) h += '<option value="' + y + '"' + (state.y0 === y ? ' selected' : '') + '>' + y + '</option>';
+    h += '</select><span class="tiny muted">–</span>';
+    h += '<select id="fgY1"><option value=""' + (state.y1 == null ? ' selected' : '') + '>' + esc(t('f.now')) + '</option>';
+    for (let y = 2003; y <= YMAX; y++) h += '<option value="' + y + '"' + (state.y1 === y ? ' selected' : '') + '>' + y + '</option>';
+    h += '</select></div></div>';
 
-      h += '<div class="fgroup"><span class="flabel">' + esc(t('f.retired')) + '</span><div class="fctl">';
-      h += '<button class="chip' + (state.retired ? ' on' : '') + '" data-retired="1">' + esc(state.retired ? t('f.include') : t('f.exclude')) + '</button>';
-      h += '</div></div>';
-    } else if (route === 'topics') {
-      h += '<div class="fgroup"><span class="flabel">' + esc(t('f.period')) + '</span><div class="fctl">';
-      h += '<select id="fgY0"><option value="">1982</option>';
-      for (let y = 2003; y <= YMAX; y++) h += '<option value="' + y + '"' + (state.y0 === y ? ' selected' : '') + '>' + y + '</option>';
-      h += '</select><span class="tiny muted">–</span>';
-      h += '<select id="fgY1"><option value=""' + (state.y1 == null ? ' selected' : '') + '>' + esc(t('f.now')) + '</option>';
-      for (let y = 2003; y <= YMAX; y++) h += '<option value="' + y + '"' + (state.y1 === y ? ' selected' : '') + '>' + y + '</option>';
-      h += '</select></div></div>';
-
-      h += '<div class="fgroup"><span class="flabel">' + esc(t('f.retired')) + '</span><div class="fctl">';
-      h += '<button class="chip' + (state.retired ? ' on' : '') + '" data-retired="1">' + esc(state.retired ? t('f.include') : t('f.exclude')) + '</button>';
-      h += '</div></div>';
-    }
+    /* ---------- 停办项目 ---------- */
+    h += '<div class="fgroup"><span class="flabel">' + esc(t('f.retired')) + '</span><div class="fctl">';
+    h += '<button class="chip' + (state.retired ? ' on' : '') + '" data-retired="1">' + esc(state.retired ? t('f.include') : t('f.exclude')) + '</button>';
+    h += '</div></div>';
 
     h += '<button class="btn" id="fgReset">' + esc(t('f.reset')) + '</button>';
     h += '<span class="filter-summary" id="fgSummary"></span>';
@@ -1512,7 +1495,7 @@
   /* ---------- 全局事件委托 ---------- */
   /* ⚠ 这里少一个选择器，对应的按钮就「点了没反应」——2026-10-27 的六维筛选按钮
      正是因为漏了 [data-dim]/[data-tldim]，事件委托根本收不到点击，才表现为「加了按钮但没功能」。 */
-  const DELEGATE = '[data-sort],[data-page],[data-expand],[data-prow],[data-tab],[data-type],[data-stack],[data-dim],[data-tldim],[data-pkadd],[data-pkrm],[data-pktrayrm],[data-pktrayclear],[data-toggle],[data-expandall],[data-goto],[data-group],[data-gender],[data-retired],[data-tlmode],[data-tlview],[data-tlstep],[data-tlmetric],[data-tllane],[data-topic],[data-topicev],[data-topicboard],[data-other],[data-nation],[data-scope],[data-continent],[data-evpick],[data-evtab],[data-evtoggle],[data-evall],[data-evnone],[data-evsave],[data-gload],[data-gdel],[data-reclevel],[data-rectype],[data-podtier],[data-mdanchor],[data-mdsec],[data-msimport],[data-msreset],[data-msdel],[data-msedit],[data-msunhide],[data-msjump],[data-copy]';
+  const DELEGATE = '[data-sort],[data-page],[data-expand],[data-prow],[data-tab],[data-type],[data-stack],[data-dim],[data-tldim],[data-pkadd],[data-pkrm],[data-pktrayrm],[data-pktrayclear],[data-toggle],[data-expandall],[data-goto],[data-group],[data-gender],[data-retired],[data-tlmode],[data-tlview],[data-tlstep],[data-tlmetric],[data-tllane],[data-topic],[data-topicboard],[data-other],[data-nation],[data-scope],[data-continent],[data-evpick],[data-evtab],[data-evtoggle],[data-evall],[data-evnone],[data-evsave],[data-gload],[data-gdel],[data-reclevel],[data-rectype],[data-podtier],[data-mdanchor],[data-mdsec],[data-msimport],[data-msreset],[data-msdel],[data-msedit],[data-msunhide],[data-msjump],[data-copy]';
 
   document.addEventListener('click', function (e) {
     const el = e.target.closest ? e.target.closest(DELEGATE) : null;
@@ -1683,7 +1666,6 @@
     if (el.hasAttribute('data-tllane')) { state.tlLane = el.getAttribute('data-tllane'); render(true); return; }
     if (el.hasAttribute('data-tldim')) { state.tlDim = el.getAttribute('data-tldim') || ''; render(true); return; }
     if (el.hasAttribute('data-topic')) { state.topicTab = el.getAttribute('data-topic'); state.topicBoard = ''; render(true); return; }
-    if (el.hasAttribute('data-topicev')) { state.topicEvent = el.getAttribute('data-topicev'); state.evSel = []; render(true); return; }
     if (el.hasAttribute('data-topicboard')) { state.topicBoard = el.getAttribute('data-topicboard'); render(true); return; }
     if (el.hasAttribute('data-other')) { state.otherTab = el.getAttribute('data-other'); render(true); return; }
     if (el.hasAttribute('data-nation')) { state.nationMetric = el.getAttribute('data-nation'); render(true); return; }
@@ -1839,7 +1821,7 @@
       state.group = 'all'; state.customIds = []; state.evSel = []; state.geo = '';
       state.country = ''; state.continent = ''; state.region = '';
       state.gender = 'all'; state.y0 = null; state.y1 = null; state.recType = 'all'; state.page = 1;
-      state.topicBoard = ''; state.topicEvent = '';
+      state.topicBoard = '';
       const base = location.hash.split('?')[0] || '#/rank';
       hashConsumed = base;
       location.hash = base;

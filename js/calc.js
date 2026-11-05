@@ -462,12 +462,51 @@
   }
   var evStatCtx = null;
 
-  function board(kind, key, n, ev, ctx, pool) {
+  /* 成绩口径（2026-11-05 第十五轮）：趣味统计页也接入了顶部筛选条的
+     「总计 / 单次 / 平均」。另两页切轨是换六维向量，这里没有六维总分，
+     但 records 明细里每条纪录都带 type（single / avg），所以纪录类指标
+     可以按轨重算 —— 切「单次」时「WR 突破次数」只数单次轨的 WR。
+     其余三类指标（参赛量 / 奖牌 / 效率）本身不按轨拆分，沿用原口径。
+     只覆盖统计对象里的纪录类字段，不动 base，也不写 p.stats 缓存。 */
+  function statsTrack(p, ev, rt) {
+    if (rt !== 'single' && rt !== 'avg') return ev ? evStatOf(p, ev) : stats(p);
+    var ck = '_st_' + (ev || '') + '_' + rt;
+    if (p[ck]) return p[ck];
+    var base = ev ? evStatOf(p, ev) : stats(p);
+    if (!base) return null;
+    var recs = (p.records || []).filter(function (r) {
+      return r.type === rt && (!ev || r.ev === ev);
+    });
+    var byLevel = { WR: 0, CR: 0, NR: 0 };
+    var heldTotal = 0, longest = 0, holdingNow = 0, bestYear = 0;
+    var evSet = {}, yearCount = {};
+    recs.forEach(function (r) {
+      byLevel[r.level]++;
+      heldTotal += r.held;
+      longest = Math.max(longest, r.held);
+      if (r.current) holdingNow++;
+      evSet[r.ev] = 1;
+      var y = parseInt(String(r.date).slice(0, 4), 10);
+      yearCount[y] = (yearCount[y] || 0) + 1;
+    });
+    Object.keys(yearCount).forEach(function (y) { bestYear = Math.max(bestYear, yearCount[y]); });
+    var st = {};
+    for (var k in base) st[k] = base[k];
+    st.wrCount = byLevel.WR; st.crCount = byLevel.CR; st.nrCount = byLevel.NR;
+    st.recTotal = recs.length;
+    st.recEvents = Object.keys(evSet).length;
+    st.recBestYear = bestYear;
+    st.heldTotal = heldTotal; st.heldLongest = longest; st.holdingNow = holdingNow;
+    p[ck] = st;
+    return st;
+  }
+
+  function board(kind, key, n, ev, ctx, pool, rt) {
     var src = pool || ctx.ranked;
     var all = src.filter(function (p) { return !ev || (p.events || []).indexOf(ev) >= 0; })
       .map(function (p) {
         /* 指定项目时用「该项目上的真实指标」，不拿全项目数值冒充 */
-        var st = ev ? evStatOf(p, ev) : stats(p);
+        var st = statsTrack(p, ev, rt);
         if (!st) return null;
         return { p: p, v: st[key] };
       })
@@ -751,7 +790,7 @@
          旧数据包没有这一项，前端会退回 lanes / lanesAvg（只有世界纪录）。 */
       laneChains: cfg.laneChains || null,
       milestones: milestones, eventMilestones: eventMilestonesFn,
-      boards: boards, board: function (k, key, n, e, pool) { return board(k, key, n, e, ctx, pool); },
+      boards: boards, board: function (k, key, n, e, pool, rt) { return board(k, key, n, e, ctx, pool, rt); },
       evStatOf: function (p, ev) { return evStatOf(p, ev); },
       /* 原始按项目统计桶（含 recPerYear / goldPerYear 这类按年分布），
          单项目竞速图要靠它算出「该项目上的年度表现」。 */
