@@ -369,25 +369,54 @@ const NORM_CAP = 3;
  * 0.43，低于三盲的 0.47，这与「大阶 World Record 是硬通货」的直觉相反。
  * 开根号是广度与深度之间的折中：六阶落在 0.60 附近，介于二阶与盲拧之间。
  *
- * 映射：w_e = floor + (1 - floor) · s_e^γ
+ * 2026-11-05 起改用「方案 A」：以 WCA 官方项目序位为骨架，人气只留 6% 话语权。
  *
- *   三条结构保证（与数据无关，只依赖公式形状）：
- *   ① s_333 ≡ 1 → w_333 ≡ 1，且是全局上界。**三阶恒为最高。**
- *   ② s^γ 在 s>0 上严格单调 ⇒ 权重排序 ≡ 规模排序，不会出现
- *      "份额差 20 倍、权重只差 5%" 的断裂。
- *   ③ 值域 [floor, 1]，冷门项目不会被压到 0（压到 0 等于取消这个项目）。
+ *   P_e = clamp((180 - rank_e + K) / span, 0..1)         停办项 = retiredMin
+ *   w_e = floor + (1 - floor) · P_e^γ · (1 - ε + ε · s_pop_e)
+ *   w_333 ≡ 1（钉死）；停办项再 × retiredDiscount
  *
- * γ 是唯一的价值旋钮：
- *   γ 小 → 贴近旧表（三阶只领先一点，冷门项目受保护）
- *   γ 大 → 三阶领先明显，冷门项目被压得更狠
- * 两端是同一件事，取值见 WEIGHT_V2_CFG。敏感性对照由 verify_weights.js 生成。
+ * 为什么要换自变量：旧公式 w = .30 + .70·s_pop^.75 的唯一自变量是「规模」，
+ * 于是权重排序 ≡ 人气排序 —— 金字塔 .7294 排第 3、斜转 .6298 排第 6，
+ * 而五阶 .5391、六阶 .3996、七阶 .3848 全被压在后面。调 γ 只会让所有项目
+ * 一起挤到地板，改变不了排序，必须换掉自变量本身。
+ *
+ * 结构保证：P 由官方 rank 单调映射，与参赛人数无关；三阶 P=1、w 钉死 1；
+ * 值域 [floor, 1]，冷门项目不会被压到 0（压到 0 等于取消这个项目）；
+ * s_pop 只作为 (1-ε+ε·s_pop) 的 6% 微调，不再决定名次。
+ *
+ * 旋钮：γ 下压强度、K 冷门保护、ε 人气话语权、floor 地板。
+ * 敏感性对照：node etl/score/compare_v2.js（扫 γ）。
  *
  * 停办项目（脚拧 / 八板 / 十二板 / 旧多盲）单独乘 retiredDiscount：
  * 它们的历史份额是"当年"的，今天已不再产出新纪录，含金量应再降一档。
  */
+/* ── WCA 官方项目序位（events.rank）────────────────────────────────────
+   来源：WCA_export_events.tsv 的 rank 列 / WCA 源码 lib/static_data/events.json。
+   ⚠ 它不是难度、含金量或人气评级，而是 WCA 官网维护的「项目显示顺序」：
+     app/models/event.rb 的 official? 用 rank < 990 判断现役；
+     competition.rb 的领奖台用 sort_by { event.rank } 排序；
+     db/migrate/20161226223701_change_event_order_and_names.rb 曾逐条
+     `update Events set rank = ...` 手工调整过一次顺序。
+   数值以 10 为间隔，便于在两项之间插入新项目；停办项被推到 996–999，
+   2026 年新增的 FTO 先占 810（2027-01-02 起官方，本站 21 项里没有它）。
+   为什么可以当「声望骨架」：这套顺序由 WCA 官方长期人工维护，大致按魔方
+   家族与项目历史分组（NxN 在前、形状类居中、盲拧/多盲在后），与技术跨度、
+   传统地位同向，且**完全不受参赛人数影响** —— 正好替换掉旧公式中
+   「权重 ≡ 人气排序」这个自变量。它只是代理量，不是官方评级。 */
+const EV_OFFICIAL_RANK = {
+  '333': 10, '222': 20, '444': 30, '555': 40, '666': 50, '777': 60,
+  '333bf': 70, '333fm': 80, '333oh': 90,
+  clock: 110, minx: 120, pyram: 130, skewb: 140, sq1: 150,
+  '444bf': 160, '555bf': 170, '333mbf': 180,
+  '333ft': 996, magic: 997, mmagic: 998, '333mbo': 999,
+};
 const WEIGHT_V2_CFG = {
-  floor: 0.30,          // 地板：最冷门项目的权重
-  gamma: 0.75,          // 规模弹性
+  floor: 0.24,          // 地板：官方序位最靠后的项目也保留 24% 权重
+  gamma: 1.05,          // 对「官方声望 P」的下压弹性
+  rankBonus: 20,        // K：冷门保护（三阶 rank 10 → P=(180-10+20)/190=1）
+  rankSpan: 190,        // = 180 - 10 + K
+  popShare: 0.06,       // ε：人气只留 6% 话语权（旧公式是 100%）
+  retiredMin: 0.10,     // 停办项 P 下限（rank 996+ 直接代入会算出负数）
   retiredDiscount: 0.85,
 };
 
@@ -477,16 +506,29 @@ function scaleOf(ev, stat) {
   return Math.max(0, Math.min(1, st.pr * Math.sqrt(Math.max(0, st.ar))));
 }
 
+/** 官方序位 → 声望 P ∈ [0,1]。三阶恒 1；停办项固定 retiredMin；
+ *  未来新增项目若不在表里，保守按停办项下限处理（不会被误判成高权重）。 */
+function prestigeOf(ev, cfg) {
+  const c = cfg || WEIGHT_V2_CFG;
+  if (EV_RETIRED.has(ev)) return c.retiredMin;
+  const r = EV_OFFICIAL_RANK[ev];
+  if (r == null) return c.retiredMin;
+  return Math.max(0, Math.min(1, (180 - r + c.rankBonus) / c.rankSpan));
+}
+
 /**
- * 由规模指数算出 v2 权重。纯函数，可任意改 cfg 做敏感性分析。
- * @param {{floor?:number, gamma?:number, retiredDiscount?:number, stat?:object}} [cfg]
+ * 方案 A：由「WCA 官方项目序位 + 少量人气修正」算出 v2 权重（2026-11-05）。
+ * 纯函数，可任意改 cfg 做敏感性分析。
+ * @param {{floor?:number,gamma?:number,popShare?:number,rankBonus?:number,rankSpan?:number,retiredMin?:number,retiredDiscount?:number,stat?:object}} [cfg]
  */
 function buildWeightV2(cfg) {
   const c = { ...WEIGHT_V2_CFG, ...(cfg || {}) };
   const stat = c.stat || EV_STAT;
   const out = {};
   for (const ev of Object.keys(stat)) {
-    let w = c.floor + (1 - c.floor) * Math.pow(scaleOf(ev, stat), c.gamma);
+    const P = prestigeOf(ev, c);
+    const pop = scaleOf(ev, stat);
+    let w = c.floor + (1 - c.floor) * Math.pow(P, c.gamma) * (1 - c.popShare + c.popShare * pop);
     if (EV_RETIRED.has(ev)) w *= c.retiredDiscount;
     out[ev] = ev === '333' ? 1 : w;      // 三阶钉死 1.000，不吃浮点误差
   }
@@ -707,9 +749,11 @@ module.exports = {
   EV_WEIGHT,
   NORM_CAP,
   WEIGHT_V2_CFG,
+  EV_OFFICIAL_RANK,
   EV_STAT,
   EV_SHARE,
   scaleOf,
+  prestigeOf,
   EV_RETIRED,
   EV_RETIRED_DAY,
   EV_WEIGHT_V2,

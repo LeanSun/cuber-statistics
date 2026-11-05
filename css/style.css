@@ -106,7 +106,7 @@
 @property --bronze{syntax:"<color>";inherits:true;initial-value:#c07845}
 
 /* ① 主路径：切换期间让变量自己过渡。
-   时长由 JS 写进 --theme-dur（正常 620ms；系统开了「减少动效」时 200ms ——
+   时长由 JS 写进 --theme-dur（正常 900ms；系统开了「减少动效」时 280ms ——
    仍然过渡，只是更快。★ 2026-11-05 修正：以前 reduced-motion 下把过渡整个关掉，
    结果开着「减少动画效果」的系统上切换就是硬跳，用户看到的就是「没有效果」）。 */
 html.theme-anim{
@@ -147,24 +147,28 @@ html.theme-fade *::after{
 /* canvas 交叉淡化用的快照层：盖在新图表上，从旧画面淡出到透明（JS 里创建） */
 .theme-ghost{position:absolute;pointer-events:none;z-index:6;border-radius:inherit;
   transition-property:opacity;transition-timing-function:linear}
-/* 系统级「减少动效」：不再完全关掉颜色过渡（那等于硬切），改成 200ms 的快速过渡。
-   JS 会把 --theme-dur 写成 .2s；这里只兜住「JS 没跑到」的极端情况。 */
+/* 系统级「减少动效」：不再完全关掉颜色过渡（那等于硬切），改成 280ms 的快速过渡。
+   JS 会把 --theme-dur 写成 .28s；这里只兜住「JS 没跑到」的极端情况。 */
 @media (prefers-reduced-motion: reduce){
-  html.theme-anim,html.theme-anim body{transition-duration:var(--theme-dur,.2s)!important}
-  html.theme-fade,html.theme-fade *{transition-duration:var(--theme-dur,.2s)!important}
+  html.theme-anim,html.theme-anim body{transition-duration:var(--theme-dur,.28s)!important}
+  html.theme-fade,html.theme-fade *{transition-duration:var(--theme-dur,.28s)!important}
   .theme-settle .chart-box,.theme-settle .ec{animation:none!important}
 }
 
-/* ============ 圆形扩散（View Transitions 主路径） ============
+/* ============ 圆形扩散 / 收缩（View Transitions 主路径） ============
    JS 在点击时把原点 (--reveal-x/--reveal-y)、终态半径 (--reveal-max)、
-   羽化宽度 (--reveal-feather) 写到 <html>，再用 WAAPI 把 --reveal-r 从 1px
-   动画到覆盖全屏的半径。这里只负责「怎么显示」：
-     · 关掉 VT 默认的 cross-fade（否则新旧两层会互相淡入淡出，圆形边界变糊）；
-     · 新层用 radial-gradient 遮罩，边缘 --reveal-feather 宽度是渐隐带，
-       不是一刀切的硬圆 —— 这是消除「唰一下」的关键；
+   羽化宽度 (--reveal-feather) 写到 <html>，再用 WAAPI 动画 --reveal-r。
+   方向由 <html> 上的 .theme-reveal-contract 决定（2026-11-05 用户要求）：
+     · 浅 → 深（默认）：mask 圆内不透明、圆外透明，r 1px → R = 深色扩散；
+     · 深 → 浅（.theme-reveal-contract）：mask 圆内透明、圆外不透明，
+       r R → 1px = 深色圆向点击点收缩消失，浅色从外围合拢。
+   这里只负责「怎么显示」：
+     · 关掉 VT 默认的 cross-fade（否则新旧两层互相淡入淡出，圆形边界变糊）；
+     · radial-gradient 的边缘 --reveal-feather 是渐隐带，不是一刀切的硬圆
+       —— 这是消除「唰一下」的关键；
      · drop-shadow 沿裁切圆周挂一圈目标主题色柔光，进一步吃掉新旧色差。
    不支持 @property 的浏览器（无法动画 --reveal-r）由 JS 加 .theme-reveal-clip，
-   退回 clip-path 硬圆：仍有圆形扩散，只是没有羽化边。 */
+   退回 clip-path 硬圆；收缩方向会直接回退颜色插值（硬圆做不出「圆外显示」）。 */
 @property --reveal-r{syntax:"<length>";inherits:true;initial-value:0px}
 ::view-transition-old(root),
 ::view-transition-new(root){
@@ -180,6 +184,14 @@ html.theme-fade *::after{
   mask-image:radial-gradient(circle var(--reveal-r) at var(--reveal-x,50%) var(--reveal-y,50%),
     #000 calc(100% - var(--reveal-feather,38px)),rgba(0,0,0,0) 100%);
   filter:drop-shadow(0 0 14px var(--reveal-glow,transparent));
+}
+/* 深 → 浅：反向遮罩。圆内透明 → 露出下层旧主题（深色）；圆外显示新主题（浅色）。
+   --reveal-r 从覆盖全屏收到 1px，视觉上是深色圆收拢进点击点。 */
+html.theme-reveal-contract::view-transition-new(root){
+  -webkit-mask-image:radial-gradient(circle var(--reveal-r) at var(--reveal-x,50%) var(--reveal-y,50%),
+    rgba(0,0,0,0) calc(100% - var(--reveal-feather,38px)),#000 100%);
+  mask-image:radial-gradient(circle var(--reveal-r) at var(--reveal-x,50%) var(--reveal-y,50%),
+    rgba(0,0,0,0) calc(100% - var(--reveal-feather,38px)),#000 100%);
 }
 html.theme-reveal-clip::view-transition-new(root){
   -webkit-mask-image:none;mask-image:none;
@@ -1136,7 +1148,9 @@ table.sd-table thead th.sd-off,table.sd-table thead th.sd-cur,table.sd-table the
 table.sd-table tbody td{padding:7px 11px}
 .sd-rk{width:46px;color:var(--text-3)}
 .sd-rk.sd-top3{color:var(--accent);font-weight:800}
-.sd-nm{font-weight:600;max-width:250px;overflow:hidden;text-overflow:ellipsis}
+/* 2026-11-05：选手名字保持常规字重（用户要求「名字不要加粗」）。
+   加粗只留给分数列：.sd-num/.sd-off=700，当前排序列 .sd-cur.sd-num=800。 */
+.sd-nm{font-weight:400;max-width:250px;overflow:hidden;text-overflow:ellipsis}
 .sd-nm small{display:inline-block;margin-left:7px;color:var(--text-3);font-size:11px;font-weight:400}
 /* ★ 单维分数统一加粗（2026-11-05 用户要求）：六维分数细则里每位选手的
    M1–M6 分数全部 700 字重，当前排序列再加重到 800 + 放大字号保持层级。

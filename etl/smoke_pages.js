@@ -812,6 +812,10 @@ ok(M.meta && M.meta.sixWeights && M.meta.sixWeights.m1 > 0, 'meta 下发六维�
   ok(/\.sd-num\{[^}]*font-weight:700/.test(css) && /\.sd-off\{[^}]*font-weight:700/.test(css) &&
     /\.sd-cur\.sd-num\{font-weight:800\}/.test(css),
     '六维分数细则单维分数加粗、当前排序列更重');
+  const sixSrc = fs.readFileSync(path.join(ROOT, 'js/pages-sixdim.js'), 'utf8');
+  ok(/\.sd-nm\{font-weight:400/.test(css) && !/class="sd-nm tl"><b>/.test(sixSrc) &&
+    /class="sd-nm tl"><span>/.test(sixSrc),
+    '六维分数细则选手名字不加粗（只有分数列加粗）');
 }
 ok(M.meta && M.meta.sixNames && Object.keys(M.meta.sixNames).length === 6, 'meta 下发六维名称 sixNames');
 /* 两个人数必须分开：sixAll = 六维引擎算过分的全量人数（sixdim_tail.tsv），
@@ -1249,7 +1253,7 @@ console.log('== 默认值：停办项目计入 / 竞速图速率 ==');
     /* 2026-11-05：reduced-motion 下不再「直接跳色」，改成 200ms 的短过渡；
        图表用 canvas 快照交叉淡化，避免重绘那一帧整体跳色。 */
     ok(/THEME_MS_QUICK/.test(appSrc) && /themeMs\(\)/.test(appSrc),
-      '系统开了「减少动效」时仍保留 200ms 短过渡（不再硬切）');
+      '系统开了「减少动效」时仍保留 280ms 短过渡（不再硬切）');
     ok(/prefersReduce\(\) \? THEME_MS_QUICK : THEME_MS/.test(appSrc),
       '减少动效时压缩时长而不是关闭过渡');
     ok(/crossFadeCharts/.test(appSrc) && /captureCanvases/.test(appSrc),
@@ -1277,6 +1281,39 @@ console.log('== 默认值：停办项目计入 / 竞速图速率 ==');
     ok(/drop-shadow\(0 0 \d+px var\(--reveal-glow/.test(css2),
       '圆周柔光环吃掉新旧主题的色差硬边');
     ok(/theme-reveal-clip/.test(css2), '无 @property 的浏览器回退 clip-path 圆形扩散');
+    /* 2026-11-05 晚：用户要求浅→深扩散、深→浅收缩，且整体速率放慢。 */
+    ok(/THEME_MS = 900/.test(appSrc) && /THEME_MS_QUICK = 280/.test(appSrc),
+      '主题切换放慢到 900ms（减少动效 280ms）');
+    ok(/theme-reveal-contract/.test(appSrc) &&
+      /const contract = root\.getAttribute\('data-theme'\) === 'dark' && next === 'light'/.test(appSrc),
+      '方向由「当前主题 → 目标主题」判定：深→浅才收缩');
+    ok(/const r0 = contract \? R \+ 'px' : '1px'/.test(appSrc) &&
+      /const r1 = contract \? '1px' : R \+ 'px'/.test(appSrc),
+      '扩散 1px→R / 收缩 R→1px 共用一条半径动画，起止互换');
+    ok(/--reveal-r', contract \? R \+ 'px' : '0px'/.test(appSrc),
+      '收缩首帧半径设为 R（避免先闪一下全浅色）');
+    ok(/html\.theme-reveal-contract::view-transition-new\(root\)\{[\s\S]{0,420}?rgba\(0,0,0,0\) calc\(100% - var\(--reveal-feather/.test(css2),
+      '收缩用反向遮罩：圆内透明露出旧深色、圆外显示新浅色');
+    ok(/if \(!maskOK && contract\) return false/.test(appSrc),
+      '无 @property 时收缩方向回退颜色插值（硬圆做不出反向遮罩）');
+  }
+  /* 2026-11-05 晚：项目权重方案 A（WCA 官方序位骨架，人气只留 6% 话语权）。
+     排序关系 + 公式自洽双保险，防止以后有人把公式改回「权重 ≡ 人气」。 */
+  {
+    const RN = require(path.join(ROOT, 'etl/score/runs.js'));
+    const W = RN.EV_WEIGHT_V2, C = RN.WEIGHT_V2_CFG;
+    ok(W['333'] === 1 && W['444'] > W.pyram && W['555'] > W.skewb &&
+      W['666'] > W.clock && W['333mbf'] < W.pyram,
+      '项目权重以官方序位为骨架（金字塔/斜转不再靠人数排前列）');
+    const P = (r) => (180 - r + C.rankBonus) / C.rankSpan;
+    const expect = (ev) => C.floor + (1 - C.floor) * Math.pow(P(RN.EV_OFFICIAL_RANK[ev]), C.gamma)
+      * (1 - C.popShare + C.popShare * RN.scaleOf(ev));
+    ok(Math.abs(W.pyram - expect('pyram')) < 1e-9 &&
+      Math.abs(W.skewb - expect('skewb')) < 1e-9 && Math.abs(W['666'] - expect('666')) < 1e-9,
+      '方案 A 公式落位：金字塔/斜转/六阶权重与官方 rank 骨架一致');
+    ok(RN.EV_OFFICIAL_RANK['333'] === 10 && RN.EV_OFFICIAL_RANK.pyram === 130 &&
+      C.popShare === 0.06 && C.gamma === 1.05,
+      '官方 rank 表与三档旋钮就位（ε=.06 / γ=1.05）');
   }
   ok(hR.indexOf('tlRateReset') < 0, '「恢复默认」按钮随三项调节一起删除');
   ok(hR.indexOf('msToast') >= 0, '重大事件有右下角弹出提示的容器');

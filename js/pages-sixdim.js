@@ -181,7 +181,7 @@
           return '<td class="sd-rk tl' + (no <= 3 ? ' sd-top3' : '') + '">' + no + '</td>';
         }
         if (c.key === 'nm') {
-          return '<td class="sd-nm tl"><b>' + esc(r.n) + '</b><small>' + esc(r.id) + '</small></td>';
+          return '<td class="sd-nm tl"><span>' + esc(r.n) + '</span><small>' + esc(r.id) + '</small></td>';
         }
         /* 分数：数字即颜色（该维度主色），当前排序列加粗放大 */
         return '<td class="' + c.cls + ' sd-num" style="color:' + colorOf(c.key) + '">' +

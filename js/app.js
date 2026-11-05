@@ -251,14 +251,14 @@
        ① 系统开了「减少动画效果」（Windows 辅助功能里很常见）时，CSS 的
           `@media (prefers-reduced-motion:reduce)` 把过渡整个关成 none，JS 里也
           直接 return —— 于是这类机器上根本没有任何过渡，就是硬切。
-          现在改为：仍然过渡，只是把时长压到 200ms。
+          现在改为：仍然过渡，只是把时长压到 280ms。
        ② 图表是 canvas，颜色画在位图上，CSS 过渡管不到 —— 之前等颜色跑完再
           `render(true)`，canvas 在那一帧整体跳色，观感像「啪」地闪一下。
           现在改成：先把旧画面快照成一张位图盖在新图表上，再让它淡出，
           图表颜色是「化开」过去的（见 crossFadeCharts）。
      主路径仍是变量插值（一组动画、不掉帧）；不支持的浏览器退回逐元素过渡（.theme-fade）。 */
-  const THEME_MS = 620;        /* 正常时长 */
-  const THEME_MS_QUICK = 200;  /* 系统要求减少动效时的时长：仍然过渡，只是更快 */
+  const THEME_MS = 900;        /* 正常时长（2026-11-05 用户要求稍放慢：620 → 900） */
+  const THEME_MS_QUICK = 280;  /* 系统要求减少动效时的时长：仍然过渡，只是更快 */
   /* 能否让「变量本身」过渡：支持 CSS @property 的浏览器可以，
      此时全站只需一组动画（:root 上的 --bg/--text/...），不掉帧；
      不支持的退回逐元素过渡（.theme-fade），慢一点但同样不是硬切。 */
@@ -332,17 +332,22 @@
       });
     });
   }
-  /* ---- 深浅色切换：从点击处圆形扩散（2026-11-05 晚） ----
+  /* ---- 深浅色切换：浅→深扩散、深→浅收缩（2026-11-05 晚） ----
      更早一版也用过 View Transitions，但当时把新主题渲染成整页静态截图，
      clip-path 是一条硬圆边，扫过瞬间整页定型 → 用户反馈「唰一下、很生硬」。
-     这一版保留「从鼠标点下的地方向外扩散」的空间感，改掉三处硬感：
+     这一版保留「从鼠标点下的地方」这个空间原点，改掉三处硬感：
        ① 新层不用硬 clip-path，改用 radial-gradient 羽化遮罩（边缘渐隐带）；
        ② 新层自身 opacity .88 → 1，扫过的区域是「化开」而不是「啪」地换掉；
        ③ 圆周挂一圈目标主题色的柔光（drop-shadow），吃掉新旧色差的硬边界。
+     方向由「当前主题 → 目标主题」决定（2026-11-05 用户要求）：
+       浅 → 深：新层（深色）圆内可见，r 从 1px 长到覆盖全屏 = 扩散；
+       深 → 浅：新层（浅色）圆外可见、圆内透明（露出旧深色），
+                r 从覆盖全屏缩到 1px = 深色圆向点击点收拢消失、浅色从外围合拢。
+     两条路径共用 --reveal-r，只是起止值与 CSS 遮罩渐变方向相反。
      图表是 canvas：切换期间先不重绘，VT 结束后再走 crossFadeCharts 的旧画面
      快照淡出（见 deferCharts），否则会出现「先变新 → 退回旧 → 再化开」的闪回。
      不支持 View Transitions 的浏览器 → 回退到下面的变量插值 / .theme-fade；
-     系统开了「减少动效」→ 只把时长压到 200ms，绝不关成 none。 */
+     系统开了「减少动效」→ 只把时长压到 280ms，绝不关成 none。 */
   let lastPointer = null;
   document.addEventListener('pointerdown', function (e) {
     if (e.clientX > 0 || e.clientY > 0) lastPointer = { x: e.clientX, y: e.clientY };
@@ -365,7 +370,7 @@
       '--reveal-feather', '--reveal-glow'].forEach(function (k) {
       try { r.style.removeProperty(k); } catch (e) { }
     });
-    r.classList.remove('theme-reveal-clip');
+    r.classList.remove('theme-reveal-clip', 'theme-reveal-contract');
     try { r.style.removeProperty('--theme-dur'); } catch (e) { }
   }
   function circleReveal(next, apply, o, ms) {
@@ -374,16 +379,22 @@
     const W = window.innerWidth, H = window.innerHeight;
     /* 半径取到四角最远点，保证圆能覆盖整屏 */
     const R = Math.hypot(Math.max(o.x, W - o.x), Math.max(o.y, H - o.y)) + 48;
+    const contract = root.getAttribute('data-theme') === 'dark' && next === 'light';
     const maskOK = canAnimateVars();  /* @property 可用 → 羽化遮罩；否则硬圆 clip 兜底 */
+    /* 无 @property 只能做「圆内可见」的硬圆 clip-path，做不出收缩需要的
+       「圆外可见」反向遮罩，首帧会整屏跳色 —— 该方向直接回退颜色插值。 */
+    if (!maskOK && contract) return false;
     try {
-      root.style.setProperty('--reveal-r', '0px');
+      /* 首帧半径必须是动画起点：扩散 0、收缩 R（否则收缩先闪一下全浅色） */
+      root.style.setProperty('--reveal-r', contract ? R + 'px' : '0px');
       root.style.setProperty('--reveal-x', o.x + 'px');
       root.style.setProperty('--reveal-y', o.y + 'px');
       root.style.setProperty('--reveal-max', R + 'px');
-      root.style.setProperty('--reveal-feather', (ms <= 250 ? 12 : 38) + 'px');
+      root.style.setProperty('--reveal-feather', (ms <= 300 ? 12 : 38) + 'px');
       root.style.setProperty('--reveal-glow',
         next === 'dark' ? 'rgba(13,17,23,.30)' : 'rgba(255,255,255,.55)');
     } catch (e) { }
+    root.classList.toggle('theme-reveal-contract', contract);
     if (!maskOK) root.classList.add('theme-reveal-clip');
     deferCharts = true;
     let vt;
@@ -393,8 +404,10 @@
       return false;
     }
     vt.ready.then(function () {
+      const r0 = contract ? R + 'px' : '1px';
+      const r1 = contract ? '1px' : R + 'px';
       const kf = maskOK
-        ? [{ '--reveal-r': '1px', opacity: '.88' }, { '--reveal-r': R + 'px', opacity: '1' }]
+        ? [{ '--reveal-r': r0, opacity: '.88' }, { '--reveal-r': r1, opacity: '1' }]
         : [{ clipPath: 'circle(0px at ' + o.x + 'px ' + o.y + 'px)' },
            { clipPath: 'circle(' + R + 'px at ' + o.x + 'px ' + o.y + 'px)' }];
       try {
