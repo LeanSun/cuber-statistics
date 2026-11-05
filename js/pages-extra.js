@@ -1158,7 +1158,7 @@
       ckEvSer = '__sere' + rtype + '_' + combo;
     }
     /* 六维权重每帧只取一次（原来在 evScopeT 里每人取一次） */
-    const W6 = (P.util && P.util.sixW) ? P.util.sixW() : { m1: .42, m2: .14, m3: .22, m4: .10, m5: .04, m6: .08 };
+    const W6 = (P.util && P.util.sixW) ? P.util.sixW() : { m1: 0.42, m2: 0.20, m3: 0.10, m4: 0.14, m5: 0.06, m6: 0.08 };
     const END_Y = 2026;
     /* 六维单独筛选：直接用该维度的维度分作为基准分，再乘同一条年度进度曲线，
        这样「只看 M3」的竞速图里条形只按大赛表现这一维比拼。 */
@@ -2353,7 +2353,7 @@
   function sensitivity(state) {
     let h = '<div class="card reveal"><div class="card-head"><h2>' + esc(t('top.sens')) + '</h2>' + infoTip(t('top.sens.d')) + '</div>';
     /* 用「参数设置」页的当前权重做敏感性扫描（而不是写死的默认值） */
-    const W = (P.util.sixW && P.util.sixW()) || (M.meta && M.meta.sixWeights) || { m1: 0.45, m2: 0.15, m3: 0.20, m4: 0.15, m5: 0.01, m6: 0.04 };
+    const W = (P.util.sixW && P.util.sixW()) || (M.meta && M.meta.sixWeights) || { m1: 0.42, m2: 0.20, m3: 0.10, m4: 0.14, m5: 0.06, m6: 0.08 };
     const wsum = W.m1 + W.m2 + W.m3 + W.m4 + W.m5 + W.m6;
     for (const kk in W) W[kk] = W[kk] / (wsum || 1);
     const rest0 = 1 - W.m1;
@@ -2391,7 +2391,7 @@
       simple: ['总分由六个维度加权合成：每维先算出自己的「维度分」（本站刻度满分 1000），再乘权重 w 求和。六维各管一件事——守纪录、上领奖台、在大赛破纪录、长期占据世界前列、与纪录的绝对差距、把人类极限推远多少。旧七模块模型（M1–M7，含 Elo 对战强度）已整体停用。',
         'A total is the weighted sum of six dimensions. Each dimension first produces its own score on the site scale (full mark 1000), then is multiplied by its weight. The six cover holding records, podium finishes, records broken at championships, long tenure near the top, absolute distance to the WR, and how far the frontier was pushed. The old seven-module model, including Elo head-to-head, is retired.'],
       f: ['$$t=\\sum_{d}w_{d}\\,s_{d},\\qquad s_{d}=1000\\cdot\\frac{x_{d}}{\\max_{p}x_{d}},\\qquad \\sum_{d}w_{d}=1$$',
-        '$$w=(\\underbrace{0.45}_{M1},\\underbrace{0.20}_{M3},\\underbrace{0.15}_{M2},\\underbrace{0.15}_{M4},\\underbrace{0.04}_{M6},\\underbrace{0.01}_{M5})$$'],
+        '$$w=(\\underbrace{0.42}_{M1},\\underbrace{0.10}_{M3},\\underbrace{0.20}_{M2},\\underbrace{0.14}_{M4},\\underbrace{0.08}_{M6},\\underbrace{0.06}_{M5})$$'],
       detail: [
         ['M1 与 M6 是同一件事实的两面，刻意拆开：M1 只问「这条纪录被你独占了多少天」（持有），M6 只问「你把它往前推了多深」（幅度）。上一版把两者混在一条公式里，等于同一份数学算两遍，2026-10-25 起分家。',
           'M1 and M6 are two sides of one fact, deliberately split: M1 asks only how long a record was held outright, M6 asks only how far it was pushed. The previous version mixed both into one formula, double-counting the same mathematics, and they were separated on 2026-10-25.'],
@@ -2513,7 +2513,7 @@
       id: 'weights', h: ['维度权重与合成', 'Dimension weights'], g: 'weights',
       simple: ['权重由「信息量 + 抗刷分 + 覆盖度」三条原则确定：M1 是主币（45%），M3 次之（20%，只覆盖锦标赛但含金量高），M2 与 M4 并列（各 15%），M6 因为只有 281 人能得分压到 4%，M5 是纯截面快照给最低的 1%。六者之和恒为 1，可在页面顶部实时调整。',
         'Weights follow three principles: information content, resistance to farming and coverage. M1 is the main coin at 45 percent, M3 next at 20 percent since it is narrow but dense, M2 and M4 tie at 15 percent, M6 is cut to 4 percent because only 281 players score at all, and M5 gets the floor of 1 percent as a pure cross-section. They always sum to one and are adjustable at the top of this page.'],
-      f: ['$$t=0.45\\,s_{M1}+0.20\\,s_{M3}+0.15\\,s_{M2}+0.15\\,s_{M4}+0.04\\,s_{M6}+0.01\\,s_{M5}$$'],
+      f: ['$$t=0.42\\,s_{M1}+0.10\\,s_{M3}+0.20\\,s_{M2}+0.14\\,s_{M4}+0.08\\,s_{M6}+0.06\\,s_{M5}$$'],
       detail: [
         ['改权重时其余各维按原比例自动缩放，合计恒为 100%，所以「把 M1 调到 60%」不会把别的维度压成 0，只会等比压缩。顶部页面还提供几套预设（默认 / 平均 / 偏纪录 / 偏大赛），可直接对比同一批选手在不同取向下的名次变化。',
           'Adjusting one weight rescales the others proportionally so the sum stays at 100 percent, which means raising M1 to 60 percent compresses the rest rather than zeroing them. Several presets are provided so the same players can be compared under different priorities.'],
@@ -2558,7 +2558,7 @@
 
     /* 六维权重 / 六维名称：被下方的「六维占比自定义」与「预设」复用，必须在使用前定义。
        注意：原先附带的「总分口径（现行）」卡片已按需求删除，这里只保留两个常量声明。 */
-    const SW = (P.util.sixW && P.util.sixW()) || (M.meta && M.meta.sixWeights) || { m1: 0.45, m2: 0.15, m3: 0.20, m4: 0.15, m5: 0.01, m6: 0.04 };
+    const SW = (P.util.sixW && P.util.sixW()) || (M.meta && M.meta.sixWeights) || { m1: 0.42, m2: 0.20, m3: 0.10, m4: 0.14, m5: 0.06, m6: 0.08 };
     const SN = (M.meta && M.meta.sixNames) || { m1: '纪录持有', m2: '领奖台', m3: '大赛表现', m4: '统治力', m5: '纪录比', m6: '突破幅度' };
 
     /* ---- 六维占比自定义（2026-11-05 第十四轮重排） ----

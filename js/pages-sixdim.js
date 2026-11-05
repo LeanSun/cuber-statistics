@@ -51,7 +51,7 @@
       snapshot: 'Snapshot {d} · {n} players',
       weights: 'Weights',
       noteTitle: 'Method',
-      noteBody: 'Weighted total = Σ (normalised dimension score × weight); each dimension is accumulated from per-event subtotals × event coefficients. Weights: M1 .45 / M3 .20 / M2 .15 / M4 .15 / M6 .04 / M5 .01.',
+      noteBody: 'Weighted total = Σ (normalised dimension score × weight); each dimension is accumulated from per-event subtotals × event coefficients. Weights: M1 .42 / M3 .10 / M2 .20 / M4 .14 / M6 .08 / M5 .06.',
       noteStatic: 'This is a static full-scope snapshot. Gender filtering and search run in the browser; event / track / as-of cuts require a rerun of the unified engine (etl/score/sixdim.js) and are not available here. Data is embedded in js/sixdim_data.js and is independent of the live leaderboard.',
       chipsTotal: 'Weighted total'
     } : {
@@ -69,7 +69,7 @@
       snapshot: '数据快照 {d} · {n} 名选手',
       weights: '权重',
       noteTitle: '口径说明',
-      noteBody: '六维总分 = Σ 维度分（同筛选范围内按榜首 = 1 归一）× 维度权重，各维度内部先按项目小计 × 项目系数累加。权重：M1 纪录持有 .45 / M3 大赛表现 .20 / M2 领奖台 .15 / M4 统治力 .15 / M6 突破幅度 .04 / M5 纪录比 .01。',
+      noteBody: '六维总分 = Σ 维度分（同筛选范围内按榜首 = 1 归一）× 维度权重，各维度内部先按项目小计 × 项目系数累加。权重：M1 纪录持有 .42 / M3 大赛表现 .10 / M2 领奖台 .20 / M4 统治力 .14 / M6 突破幅度 .08 / M5 纪录比 .06。',
       noteStatic: '本页为全量口径的静态快照：性别筛选与搜索在页面内完成；项目 / 轨道 / as-of 时间截取需经统一引擎（etl/score/sixdim.js）重算，暂不进本页。数据由 js/sixdim_data.js 内嵌，与站点正式榜单相互独立、互不影响。',
       chipsTotal: '六维总分'
     };

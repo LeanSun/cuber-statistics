@@ -259,7 +259,7 @@ ok(h3.indexOf('bar-track') >= 0, '条形外层有可收缩的弹性轨道（bar-
   if (hasEv) {
     /* 期望值用与前端完全相同的方式算（t = Σ w_d·s_d），
        避免 3 位小数存储值与重算值在 0.0005 边界上互相打架。 */
-    const SW = (M.meta && M.meta.sixWeights) || { m1: 0.45, m2: 0.15, m3: 0.20, m4: 0.15, m5: 0.01, m6: 0.04 };
+    const SW = (M.meta && M.meta.sixWeights) || { m1: 0.42, m2: 0.20, m3: 0.10, m4: 0.14, m5: 0.06, m6: 0.08 };
     const SK = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'];
     const expect = M.ranked.filter(function (p) { return p.sixEv && p.sixEv['333']; })
       .map(function (p) {
@@ -658,7 +658,7 @@ console.log('== 评分真实性：六维总分（当前模型唯一口径） =='
     ok(M.ranked.every(function (p) { return !(p.overall > 0); }), '无六维分时总分一律为 0（不回退旧 esum）');
   } else {
     ok(sixP.length > 0, '存在带六维分的选手（' + sixP.length + ' 人）');
-    const W = (M.meta && M.meta.sixWeights) || { m1: 0.45, m2: 0.15, m3: 0.20, m4: 0.15, m5: 0.01, m6: 0.04 };
+    const W = (M.meta && M.meta.sixWeights) || { m1: 0.42, m2: 0.20, m3: 0.10, m4: 0.14, m5: 0.06, m6: 0.08 };
     let badT = 0, maxDiff = 0;
     sixP.forEach(function (p) {
       let s = 0;
@@ -789,6 +789,30 @@ console.log('== 六维加权贡献（逐项代入） ==');
 ok(hC.indexOf('exp-v3-mod') >= 0 || hC.indexOf('breakdown-table') >= 0, '有六维贡献明细表');
 ok(hC.indexOf('六维') >= 0 || (M.meta && M.meta.sixNames), '页面/数据带六维名称');
 ok(M.meta && M.meta.sixWeights && M.meta.sixWeights.m1 > 0, 'meta 下发六维权重 sixWeights');
+{
+  /* 2026-11-05：默认六维占比改为 42:20:10:14:6:8（M1..M6，Σ=1）。
+     必须同时校验 params.js 的 DEFAULTS 与 ETL 下发的 meta.sixWeights ——
+     只改一边会让 p.six.t（ETL 预置）与页面按当前权重实时重算的总分对不上，
+     榜单 / 选手页 / 六维分数细则出现两套分数且不报错。 */
+  const WANT = { m1: 0.42, m2: 0.20, m3: 0.10, m4: 0.14, m5: 0.06, m6: 0.08 };
+  const WK = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'];
+  const dw = (global.Params && global.Params.defaults) || {};
+  const got = ['b1', 'b2', 'b3', 'b4', 'b5', 'b6'].map((k) => Number(dw[k]));
+  ok(got.every((v, i) => Math.abs(v - WANT[WK[i]]) < 1e-9),
+    '默认六维占比 = 42:20:10:14:6:8（Σ=' + got.reduce((a, b) => a + b, 0).toFixed(2) + '）');
+  const mw = M.meta && M.meta.sixWeights;
+  if (mw) {
+    ok(WK.every((k) => Math.abs(Number(mw[k]) - WANT[k]) < 1e-9),
+      'ETL meta.sixWeights 与默认占比一致（p.six.t 与页面重算同源）');
+  } else {
+    console.log('  · 本次数据无 meta.sixWeights，跳过交付层权重核对');
+  }
+  /* 六维分数细则：每位选手的单维分数统一加粗，当前排序列仍更重 */
+  const css = fs.readFileSync(path.join(ROOT, 'css/style.css'), 'utf8');
+  ok(/\.sd-num\{[^}]*font-weight:700/.test(css) && /\.sd-off\{[^}]*font-weight:700/.test(css) &&
+    /\.sd-cur\.sd-num\{font-weight:800\}/.test(css),
+    '六维分数细则单维分数加粗、当前排序列更重');
+}
 ok(M.meta && M.meta.sixNames && Object.keys(M.meta.sixNames).length === 6, 'meta 下发六维名称 sixNames');
 /* 两个人数必须分开：sixAll = 六维引擎算过分的全量人数（sixdim_tail.tsv），
    ranked = data.js 实际下发、榜单可翻页的人数。合成一个数会让人误以为另外 24 万人没被评分。 */

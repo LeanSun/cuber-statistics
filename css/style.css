@@ -1106,16 +1106,18 @@ table.sd-table tbody td{padding:7px 11px}
 .sd-rk.sd-top3{color:var(--accent);font-weight:800}
 .sd-nm{font-weight:600;max-width:250px;overflow:hidden;text-overflow:ellipsis}
 .sd-nm small{display:inline-block;margin-left:7px;color:var(--text-3);font-size:11px;font-weight:400}
-.sd-off{color:var(--text-2);font-size:12.5px}
+/* ★ 单维分数统一加粗（2026-11-05 用户要求）：六维分数细则里每位选手的
+   M1–M6 分数全部 700 字重，当前排序列再加重到 800 + 放大字号保持层级。
+   颜色由 HTML 内联给出（var(--m1..m6) / var(--accent)），这里只管排版 ——
+   等宽数字、右对齐，翻页时同位列的数字位数对齐成一条直线。 */
+.sd-off{color:var(--text-2);font-size:12.5px;font-weight:700}
 .sd-cur{font-weight:700;font-size:14.5px}
 .sd-tot{font-weight:700}
-/* ★ 分数数字（2026-11-04 晚）：颜色由 HTML 内联给出（var(--m1..m6) / var(--accent)），
-   这里只管排版 —— 等宽数字、右对齐，翻页时同位列的数字位数对齐成一条直线。 */
-.sd-num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.sd-num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:700}
 .sd-cur.sd-num{font-weight:800}
 .sd-tot.sd-num,.sd-table td.sd-cur.sd-num{letter-spacing:-.2px}
-/* 非当前排序列稍微压一点透明度：颜色仍可辨，但不会盖过被选中的那一列 */
-.sd-off.sd-num{opacity:.82}
+/* 非当前排序列只压一点透明度（不再压淡字重），颜色仍可辨 */
+.sd-off.sd-num{opacity:.95}
 .sd-empty{text-align:center!important;color:var(--text-3);padding:24px!important}
 /* 分页条：沿用 .pager 的按钮样式，只补上下间距与 [hidden] */
 .sd-pager{margin-top:14px}
