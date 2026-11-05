@@ -944,32 +944,36 @@ tr:hover .pname .linkish,tr:hover .pname .pname-txt{
 }
 
 /* ============ 动态可视化 ============ */
-.tl-top{position:relative;align-items:flex-end;gap:12px 18px}
-/* ★ 2026-11-05 晚：时间跳跃挪到「图表切换 / 六维筛选」同一行、水平居中。
-   不用 absolute + left:50%：这一行左侧两组筛选按钮合计 755px，整行几何中点
-   正好落在六维按钮上，绝对居中会盖住最后两颗（CDP 实测 x 622..792 与按钮重叠）。
-   改成两枚等宽 .spacer 夹住药丸：由 flex 把它推到「左侧控件 ↔ 右侧登顶徽标」
-   这段空白区的正中，同一行、不重叠、窄屏也不会压字。
-   高度 34px 与 .tl-top .seg 的 36px 对齐，align-items:flex-end 让底边贴齐。
-   选择器写全是为了压过后面 .tl-jump 的基础 padding / background。 */
-.tl-top .spacer{flex:1 1 0;min-width:8px}
-.tl-top .tl-jump.tl-jump-mid{position:relative;z-index:2;flex:none;
-  align-self:flex-end;margin-bottom:1px;height:34px;box-sizing:border-box;
-  padding:0 12px;gap:8px;background:var(--bg-elev);
-  border:1px solid var(--border);border-radius:999px;box-shadow:var(--shadow)}
-.tl-top .tl-jump.tl-jump-mid input{height:24px;padding:0 4px}
-@media (max-width:1180px){
-  /* 窄屏时两组筛选按钮会把中间挤没：两枚 spacer 收掉，药丸独占一行居中。 */
-  .tl-top .spacer{display:none}
-  .tl-top .tl-jump.tl-jump-mid{flex:0 0 100%;width:max-content;
-    height:34px;margin:2px auto 0;order:5}
+.tl-top{position:relative;align-items:flex-end;gap:12px 12px;flex-wrap:nowrap}
+/* ★ 2026-11-06：筛选行强制单行。
+   上一版把「时间跳跃」放在这一行并用两枚 spacer 夹住居中，但在 1422px 窗口下
+   「图表切换 + 六维筛选」固定 755px + 药丸 170px + 长姓名徽标 343px 会超过行宽，
+   徽标被挤到第二行（用户截图）。现在时间跳跃回到播放托盘，这一行只留两组按钮 +
+   最右徽标：flex-wrap:nowrap 禁换行，徽标 flex:0 1 auto + min-width:0 允许收缩
+   （姓名已有跑马灯，不会被压成空），留白由 margin-left:auto 吸收。 */
+.tl-top .fgroup{flex:0 0 auto}
+/* 时间跳跃回到播放托盘：与 36px 播放按钮同高、底边对齐，
+   托盘底色是 --bg-soft，药丸用 --bg-elev 才不会糊成一片。 */
+.tl-ctl .tl-jump{height:34px;box-sizing:border-box;padding:0 12px;gap:8px;
+  background:var(--bg-elev);border:1px solid var(--border);
+  border-radius:999px;box-shadow:var(--shadow)}
+.tl-ctl .tl-jump input{height:24px;padding:0 4px}
+/* 窄屏：按钮内边距收一档、标签间距收一档，给徽标让出空间（绝不换行）。 */
+@media (max-width:1300px){
+  .tl-top{gap:12px 8px}
+  .tl-top .seg button{padding:6px 9px}
+  .tl-crown-name{max-width:9em}
+}
+@media (max-width:1000px){
+  /* 小屏实在放不下才允许换行（不是长姓名导致的，是物理宽度不够） */
+  .tl-top{flex-wrap:wrap}
 }
 /* 视图说明块（.tl-desc）已按用户 2026-11-01 第五轮要求整块删除，样式一并移除 */
 /* ---- 播放控制台（2026-11-05 晚：日期挪到最右并加大） ----
    上一版是「大号日期 + 左右键提示 + 轨道 + 5 年刻度」四层叠起来，托盘高 95px，
    里面真正有内容的只有轨道那一行 —— 用户反馈「太高、大部分都是空的」。
-   现在只留一行：播放按钮 · 细轨道 · 终点年 · 大号当前日期（右侧），高约 48px。
-   时间跳跃已移到上方筛选行居中，托盘因此更宽松。 */
+   现在只留一行：播放按钮 · 时间跳跃 · 细轨道 · 终点年 · 大号当前日期（右侧），高约 48px。
+   2026-11-06 时间跳跃从筛选行移回本托盘，避免长姓名把登顶徽标挤到第二行。 */
 .tl-ctl{display:flex;gap:14px;align-items:center;flex-wrap:wrap;
   margin:16px 0 12px;padding:7px 12px;
   background:var(--bg-soft);border:1px solid var(--border);border-radius:12px}
@@ -1321,9 +1325,8 @@ td.tl:hover .fi, .region-cell:hover .fi{transform:scale(1.22)}
 .bar-row.evmode .ministack{height:18px;border-radius:4px;background:rgba(127,127,127,.14)}
 
 /* 时间跳跃（2026-11-04：动画时长 / 重绘间隔 / 滑杆全部删除，只留这一项）
-   2026-11-05 晚从播放控件行挪到上方「图表切换 / 六维筛选」同一行、水平居中，
-   样式见 .tl-top .tl-jump.tl-jump-mid。这里只保留药丸本体的通用观感：
-   标签 + 数字框 + 单位，一眼看清「每秒推进多少天」，不再占一整行。 */
+   2026-11-06 起回到播放控件行的播放按钮右侧，样式见 `.tl-ctl .tl-jump`。
+   这里只保留药丸本体的通用观感：标签 + 数字框 + 单位，一眼看清「每秒推进多少天」。 */
 .tl-jump{display:inline-flex;align-items:center;gap:6px;flex:none;
   font-size:12px;color:var(--text-2);white-space:nowrap;
   padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:var(--bg-soft)}
@@ -1802,8 +1805,11 @@ button.exp-v3-wca.pid-copy:hover{color:var(--accent)}
    修法：**宽度随内容自适应**（2026-11-02 第二轮用户要求「跟着名字自适应、短名更紧凑」），
    姓名超长才走省略号（.tl-crown-name 的 max-width 兜底），「登顶xx第一」永不截断（flex:none），
    去掉位移 hack，靠 margin-left:auto 贴住行尾 —— 右边界恒定，宽度只由内容决定。 */
+/* 2026-11-06：筛选行改成 nowrap 后，徽标必须能被压缩而不是把整行撑换行。
+   flex:0 1 auto + min-width:0 让它在空间不足时先收姓名（.tl-crown-tx 可收缩、
+   姓名装不下就跑马灯），「登顶xx第一」与时长 val 仍是 flex:0 0 auto 不会被吃掉。 */
 .tl-crown{display:inline-flex;align-items:center;align-self:flex-end;margin-left:auto;
-  flex:0 0 auto;max-width:100%;width:auto}
+  flex:0 1 auto;min-width:0;max-width:100%;width:auto}
 .tl-crown[hidden]{display:none}
 .tl-crown-btn{display:inline-flex;align-items:center;gap:7px;padding:5px 10px 5px 7px;width:auto;min-width:0;
   border-radius:12px;cursor:pointer;text-align:left;overflow:hidden;

@@ -958,14 +958,19 @@ console.log('== 纪录持有图：筛选联动 / 一人一色 / 表单归属 =='
     '筛选用 data-tl* 前缀属性挂在容器上');
 
   /* ★ 2026-11-01（第五轮）用户要求：徽标挪到「整行最右侧」。
-     位置断言：必须在 tlDimSeg 与行尾 .spacer 之后，且整体在图表（.tl-stage）之前。 */
+     2026-11-06：筛选行不再放 spacer（时间跳跃已回播放托盘），
+     徽标靠 CSS margin-left:auto 贴右，位置断言改为 dim seg → 徽标 → 图表，
+     并额外确认 .tl-top 内没有 spacer / 时间跳跃（防止又被塞回来导致换行）。 */
   {
     const iDim = hR2.indexOf('id="tlDimSeg"');
-    const iSpacer = hR2.indexOf('<span class="spacer">', iDim);
     const iCrown = hR2.indexOf('id="tlCrown"');
     const iStage = hR2.indexOf('class="tl-stage"');
-    ok(iDim >= 0 && iSpacer > iDim && iCrown > iSpacer && iCrown < iStage,
-      '登顶时长徽标排在整行最右端（dim seg → spacer → 徽标 → 图表）');
+    const iTop = hR2.indexOf('class="row tl-top"');
+    const topHtml = hR2.slice(iTop, iCrown);
+    ok(iDim >= 0 && iCrown > iDim && iCrown < iStage,
+      '登顶时长徽标排在整行最右端（dim seg → 徽标 → 图表）');
+    ok(topHtml.indexOf('class="spacer"') < 0 && topHtml.indexOf('tlRatejump') < 0,
+      '筛选行内没有 spacer / 时间跳跃（长姓名不再把徽标挤到第二行）');
     ok(!/id="tlCrown"[^>]*\shidden/.test(hR2), '徽标常驻显示（不再默认 hidden，避免布局跳动）');
     ok(/id="tlCrown"[^>]*data-st="pending"/.test(hR2), '徽标带占位状态 data-st（pending / none / ok）');
     ok(/class="tl-crown-tx"/.test(hR2) && /class="tl-crown-val"/.test(hR2),
@@ -1217,7 +1222,8 @@ console.log('== 默认值：停办项目计入 / 竞速图速率 ==');
   ok(hR.indexOf('id="tlRatejump"') >= 0, '保留「时间跳跃」数字输入框');
   ok(hR.indexOf('tlRatejumpCap') < 0, '时间跳跃的滑杆已删除（只留数字框）');
   ok(hR.indexOf('tlRateanim') < 0 && hR.indexOf('tlRatefps') < 0, '动画时长 / 重绘间隔的调节项已删除');
-  ok(hR.indexOf('tl-jump-mid') >= 0, '时间跳跃已挪到筛选行居中（.tl-jump-mid）');
+  ok(hR.indexOf('id="tlRatejump"') >= 0 && hR.indexOf('id="tlRatejump"') > hR.indexOf('class="tl-ctl"'),
+    '「时间跳跃」数字框保留，并已移回播放控件行');
   /* ★ 2026-11-05（第十四轮）：时间轴压成单行紧凑版 —— 去掉大号日期行、
      左右键提示、5 年刻度行，托盘高度从 95px 降到 ~40px。 */
   ok(hR.indexOf('class="tl-rail"') >= 0, '时间轴用自绘轨道 .tl-rail（不再是裸 range）');
@@ -1389,26 +1395,24 @@ console.log('== 默认值：停办项目计入 / 竞速图速率 ==');
       '只有装不下时才滚动（带 8px 容差，短名保持静止）');
   }
   {
-    /* ---- 2026-11-05 晚（第十五轮）：时间跳跃归位 / 日期右移放大 / 进度条逐日微调 ---- */
+    /* ---- 2026-11-06（第十六轮）：筛选行强制单行 / 时间跳跃回播放托盘 / 日期右移放大 / 逐日微调 ---- */
     const cs3 = fs.readFileSync(path.join(ROOT, 'css/style.css'), 'utf8');
     const ap3 = fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8');
-    const iJump = hR.indexOf('tl-jump-mid');
-    ok(/class="tl-jump tl-jump-mid"/.test(hR) && iJump > 0 &&
-      iJump > hR.indexOf('tlViewSeg') && iJump < hR.indexOf('tlCrown') &&
-      hR.indexOf('class="tl-ctl"') > iJump,
-      '时间跳跃与「图表切换 / 六维筛选」同一行、且已离开播放托盘');
-    /* 两侧等宽 spacer 夹住药丸：不能再用 absolute + left:50%（会盖住六维按钮）。 */
-    const jumpTail = hR.slice(hR.indexOf('tlDimSeg'), hR.indexOf('tlCrown'));
-    ok((jumpTail.match(/class="spacer"/g) || []).length === 2 &&
-      jumpTail.indexOf('class="spacer"') < jumpTail.indexOf('tl-jump-mid'),
-      '药丸两侧各一枚等宽 spacer，在左右控件之间的空白区居中');
-    ok(/\.tl-top \.spacer\{flex:1 1 0/.test(cs3) &&
-      /\.tl-top \.tl-jump\.tl-jump-mid\{[^}]*position:relative/.test(cs3) &&
-      /\.tl-top \.tl-jump\.tl-jump-mid\{[^}]*height:34px/.test(cs3) &&
-      cs3.indexOf('left:50%;bottom:0') < 0,
-      '不再绝对定位（避免遮挡按钮），高度 34px 与 36px 分段按钮齐平');
-    ok(/max-width:1180px\)\{[\s\S]{0,320}?tl-jump\.tl-jump-mid\{flex:0 0 100%/.test(cs3),
-      '窄屏回退独占一行居中，不与筛选按钮重叠');
+    const iJump = hR.indexOf('id="tlRatejump"');
+    const iTop = hR.indexOf('class="row tl-top"');
+    const iCtl = hR.indexOf('class="tl-ctl"');
+    const iRail = hR.indexOf('class="tl-rail"');
+    ok(iJump > iCtl && iCtl > iTop && iJump < iRail,
+      '时间跳跃回到播放托盘，紧挨播放按钮、在轨道之前（不再占筛选行）');
+    const topHtml = hR.slice(iTop, iCtl);
+    ok(topHtml.indexOf('tlRatejump') < 0 && topHtml.indexOf('class="spacer"') < 0,
+      '筛选行只留两组按钮 + 登顶徽标，没有 spacer / 时间跳跃');
+    ok(/\.tl-top\{[^}]*flex-wrap:nowrap/.test(cs3) &&
+      /\.tl-crown\{[^}]*flex:0 1 auto;min-width:0/.test(cs3),
+      '筛选行禁换行 + 徽标可收缩（超长姓名不再把徽标挤到第二行）');
+    ok(/\.tl-ctl \.tl-jump\{[^}]*height:34px/.test(cs3) &&
+      /max-width:1300px\)\{[\s\S]{0,220}?\.tl-top \.seg button\{padding:6px 9px\}/.test(cs3),
+      '播放托盘里的药丸 34px 齐高，窄屏收紧按钮内边距让出空间');
     ok(/class="tl-year tl-year-big" id="tlYear"/.test(hR) &&
       hR.indexOf('tl-year-big') > hR.indexOf('tl-rail-slot'),
       '当前日期移到时间轴最右侧（轨道之后）');
@@ -1437,7 +1441,8 @@ console.log('== 默认值：停办项目计入 / 竞速图速率 ==');
       'sixyear.js 产出 M2 单轨年度曲线（m2s / m2a）');
     ok(bSrc.indexOf("SIXK.concat(['m2s', 'm2a'])") >= 0, 'build.js 把 M2 单轨曲线注入 p.sy');
     ok(peSrc2.indexOf('function dimCurveKey(p, dim)') >= 0 &&
-      peSrc2.indexOf('dimRatioAt(p, dimCurveKey(p, dim), fy)') >= 0,
+      /const dk = dimCurveKey\(p, dim\);[\s\S]{0,120}?dimRatioAt\(p, dk, fy\)/.test(peSrc2) &&
+      peSrc2.indexOf("const k = rtype === 'single' ? 'm2s' : (rtype === 'avg' ? 'm2a' : 'm2')") >= 0,
       '单维竞速图按成绩口径选 M2 进度曲线');
     const s2map = (f) => {
       const p = path.join(ROOT, 'etl/score', f), m = new Map();
@@ -1861,7 +1866,13 @@ console.log('== 登顶时长 ==');
       ok(mono, '时间线按时间严格递增');
       ok(spells[0].from <= 2004, '首段从数据起点开始（实得 ' + spells[0].from + '）');
       ok(spells[spells.length - 1].from <= P.tlEndFy() + 1e-6, '末段不晚于数据结尾');
-      ok(spells.every(function (s) { return !!s.pid; }), '每段都有榜首');
+      /* 2026-11-05 回归：分数演进改为「比赛日集中爆发」后，所有人都是 0 分的真空档
+         不能再被记成一段 pid:null 的榜首（样本 8 人尤其明显：起点到第一场比赛之间全为 0）。 */
+      ok(spells.every(function (s) { return !!s.pid; }), '每段都有榜首（无分数真空档不造假榜首）');
+      if (SAMPLE) {
+        ok(spells[0].from > 2003.25 + 1e-6,
+          '样本：无人有分的起点空档被跳过，首段从第一个真实得分日起（实得 ' + spells[0].from + '）');
+      }
     }
   }
 }
@@ -1938,6 +1949,78 @@ if (P.sixdimTableHtml) {
 } else {
   console.error('FAIL: P.sixdimTableHtml 未导出（pages-sixdim.js 未加载？）');
   fail++;
+}
+
+/* ================= 2026-11-06：比赛日集中增长（不再是「两日期之间匀速变动」） =================
+   旧口径把一年的增量均匀摊到 365 天，没比赛的日子也在涨。
+   新口径把年度增量搬到真实比赛日（p.records[].date），赛前 10 天加速、
+   赛日完成 85%、赛后约 1.8 天收尾，其余时间严格平台。 */
+{
+  const peSrc4 = fs.readFileSync(path.join(ROOT, 'js/pages-extra.js'), 'utf8');
+  ok(/const BURST_LEAD = 10 \/ 365\.25/.test(peSrc4) && /BURST_AT = 0\.85/.test(peSrc4) &&
+    /function burstStep\(t, d\)/.test(peSrc4) && /BURST_TAIL = BURST_LEAD \* \(1 - BURST_AT\) \/ BURST_AT/.test(peSrc4),
+    '比赛日曲线常量就位：赛前 10 天加速 / 赛日 85% / 赛后短尾（C¹ 连续）');
+  ok(/function compDatesOf\(/.test(peSrc4) && /r\.date/.test(peSrc4) &&
+    /if \(rtype === 'single' && r\.type !== 'single'\) continue/.test(peSrc4) &&
+    /evList\.indexOf\(r\.ev\) < 0/.test(peSrc4),
+    '比赛日取自 p.records 的真实 comp.date，并按成绩口径 / 所选项目过滤');
+  ok(/function raceRatio\(bs, fy, uniform\)/.test(peSrc4) &&
+    /return bs != null \? burstRatioAt\(bs, fy\) : uniform\(\)/.test(peSrc4),
+    '有比赛日走爆发曲线；精简档没有 records 才退回原匀速曲线');
+  ok(/if \(t <= d - BURST_LEAD\) return 0/.test(peSrc4) &&
+    /BURST_AT \* u \* u \* u/.test(peSrc4),
+    '无比赛区间严格为 0（平台），赛前段用三次加速（爆发性增长）');
+  /* 数字验证只在全量数据上做：CI 的 8 人样本记录太少，找不出干净的比赛间隔。 */
+  const SAMPLE4 = M.ranked.length < 1000;
+  const probe = P.tlValueProbe;
+  ok(typeof probe === 'function', '暴露 tlValueProbe 逐日探针（供回归验证）');
+  if (!SAMPLE4 && typeof probe === 'function') {
+    const DAY = 1 / 365.25;
+    const fyOf = (s) => {
+      const y = +s.slice(0, 4), m = +s.slice(5, 7), d = +s.slice(8, 10);
+      const doy = (Date.UTC(y, m - 1, d) - Date.UTC(y, 0, 1)) / 86400000;
+      const leap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+      return y + doy / (leap ? 366 : 365);
+    };
+    const cand = M.ranked.find((p) => (p.records || []).length >= 5 && Object.keys(p.yearly || {}).length >= 5);
+    if (cand) {
+      const ds = Array.from(new Set(cand.records.map((r) => r.date)
+        .filter((s) => /^\d{4}-\d{2}-\d{2}$/.test(s)))).sort().map(fyOf);
+      /* 挑前后都最空的一段，保证平台与爆发窗口互不重叠。 */
+      let bi = -1, best = 0;
+      for (let i = 1; i < ds.length - 1; i++) {
+        const g = Math.min(ds[i] - ds[i - 1], ds[i + 1] - ds[i]);
+        if (g > best) { best = g; bi = i; }
+      }
+      if (bi > 0 && best > 55 * DAY) {
+        const t = ds[bi], at = (o) => probe(cand.id, t + o * DAY, 'all', [], '');
+        const vFar = at(-40), vNear10 = at(-10), vNear8 = at(-8), vNear2 = at(-2),
+          vD = at(0), vT2 = at(2), vT3 = at(3), vAfter = at(30);
+        ok(Math.abs(vFar - at(-25)) < 1e-9 && Math.abs(vFar - at(-12)) < 1e-9,
+          '没比赛的区间分数完全不变（严格平台）');
+        ok(vNear10 > vFar - 1e-9 && vNear2 > vNear8 && vD > vNear2,
+          '比赛日前几天开始涨分且越接近比赛日涨得越快（爆发性）');
+        ok((vD - vNear2) / 2 > ((vNear8 - vNear10) / 2) * 1.5,
+          '临近比赛日的日增速明显大于窗口前段（快慢可辨）');
+        ok(vT2 > vD && vT3 >= vT2 && (vT3 - vD) < (vD - vNear2) * 2 &&
+          Math.abs(vT3 - vAfter) < 1e-9,
+          '不是瞬间跳变：赛后还有短暂平滑收尾，随后重新进入平台');
+        ok(Math.abs(probe(cand.id, 2030, 'all', [], '') - probe(cand.id, P.tlEndFy(), 'all', [], '')) < 1e-9,
+          '最后一次比赛后回到原终值（最终名次不变）');
+        let mono = true, last = -1;
+        for (let f = cand.start || 2003; f <= (P.tlEndFy() || 2026) + 0.01; f += DAY) {
+          const v = probe(cand.id, f, 'all', [], '');
+          if (v + 1e-9 < last) { mono = false; break; }
+          last = v;
+        }
+        ok(mono, '逐日扫描全生涯：分数单调不减（登顶时间线的前提仍成立）');
+        ok(probe(cand.id, 2015.5, 'all', ['333'], '') > 0 &&
+          probe(cand.id, 2015.5, 'single', [], '') > 0 &&
+          probe(cand.id, 2015.5, 'avg', [], 'm2') > 0,
+          '项目 / 单次 / 平均 / 单维 四条分支都能用比赛日曲线求值');
+      } else console.log('  · 样本里找不到足够空的比赛间隔，跳过逐日数值断言');
+    } else console.log('  · 样本里没有带真实比赛日的选手，跳过逐日数值断言');
+  }
 }
 
 console.log(fail ? ('\n❌ 失败 ' + fail + ' 项') : '\n✅ 全部通过');
