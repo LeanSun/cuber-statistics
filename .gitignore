@@ -35,8 +35,9 @@ WCA_export*
 !etl/score/sixev_single.tsvz
 !etl/score/sixev_avg.tsvz
 
-# 例外：六维模型脚本 / 封存文档 / 站点分表（模型真源，需随仓库版本化；
-# 中间事实表与诊断 TSV 仍然忽略，避免把几十 MB 的中间产物推上去）
+# 例外：六维模型交付链脚本 / 当前定稿文档 / 站点分表（模型真源，需随仓库版本化）。
+# 2026-11-07 起 etl/score/ 只保留 16 个交付链脚本与 8 份当前口径定稿文档；
+# 历史方案、封存记录、诊断脚本与中间 TSV 均已清理，推导链可在 Git 历史追溯。
 !etl/score/*.js
 # 例外：在位时长表（m4_dominance.js 产物，约 1.5k 行 / 220KB；build.js 用它填「在位月数」，
 # 不入库的话 GitHub Actions 重建 js/data.js 时拿不到，选手页该字段又会全变 0）

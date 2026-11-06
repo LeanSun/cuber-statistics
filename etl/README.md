@@ -36,10 +36,11 @@ node etl/build.js --dir ./sample --out /tmp/data.js --date 2026-10-18 --ver v2.0
 
 0. `etl/score/`（离线，模型真源）：
    `m1_hold.js` 纪录持有 · `m2m3_balance.js` 领奖台 · `m3_record_bonus.js` 大赛破纪录 ·
-   `m4_dominance.js` 统治力 · `m5_current_rank.js` 纪录比 · `m6_lead.js` 突破幅度；
+   `m4_dominance.js` 统治力 · `m5_facts.js` 纪录比（Kinch） · `m6_lead.js` 突破幅度；
    `sixdim.js` 统一查询引擎负责轨道 / 项目 / as-of / 性别筛选与加权合成，
    产出 `sixdim_site.tsv`（站点用）与 `js/sixdim_data.js`（六维分数细则子页面用）。
-   每一维都有封存文档（如 `M6_封存_2026-10-25.md`），改动前请先读其中的「解封条件」。
+   各维当前口径定稿见 `etl/score/` 下保留的 8 份文档；历史方案、封存记录与诊断文档
+   已清理，需要追溯推导链时查 Git 历史。
 
 ## 站点数据流（build.js）
 

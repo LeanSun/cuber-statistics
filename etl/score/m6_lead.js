@@ -313,38 +313,36 @@ async function main() {
 
   /* ═══ S4 正交性矩阵（新 M6 权威，旧 M6 仅作解封对照）═══ */
   const loadTsv = (file, pc, vc) => {
+    /* 历史模型归档（M1-F1 原版 / 旧 M5 席位 / M6-F1 对手强度）已整体清理：
+       对照表缺失时跳过该行，不再让旧诊断数据成为生产脚本的硬依赖。 */
+    let lines;
+    try { lines = fs.readFileSync(path.join(__dirname, file), 'utf8').trim().split('\n'); }
+    catch { return null; }
     const m = new Map();
-    const lines = fs.readFileSync(path.join(__dirname, file), 'utf8').trim().split('\n');
     for (let i = 1; i < lines.length; i++) {
       const c = lines[i].split('\t');
       const v = +c[vc];
       if (c[pc] && Number.isFinite(v)) m.set(c[pc], v);
     }
-    return m;
+    return m.size ? m : null;
   };
   const M1F2 = loadTsv('M1_hold_full.tsv', 0, 2);
   const M1F1 = loadTsv('M1_full.tsv', 0, 2);
   const M2 = loadTsv('M2_ranking.tsv', 1, 3);
   const M4 = loadTsv('M4_seats.tsv', 0, 2);
   const M5 = loadTsv('M5_seats.tsv', 0, 2);
-  let M6F1 = null;
-  try { M6F1 = loadTsv('M6F1_归档/M6_seats.tsv', 0, 2); } catch { /* 归档缺失则跳过 */ }
+  const M6F1 = loadTsv('M6F1_归档/M6_seats.tsv', 0, 2);
   const m6NewMap = new Map(NEW.map((a) => [a.pid, a.m6new]));
   const m6OldMap = new Map(OLD.map((a) => [a.pid, a.m6old]));
-  const mtx = [];
-  for (const [nm, m] of [['M1-F2 纯持有', M1F2], ['M1-F1 原版', M1F1], ['M2', M2], ['M4', M4], ['M5', M5]]) {
+  const pairs = [['M1-F2 纯持有', M1F2], ['M1-F1 原版', M1F1], ['M2', M2],
+                 ['M4', M4], ['M5', M5], ['M6-F1对手', M6F1]].filter(([, m]) => m);
+  const mtx = [], mtxOld = [];
+  for (const [nm, m] of pairs) {
     const r = crossRho(m6NewMap, m);
     const mark = Math.abs(r.rho) > 0.7 ? ' ❌' : (Math.abs(r.rho) > 0.5 ? ' ⚠️' : '');
     mtx.push(`  ×${nm.padEnd(12)} ρ=${F(r.rho)}${mark}  (n=${num(r.n)})`);
-  }
-  if (M6F1) {
-    const r = crossRho(m6NewMap, M6F1);
-    mtx.push(`  ×M6-F1对手   ρ=${F(r.rho)}  (n=${num(r.n)})`);
-  }
-  const mtxOld = [];
-  for (const [nm, m] of [['M1-F2 纯持有', M1F2], ['M1-F1 原版', M1F1], ['M2', M2], ['M4', M4], ['M5', M5]]) {
-    const r = crossRho(m6OldMap, m);
-    mtxOld.push(`  ×${nm.padEnd(12)} ρ=${F(r.rho)}  (n=${num(r.n)})`);
+    const r2 = crossRho(m6OldMap, m);
+    mtxOld.push(`  ×${nm.padEnd(12)} ρ=${F(r2.rho)}  (n=${num(r2.n)})`);
   }
   const strat = [];
   {
@@ -356,7 +354,8 @@ async function main() {
     for (const b of Object.keys(buckets).map(Number).sort((x, y) => x - y)) {
       const arr = buckets[b];
       if (arr.length < 15) continue;
-      const pr = arr.filter((a) => M1F2.has(a.pid)).map((a) => [a.m6new, M1F2.get(a.pid)]);
+      const pr = (M1F2 ? arr.filter((a) => M1F2.has(a.pid)) : [])
+        .map((a) => [a.m6new, M1F2.get(a.pid)]);
       if (pr.length >= 15) strat.push({ b, n: pr.length, rho: spearman(pr).rho });
     }
   }
