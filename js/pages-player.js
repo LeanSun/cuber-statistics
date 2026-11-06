@@ -332,13 +332,8 @@
     return '<button data-' + attr + '="' + val + '" class="' + (val === 'all' ? 'on' : '') + '">' + esc(labelKey === 'all' ? t('f.all') : t(labelKey)) + '</button>';
   }
 
-  function rankCard(label, rank, of, icon, sub, explain) {
-    return '<div class="rank-card"><div class="rk-ic">' + Ic.glyph(icon) + (explain ? ' ' + infoTip(explain) : '') + '</div>' +
-      '<div class="rk-label">' + esc(label) + '</div>' +
-      '<div class="rk-val"><b>' + rank + '</b><span class="tiny muted"> / ' + U.num(of) + '</span></div>' +
-      (sub ? '<div class="tiny muted">' + esc(sub) + '</div>' : '') + '</div>';
-  }
-
+  /* 旧七模块的 .rank4 排名卡片：样式与调用点都已不存在，2026-11-07 删除 rankCard()；
+     现行排名展示用下面的 .pid-rank 胶囊。 */
   /* 信息栏内的排名胶囊：世界 / 洲 / 地区 / 巅峰高度 */
   function rankPill(label, rank, of, icon, sub, explain) {
     return '<div class="pid-rank" title="' + esc(explain || label) + '">' +

@@ -6,7 +6,11 @@
   --bg-soft-2:#e4eaf2;
   --text:#141a22;
   --text-2:#57647a;
-  --text-3:#8b96a8;
+  /* 辅助小字（11.5–12.5px）原本是 #8b96a8，对白卡只有 2.99:1、对 --bg-soft-2
+     更低到 2.47:1，远低于 WCAG AA 4.5:1。2026-11-07 统一压深到 #5c6875：
+     对 --bg-elev / --bg / --bg-soft / --bg-soft-2 分别 5.69 / 5.35 / 5.06 / 4.70:1。
+     只动这一个 token，字号与字重不变；charts.js 从 CSS 变量取色，canvas 刻度同步生效。 */
+  --text-3:#5c6875;
   --border:#e2e8f0;
   --border-2:#c8d2de;
   --accent:#2f6feb;
@@ -43,7 +47,9 @@
   --bg-soft-2:#232d3a;
   --text:#e8edf5;
   --text-2:#9aa8bc;
-  --text-3:#6d7c91;
+  /* 深色同理：#6d7c91 对 --bg-elev 只有 4.07:1、对 --bg-soft-2 3.28:1。
+     提亮到 #8d9bb0 后四种深背景分别 6.13 / 6.71 / 5.61 / 4.94:1。 */
+  --text-3:#8d9bb0;
   --border:#252f3d;
   --border-2:#34404f;
   --accent:#5b95ff;
@@ -85,7 +91,7 @@
 @property --bg-soft-2{syntax:"<color>";inherits:true;initial-value:#e4eaf2}
 @property --text{syntax:"<color>";inherits:true;initial-value:#141a22}
 @property --text-2{syntax:"<color>";inherits:true;initial-value:#57647a}
-@property --text-3{syntax:"<color>";inherits:true;initial-value:#8b96a8}
+@property --text-3{syntax:"<color>";inherits:true;initial-value:#5c6875}
 @property --border{syntax:"<color>";inherits:true;initial-value:#e2e8f0}
 @property --border-2{syntax:"<color>";inherits:true;initial-value:#c8d2de}
 @property --accent{syntax:"<color>";inherits:true;initial-value:#2f6feb}
@@ -481,8 +487,13 @@ details.card .card-body{padding-top:12px}
 .fml mjx-container[jax="CHTML"][display="true"]{margin:.7em 0!important}
 
 /* ============ 动效：进场 ============ */
-.reveal{opacity:0;transform:translateY(14px);animation:revealIn .5s cubic-bezier(.22,.8,.3,1) forwards;animation-delay:var(--d,0ms)}
-@keyframes revealIn{to{opacity:1;transform:none}}
+/* 入场动画用 backwards 而不是 forwards：forwards 会把终帧的 transform 以
+   identity matrix 长期挂在元素上，凭空创建一个 stacking context，
+   把内部的 .ms-pop 等浮层锁进局部层 —— 主题切换 / 动画重播后尤其明显，
+   滚动经过 sticky 顶栏时浮层仍会被压住（CDP elementFromPoint 实测）。
+   基础样式直接写成终态，动画结束后自然回到 transform:none，视觉完全一致。 */
+.reveal{opacity:1;transform:none;animation:revealIn .5s cubic-bezier(.22,.8,.3,1) backwards;animation-delay:var(--d,0ms)}
+@keyframes revealIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){
   .reveal{animation:none;opacity:1;transform:none}
   *{transition-duration:.01ms!important}
@@ -876,17 +887,8 @@ tr:hover .pname .linkish,tr:hover .pname .pname-txt{
 @media (prefers-reduced-motion:reduce){
   .pid-rank .pr-val b{animation:none;background-position:35% 50%}
 }
-.rank4{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:16px}
-.rank-card{
-  background:var(--bg-soft);border-radius:var(--r-md);padding:12px 14px;position:relative;overflow:hidden;
-  transition:transform .2s cubic-bezier(.34,1.4,.64,1),background .2s;
-}
-.rank-card:hover{transform:translateY(-3px);background:var(--bg-soft-2)}
-.rk-ic{position:absolute;right:10px;top:10px;color:var(--text-3);opacity:.4}
-.rk-ic .ic{width:26px;height:26px}
-.rk-label{font-size:11.5px;color:var(--text-3)}
-.rk-val{display:flex;align-items:baseline;gap:5px}
-.rk-val b{font-size:24px;font-variant-numeric:tabular-nums}
+/* .rank4 / .rank-card / .rk-* 是旧七模块的「四项排名卡片」，生成函数 rankCard()
+   早已无调用点、页面实测 0 实例，2026-11-07 连同 JS 死函数一起删除。 */
 .bonus-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
 .bonus-item{background:var(--bg-soft);border-radius:var(--r-md);padding:11px 13px}
 .bonus-item.total{background:var(--accent-soft);border:1px solid var(--accent)}
@@ -928,15 +930,9 @@ tr:hover .pname .linkish,tr:hover .pname .pname-txt{
   border:1px solid var(--accent);background:var(--accent-soft);color:var(--accent);
   border-radius:var(--r-sm);padding:4px 11px;font-family:var(--mono);font-weight:700;
 }
-.cov-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(74px,1fr));gap:6px}
-.cov-cell{
-  border:1px solid var(--border);border-radius:8px;padding:8px 4px;text-align:center;display:flex;flex-direction:column;
-  align-items:center;gap:3px;background:color-mix(in srgb,var(--accent) calc(var(--a,.2) * 100%),transparent);
-  transition:transform .16s ease,border-color .16s;
-}
-.cov-cell:hover{transform:translateY(-2px) scale(1.04);border-color:var(--accent)}
-.cov-cell.empty{opacity:.38;border-style:dashed;background:transparent}
-.cov-name{font-size:10.5px;line-height:1.2}
+/* 旧版「项目覆盖格子」样式（.cov-grid minmax(74px) / .cov-cell 8px 圆角 /
+   .cov-name 10.5px）已整组被文件后段 2026-10-19 定稿版完全覆盖，2026-11-07 删除。
+   现行定义见「项目领域格子：图标 / 名称 / 名次 纵向排列」那一节。 */
 
 /* ============ PK ============ */
 .pk-radar-wrap{max-width:520px;margin:0 auto}
@@ -1351,21 +1347,9 @@ table.sd-table tbody td{padding:7px 11px}
   .pcard-name h1{font-size:22px}
 }
 
-/* ============ 自定义设置弹窗（速率 / 宽度 / 颜色） ============ */
-.modal{position:fixed;inset:0;z-index:120;display:flex;align-items:center;justify-content:center;padding:18px}
-.modal[hidden]{display:none}
-.modal-mask{position:absolute;inset:0;background:rgba(0,0,0,.45);opacity:0;transition:opacity .18s ease}
-.modal-card{
-  position:relative;background:var(--bg-elev);border:1px solid var(--border);border-radius:var(--r-lg);
-  box-shadow:var(--shadow-lg);width:100%;max-width:420px;padding:16px 18px;
-  transform:translateY(10px) scale(.98);opacity:0;transition:transform .2s cubic-bezier(.34,1.3,.64,1),opacity .2s ease;
-}
-.modal.open .modal-mask{opacity:1}
-.modal.open .modal-card{transform:none;opacity:1}
-.modal-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
-.modal-head h3{font-size:16px}
-/* 「自定义设置」面板（.set-row / .set-val / .set-actions）已于 2026-11-04 随入口一起删除，
-   相关样式一并移除；.modal 本体保留，其它弹层仍在用。 */
+/* 「自定义设置」弹窗（.modal / .modal-mask / .modal-card / .modal-head）的入口与
+   .set-row 控件已在 2026-11-04 删除；全站 JS/HTML 零引用、浏览器实测 0 实例，
+   2026-11-07 把残留整组样式一并移除（原本还占着 z-index:120 的顶层）。 */
 
 /* ============================================================
    2026-10-19 需求批次：国旗 / 地区列 / 名字动效 / 多项目图例 /
@@ -1946,7 +1930,11 @@ button.exp-v3-wca.pid-copy:hover{color:var(--accent)}
 
 /* ============ 重大事件：浮在分数竞速图右下角的可折叠弹窗 ============ */
 .tl-stage{position:relative}
-.ms-pop{position:absolute;right:14px;bottom:14px;z-index:6;max-width:min(760px,94%);
+/* 层级：sticky 顶栏 60 / 地区下拉 70，重大事件浮层必须在它们之上，
+   否则页面滚动把弹层带进顶栏区域时，会被 .topbar.scrolled 的毛玻璃压住
+   （CDP elementFromPoint 实测命中 NAV.nav 而不是 ms-pop-tab）。
+   只提这两个浮层，不动顶栏；弹层定位仍在 .tl-stage 右下角。 */
+.ms-pop{position:absolute;right:14px;bottom:14px;z-index:80;max-width:min(760px,94%);
   display:flex;flex-direction:column;align-items:flex-end;gap:8px}
 .ms-pop-tab{display:inline-flex;align-items:center;gap:8px;cursor:pointer;
   padding:8px 15px;border-radius:999px;font-size:13.5px;font-weight:600;
@@ -1998,7 +1986,7 @@ button.exp-v3-wca.pid-copy:hover{color:var(--accent)}
 .ms-pop-list .ms-rail-item:hover b{background:var(--accent);color:#fff}
 
 /* 时间轴推进到某个事件的日期时，在右下角弹出的提示卡 */
-.ms-toast{position:absolute;right:0;bottom:38px;z-index:7;
+.ms-toast{position:absolute;right:0;bottom:38px;z-index:81;
   display:flex;flex-direction:column;align-items:flex-end;gap:7px;pointer-events:none}
 .ms-toast-card{display:flex;align-items:flex-start;gap:11px;max-width:440px;
   padding:13px 18px 13px 14px;border-radius:15px;

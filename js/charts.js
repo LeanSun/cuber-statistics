@@ -63,7 +63,7 @@
       dark: dark,
       text: cssVar('--text', '#151a21'),
       text2: cssVar('--text-2', '#5a6675'),
-      text3: cssVar('--text-3', '#8a95a5'),
+      text3: cssVar('--text-3', '#5c6875'),
       border: cssVar('--border', '#e0e6ee'),
       border2: cssVar('--border-2', '#c7d0dc'),
       bg: cssVar('--bg', '#f5f7fa'),

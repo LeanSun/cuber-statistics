@@ -15,7 +15,8 @@
     dark: { m1: '#ff7bbf', m2: '#fe676a', m3: '#ffcb93', m4: '#4acc79', m5: '#00a7f5', m6: '#b585ff' }
   };
   function themeDark() { try { return document.documentElement.getAttribute('data-theme') === 'dark'; } catch (e) { return false; } }
-  function sixHex(k) { return (themeDark() ? SIX_HEX.dark : SIX_HEX.light)[k] || '#8b96a8'; }
+  /* 未知维度的中性灰兜底（不是 --text-3；仅与站点灰阶保持一致，不参与文字对比度口径） */
+  function sixHex(k) { return (themeDark() ? SIX_HEX.dark : SIX_HEX.light)[k] || '#5c6875'; }
   const SIXW = { m1: 0.42, m2: 0.20, m3: 0.10, m4: 0.14, m5: 0.06, m6: 0.08 };
   function sixWeights() { return sixW(); }
   /* 六维权重：优先取「评分原理说明 / 参数设置」页的用户自定义值（已归一化 Σ=1），

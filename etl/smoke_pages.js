@@ -2094,8 +2094,8 @@ if (P.sixdimTableHtml) {
    crossFadeCharts 改为 Charts.refresh()+repaint()+P.drawTimeline() 重绘 canvas、
    一个 DOM 节点都不换，也不再 settlePage。
    CDP 实测（_cdpchk/theme_round6.mjs）：ghost 灰阶像素 149734→0、白像素 0；
-   DOM 标记 KEEP 与 data-k 双向保留；xAxis.axisLabel.color 从 rgb(139,150,168)
-   变 rgb(109,124,145)（确实用新配色重绘）；0 运行时错误。 */
+   DOM 标记 KEEP 与 data-k 双向保留；xAxis.axisLabel.color 随主题换成新调色板
+   （确实用新配色重绘，具体色值由 CSS 变量决定，勿在此硬编码）；0 运行时错误。 */
 {
   const ch6 = fs.readFileSync(path.join(ROOT, 'js/charts.js'), 'utf8');
   const app6 = fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8');
@@ -2195,6 +2195,58 @@ if (P.sixdimTableHtml) {
     !/__dm_no_drag_style__|__dm_bindable_badge_style__/.test(h7) &&
     /<script src="js\/app\.js"><\/script>/.test(h7),
     '入口 HTML 清掉注入标记与无用样式块，脚本加载链保持不变');
+}
+
+/* ============================================================
+   2026-11-07 第七轮：辅助字对比度 / 重大事件浮层层级 / 死 CSS 清理。
+   CDP 实测（_cdpchk/audit_round7.mjs + layer_test2.mjs）：浅色 --text-3 对白卡
+   2.99:1、对 --bg-soft-2 仅 2.47:1，深色对 --bg-elev 4.07:1；.ms-pop z-index 6
+   小于 sticky 顶栏 60，滚动后 elementFromPoint 命中 NAV.nav（浮层被毛玻璃压住），
+   提到 80 后命中 BUTTON.ms-pop-tab。断言从 CSS token 动态算对比度，改背景也会失效。 */
+{
+  const css8 = fs.readFileSync(path.join(ROOT, 'css/style.css'), 'utf8');
+  const c8 = fs.readFileSync(path.join(ROOT, 'js/charts.js'), 'utf8');
+  const p8 = fs.readFileSync(path.join(ROOT, 'js/pages-player.js'), 'utf8');
+  const core8 = fs.readFileSync(path.join(ROOT, 'js/pages-core.js'), 'utf8');
+  function lum8(hex) {
+    const v = [1, 3, 5].map(function (i) {
+      const x = parseInt(hex.slice(i, i + 2), 16) / 255;
+      return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2];
+  }
+  function cr8(a, b) {
+    const l = [lum8(a), lum8(b)].sort(function (x, y) { return y - x; });
+    return (l[0] + 0.05) / (l[1] + 0.05);
+  }
+  function tok8(name) {
+    return (css8.match(new RegExp('--' + name + ':\\s*(#[0-9a-fA-F]{6})', 'g')) || [])
+      .map(function (s) { return s.match(/#[0-9a-fA-F]{6}/i)[0]; });
+  }
+  const t3 = tok8('text-3');
+  const bgs8 = ['bg-elev', 'bg', 'bg-soft', 'bg-soft-2'];
+  ok(t3.length === 2 && bgs8.every(function (n) { return tok8(n).length >= 2; }),
+    '两主题 --text-3 与四种背景 token 都能解析（断言只认 CSS 声明，不被注释误伤）');
+  const ratios8 = [0, 1].map(function (i) {
+    return bgs8.map(function (n) { return cr8(t3[i], tok8(n)[i]); });
+  });
+  ok(ratios8.every(function (r) { return r.every(function (x) { return x >= 4.5; }); }),
+    '辅助小字在两主题 × 四种背景下全部达到 WCAG AA 4.5:1（' +
+    ratios8.map(function (r) { return r.map(function (x) { return x.toFixed(2); }).join('/'); }).join(' | ') + '）');
+  ok(/@property --text-3\{[^}]*initial-value:#5c6875\}/.test(css8) &&
+    /cssVar\('--text-3', '#5c6875'\)/.test(c8) &&
+    /\[k\] \|\| '#5c6875'/.test(core8),
+    '@property 初值 / canvas 兜底 / 六维灰兜底与 :root 同步，切主题不会出现两套灰');
+  ok(/\.ms-pop\{[^}]*z-index:80/.test(css8) && /\.ms-toast\{[^}]*z-index:81/.test(css8) &&
+    /\.topbar\{[^}]*z-index:60/.test(css8),
+    '重大事件浮层 80/81 高于 sticky 顶栏 60（滚动经过顶栏不再被毛玻璃压住）');
+  ok(/\.reveal\{[^}]*backwards/.test(css8) && !/\.reveal\{[^}]*forwards/.test(css8) &&
+    /from\{opacity:0;transform:translateY\(14px\)\}to\{opacity:1;transform:none\}/.test(css8),
+    '入场动画结束后回 transform:none，不给内部浮层留下 stacking context');
+  ok(!/\.modal\{position:fixed/.test(css8) && !/\.rank4\{display:grid/.test(css8) &&
+    !/function rankCard\(/.test(p8) && !/minmax\(74px,1fr\)/.test(css8) &&
+    /\.cov-grid\{[^}]*minmax\(112px,1fr\)/.test(css8),
+    '删除零实例死规则（modal / rank4 / 旧 cov-grid）并保留现行 112px 项目格子');
 }
 
 console.log(fail ? ('\n❌ 失败 ' + fail + ' 项') : '\n✅ 全部通过');
