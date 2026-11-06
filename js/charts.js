@@ -6,6 +6,17 @@
 (function () {
   const has = function () { return !!window.echarts; };
   let palette = null;
+  /* ★ 2026-11-06 第五轮：图形描边一律不再取主题背景色 T.elev。
+     浅色主题 --bg-elev = #ffffff，于是每个竞速条 / 泳道段 / 饼图扇区 / 折线圆点
+     外都有一圈 1~2px 纯白环；深色主题下它是 #151b24，几乎看不见。
+     主题切换时 crossFadeCharts 会把「切换前的旧 canvas 位图」(.theme-ghost) 以
+     opacity 1→0 盖在刚用新配色重绘的深色图表上淡出 630ms —— 旧位图里的白环
+     在深色背景上就变成用户截图里「每条分数条一圈白边、随后消失」。VT 的
+     old(root) 整页快照同理。CDP 探针实测浅→深那张旧位图有 18807 个近纯白像素，
+     亮线行 52/77/87/112/122/147… 与用户截图逐行吻合。
+     修法：条形 / 段形描边改成与自身填充同色（边缘依旧实，但任何主题下都不亮），
+     扇区 / 圆点需要分隔时用主题无关的低对比中性色 EDGE。 */
+  const EDGE = 'rgba(80,96,116,.30)';
 
   function cssVar(name, fb) {
     try {
@@ -131,7 +142,10 @@
   function axisCommon() {
     const T = pal();
     return {
-      axisLine: { lineStyle: { color: T.border } },
+      /* 轴线同样不取 T.border：浅色主题下 #e2e8f0 在旧位图里是一条贯穿全宽
+         的近白长线，交叉淡化时会在深色背景上留一道亮横线（探针 y=30/1232px）。
+         换成主题无关的 EDGE 后，快照里只剩条内白字与国旗这些正常内容。 */
+      axisLine: { lineStyle: { color: EDGE } },
       axisTick: { show: false },
       axisLabel: { color: T.text3, fontSize: 11 },
       splitLine: { lineStyle: { color: T.border, type: 'dashed' } }
@@ -231,7 +245,7 @@
       series: [{
         type: 'pie', radius: opts.radius || ['52%', '76%'], center: opts.center || ['50%', '50%'],
         avoidLabelOverlap: true,
-        itemStyle: { borderColor: T.elev, borderWidth: 2, borderRadius: 4 },
+        itemStyle: { borderColor: EDGE, borderWidth: 2, borderRadius: 4 },
         label: { show: !!opts.label, color: T.text2, fontSize: 11, formatter: '{b}\n{d}%' },
         labelLine: { show: !!opts.label },
         emphasis: { scale: true, scaleSize: 6, itemStyle: { shadowBlur: 12, shadowColor: 'rgba(0,0,0,.2)' } },
@@ -293,7 +307,7 @@
         axisName: { color: T.text2, fontSize: 11.5 },
         splitLine: { lineStyle: { color: T.border } },
         splitArea: { areaStyle: { color: [T.soft, 'transparent'] } },
-        axisLine: { lineStyle: { color: T.border } }
+        axisLine: { lineStyle: { color: EDGE } }
       },
       series: [{
         type: 'radar', symbolSize: 5,
@@ -316,7 +330,7 @@
       return {
         name: r.name, type: 'line', smooth: 0.28, symbol: 'circle', symbolSize: 7,
         lineStyle: { width: 2.6, color: r.color, shadowBlur: 6, shadowColor: r.color, shadowOffsetY: 2 },
-        itemStyle: { color: r.color, borderColor: T.elev, borderWidth: 1.5 },
+        itemStyle: { color: r.color, borderColor: EDGE, borderWidth: 1.5 },
         emphasis: { focus: 'series', scale: 1.4 },
         endLabel: { show: true, formatter: function (p) { return p.seriesName; }, color: r.color, fontSize: 11.5, distance: 6 },
         data: years.map(function (y) { return r.pts[y] == null ? null : r.pts[y]; })
@@ -430,7 +444,7 @@
           }),
           Object.assign({ type: 'value', min: 0, max: xm, position: 'top', gridIndex: 0 }, axisCommon(), {
             axisLabel: { color: T.text3, fontSize: 10.5, formatter: fmtTick },
-            axisLine: { show: true, lineStyle: { color: T.border, width: 1 } },
+            axisLine: { show: true, lineStyle: { color: EDGE, width: 1 } },
             axisTick: { show: false },
             splitLine: { show: false }
           })
@@ -448,7 +462,7 @@
           /* 0 与 n+1 两格只是上下缓冲，不画序号 */
           formatter: function (v) { return (v < 1 || v > n) ? '' : String(Math.round(v)); }
         },
-        axisLine: { lineStyle: { color: T.border }, show: false },
+        axisLine: { lineStyle: { color: EDGE }, show: false },
         axisTick: { show: false },
         splitLine: { show: false }
       }),
@@ -525,7 +539,8 @@
           const kids = [{
             type: 'rect', transition: ['shape'],
             shape: { x: x0, y: yc - h / 2, width: w, height: h, r: 5 },
-            style: { fill: d.color || T.m[0], stroke: T.elev, lineWidth: 1 }
+            /* 描边与填充同色：边缘更实，但绝不会像 T.elev 那样在浅色主题下变成纯白环 */
+            style: { fill: d.color || T.m[0], stroke: d.color || T.m[0], lineWidth: 1 }
           }];
           /* 名字/国旗的落位规则（用户 2026-11-01 指定）：
              ① 条内放得下「完整国旗 + 完整名字」→ 照旧画在条形左端内侧（白字）；
@@ -868,7 +883,7 @@
       if (!rect) return;
       const kids = [{
         type: 'rect', transition: ['shape'], shape: Object.assign({ r: 5 }, rect),
-        style: { fill: api.visual('color'), stroke: T.elev, lineWidth: 1 }
+        style: { fill: api.visual('color'), stroke: api.visual('color'), lineWidth: 1 }
       }];
       const w = rect.width;
       const segCol = api.visual('color') || '#888';
@@ -1001,7 +1016,7 @@
         }),
         Object.assign({ type: 'value', min: axMin, max: axMax, interval: axStep, position: 'top', gridIndex: 0 }, axisCommon(), {
           axisLabel: { color: T.text3, fontSize: 10.5, formatter: fmtYear },
-          axisLine: { show: true, lineStyle: { color: T.border, width: 1 } },
+          axisLine: { show: true, lineStyle: { color: EDGE, width: 1 } },
           axisTick: { show: false },
           splitLine: { show: false }
         })
@@ -1190,7 +1205,7 @@
       tooltip: Object.assign({ trigger: 'item', formatter: function (p) { return p.data[2]; } }, base().tooltip),
       series: [{
         type: 'scatter', symbolSize: function (d) { return 8 + Math.sqrt(Math.max(0, d[3] || 0)) * 1.6; },
-        itemStyle: { opacity: 0.82, borderColor: T.elev, borderWidth: 1 },
+        itemStyle: { opacity: 0.82, borderColor: EDGE, borderWidth: 1 },
         emphasis: { scale: 1.3, itemStyle: { opacity: 1 } },
         data: points
       }]

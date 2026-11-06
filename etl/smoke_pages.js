@@ -2044,5 +2044,38 @@ if (P.sixdimTableHtml) {
     '不用「临时挂类 + 延时摘除」方案（摘类会把 animation 从头重播，抖动只是延后）');
 }
 
+/* ================= 2026-11-06 第五轮：切换瞬间分数条「白边」的真正根因 =================
+   用户第四次反馈并附截图：深色主题下每一根分数条外都有一圈浅灰白 1px 描边，
+   切换刚结束那一瞬间出现、随后消失。前四轮都在修 VT 合成层，方向不对。
+   CDP 探针（_cdpchk/white_edge_probe.mjs）读 .theme-ghost 位图像素：
+     浅→深时旧位图有 18807 个近纯白像素，亮线行 30/52/77/87/112/122/147/157…
+     与用户截图逐行吻合；深→浅时只有 3426（文字/国旗）。
+   根因：charts.js 给每个图形画了 stroke/borderColor = T.elev，而浅色主题
+   --bg-elev = #ffffff —— 旧 canvas 位图里全是纯白环，crossFadeCharts 把它
+   opacity 1→0 盖在深色新图上淡出 630ms，白环就成了「白边」。VT old(root)
+   快照同理。修法：条形/段形描边与自身填充同色，扇区/圆点用主题无关的 EDGE。
+   修复后浅→深旧位图 6984 白像素（剩下的是条内白字/国旗/顶轴），
+   亮线行只剩 y=30 的顶部分数轴轴线，逐条描边全部消失。 */
+{
+  const ch5 = fs.readFileSync(path.join(ROOT, 'js/charts.js'), 'utf8');
+  ok(/const EDGE = 'rgba\(80,96,116,\.30\)'/.test(ch5),
+    '图形分隔描边用主题无关的低对比 EDGE（不再随主题在纯白/深色之间跳）');
+  ok(!/stroke:\s*T\.elev/.test(ch5) && !/borderColor:\s*T\.elev/.test(ch5),
+    'canvas 图形不再用 T.elev 画描边（浅色主题下它是 #ffffff 的白环）');
+  ok(/stroke: d\.color \|\| T\.m\[0\], lineWidth: 1/.test(ch5) &&
+    /stroke: api\.visual\('color'\), lineWidth: 1/.test(ch5),
+    '竞速条与泳道段的描边与自身填充同色，任何主题快照里都没有高亮环');
+  ok(/borderColor: EDGE/.test(ch5) && (ch5.match(/borderColor: EDGE/g) || []).length >= 3,
+    '饼图扇区 / bump 圆点 / 散点三处分隔环统一换成 EDGE');
+  ok((ch5.match(/backgroundColor: T\.elev/g) || []).length >= 2,
+    'tooltip 背景仍按主题取色（只换图形描边，不误伤 DOM 弹层）');
+  ok(/axisLine: \{ lineStyle: \{ color: EDGE \} \}/.test(ch5) &&
+    /axisLine: \{ show: true, lineStyle: \{ color: EDGE, width: 1 \} \}/.test(ch5) &&
+    (ch5.match(/axisLine:\s*\{[^}]*color:\s*T\.border(?!2)/g) || []).length === 0,
+    '坐标轴长线也换成 EDGE：旧位图不再有贯穿全宽的近白横线');
+  ok(/theme-ghost/.test(ch5) && /function crossFadeCharts\(/.test(fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8')),
+    '保留 canvas 交叉淡化：白边是位图内容问题，不靠删掉过渡来掩盖');
+}
+
 console.log(fail ? ('\n❌ 失败 ' + fail + ' 项') : '\n✅ 全部通过');
 process.exit(fail ? 1 : 0);
