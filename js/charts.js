@@ -977,7 +977,7 @@
       }
       return { type: 'group', children: kids };
     }
-    /* y 轴项目名：图标 + 名称（图标来自 cubing_icons.css，探测成 data URI 后用 rich 渲染；
+    /* y 轴项目名：图标 + 名称（图标来自 vendor/cubing-icons.css，探测成 data URI 后用 rich 渲染；
        图标与文字都放大，更易辨识；顺序由调用方按 WCA 默认项目顺序排好 */
     const rich = {
       nm: { color: T.text2, fontSize: 13, padding: [0, 0, 0, 3] }

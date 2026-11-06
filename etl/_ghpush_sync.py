@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """把本地 HEAD 的整棵树同步到 GitHub 远端 main（全量对账，幂等、安全）。
 
-为什么不用 _ghpush_all.py：
+为什么不用旧的「按 parent..HEAD 增量 diff」推送方式：
 本地仓库与远端 main 的「同一批提交」SHA 不同（远端提交由本脚本/Agent 经 API 重建成新对象，
 父链不同 → commit SHA 不同），本地不存在与远端 tip 相同的 commit 对象，按 parent..HEAD 做增量
 diff 会对不上。本脚本按 blob SHA 逐文件对账并「从零」重建整棵树：
