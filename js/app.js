@@ -287,44 +287,64 @@
       try {
         g = document.createElement('canvas');
         g.width = w; g.height = h;
-        g.getContext('2d').drawImage(cv, 0, 0);
+        const cx = g.getContext('2d');
+        cx.drawImage(cv, 0, 0);
+        /* ★ 2026-11-07 第六轮：旧位图只保留「彩色图形」，把灰阶的辅助元素擦成透明。
+           网格虚线 / 坐标轴 / 条尾分数 / 轴刻度 / 条内白字在浅色主题下是深灰或纯白、
+           深色主题下是浅灰，旧图盖在新图上淡出 630ms 时会走一段「由亮变暗 /
+           由隐到显」的渐变，正是用户反馈的「年份虚线还在闪烁、分数数字还在闪烁」。
+           擦掉后这些像素直接露出下面的新图 —— 静态外观完全不变，也没有颜色渐变。
+           条、六维色块、国旗这些高饱和像素保留，颜色在两主题间的细微提亮仍然「化开」。
+           两张图几何完全一致，擦掉的部分由新图补上，不会出现空洞。 */
+        try {
+          const im = cx.getImageData(0, 0, w, h), d = im.data;
+          for (let i = 0; i < d.length; i += 4) {
+            if (!d[i + 3]) continue;
+            const r = d[i], gg = d[i + 1], b = d[i + 2];
+            const mx = r > gg ? (r > b ? r : b) : (gg > b ? gg : b);
+            const mn = r < gg ? (r < b ? r : b) : (gg < b ? gg : b);
+            /* 低饱和灰阶 / 近白文字 → 透明 */
+            if (mx - mn < 34 || (mx > 196 && mn > 168)) d[i + 3] = 0;
+          }
+          cx.putImageData(im, 0, 0);
+        } catch (e2) { /* getImageData 失败就退回完整旧图，不影响切换 */ }
       } catch (e) { return; }   /* 跨域污染等：放弃这一张，不影响其它 */
       list.push({ ghost: g, cv: cv });
     });
     return list;
   }
-  /* ★ 2026-11-06 第四轮：VT 结束后必须重建 DOM 才能用新配色重绘 canvas，
-     但 render(true) 会整页换掉 #view 的 innerHTML —— 新挂载的 .reveal 节点
-     会重播 revealIn 入场动画（translateY(14px)；CDP 实测切换后 1224ms 有
-     390 个按键在同一帧位移 14px，正是用户说的「部分按键会抖动」），
-     .chart-box 还会再叠一段 chartSettle 淡入。
-     做法：重建后立刻把「本次新建的」入场动画节点内联定格到终态。只改这些
-     节点的 inline style，下一次正常 render 会换成全新节点，入场动画照常。
-     不用全局 .theme-silent 类 + 延时摘除：animation:none 一摘掉会把动画
-     从头再播一遍，抖动只是被延后而已。 */
-  function silentRebuild(fn) {
-    fn();
-    const v = document.getElementById('view');
-    if (!v) return;
-    v.querySelectorAll('.reveal,.exp-inner,.evpicker,.rec-body,.chart-box,.ec').forEach(function (el) {
-      el.style.animation = 'none';
-      if (el.classList.contains('reveal')) {
-        el.style.opacity = '1';
-        el.style.transform = 'none';
-      }
-    });
-  }
+  /* ★ 2026-11-07 第六轮：主题切换不再重建整页 DOM。
+     第四轮曾用 render(true) + silentRebuild() 把新建节点的入场动画内联定格，
+     但 render(true) 换掉 #view.innerHTML 本身还有定格不了的副作用：
+       · #tlCrown 整个换新节点 → data-k 缓存失效，crownNameFit() 重新
+         remove/add .run，.tl-crown-name-in 的无限跑马灯从 translateX(0) 重播，
+         徽标宽度先窄后宽（占位「—」→ 实际时长），用户看到「左右抖动」；
+       · settlePage() 给 .chart-box/.ec 挂 chartSettle（opacity .35→1），
+         整张图表淡入一次，虚线与分数数字跟着「闪一下」。
+     现在：pal() 刷新 → Charts.repaint() 用新配色重跑 builder（ECharts 实例复用
+     同一个 canvas 节点）→ 时间轴竞速图单独 P.drawTimeline() 重绘。DOM 一个节点
+     都不换，data-k / __bound / 动画 currentTime 全部保留，抖动从根上消失。 */
   function crossFadeCharts(dur) {
     const old = captureCanvases();
-    if (!old.length) { settlePage(); return; }
-    /* 记下「第几个 canvas」而不是节点引用：重绘会换掉节点，按序号对上就行 */
+    /* canvas 节点不会被替换，按序号记下来即可（不再是「重绘会换掉节点」的兜底） */
     const all = Array.prototype.slice.call(document.querySelectorAll('canvas'));
     const snap = old.map(function (o) { return { g: o.ghost, i: all.indexOf(o.cv) }; })
       .filter(function (o) { return o.i >= 0; });
-    try { silentRebuild(function () { render(true); }); } catch (e) { return; }
-    const now = Array.prototype.slice.call(document.querySelectorAll('canvas'));
+    try {
+      if (window.Charts) {
+        window.Charts.refresh();
+        if (window.Charts.repaint) window.Charts.repaint(document.getElementById('view'));
+      }
+      const box = document.getElementById('tlChart');
+      if (box && window.P && window.P.drawTimeline) {
+        /* 关掉这一帧的补间：否则重绘时 ECharts 会把条 / 分数再缓动一次 */
+        box.__tlFastTs = Date.now();
+        window.P.drawTimeline(box);
+      }
+    } catch (e) { return; }
+    if (!snap.length) return;
     snap.forEach(function (s) {
-      const cv = now[s.i];
+      const cv = all[s.i];
       if (!cv || !cv.parentNode) return;
       const p = cv.parentNode;
       const cr = cv.getBoundingClientRect(), pr = p.getBoundingClientRect();
@@ -340,7 +360,8 @@
       requestAnimationFrame(function () { g.style.opacity = '0'; });
       setTimeout(function () { if (g.parentNode) g.parentNode.removeChild(g); }, dur + 60);
     });
-    settlePage();
+    /* 不再 settlePage()：DOM 没重建，chartSettle 那层 0.35→1 的容器淡入
+       本身就是用户看到的「闪一下」，也不需要靠它盖住重绘的「啪一下」。 */
   }
   /* 参数设置页的分段控件与真实偏好对齐（顶栏 ☀/☾ 改主题后同步高亮）。 */
   function syncPrefSegs() {

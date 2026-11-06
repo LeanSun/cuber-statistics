@@ -2035,11 +2035,15 @@ if (P.sixdimTableHtml) {
     '收缩方向 old 层遮罩同步反向');
   ok(/html\.theme-reveal-clip::view-transition-old\(root\)\{[\s\S]{0,120}?mask-image:none/.test(css4),
     '硬圆回退下 old 层不套渐变遮罩');
-  ok(/function silentRebuild\(/.test(app4) &&
-    /silentRebuild\(function \(\) \{ render\(true\); \}\)/.test(app4) &&
-    /el\.style\.animation = 'none'/.test(app4) &&
-    /el\.style\.transform = 'none'/.test(app4),
-    'DOM 重建后入场动画节点内联定格到终态（按键不再抖 14px）');
+  /* ★ 第六轮（2026-11-07）把「重建 DOM 后定格动画」整套废弃：render(true) 换掉
+     #view.innerHTML 还会让登顶徽标的跑马灯 / data-k 状态丢失（左右抖动）、
+     settlePage 的 chartSettle 让整张图表淡入（虚线与分数闪一下）。
+     改成只重绘 canvas、DOM 一个节点都不换，下面两条断言随之改为回归保护。 */
+  const cf = (app4.match(/function crossFadeCharts\(dur\)\s*\{([\s\S]*?)\n  \}/) || ['', ''])[1];
+  ok(!/render\(true\)/.test(cf) && /Charts\.repaint\(/.test(cf) && /P\.drawTimeline\(box\)/.test(cf),
+    '主题切换只重绘 canvas，不再 render(true) 重建整页 DOM（登顶徽标状态得以保留）');
+  ok(!/settlePage\(\);/.test(cf) && !/function silentRebuild\(/.test(app4),
+    '不再挂 chartSettle 容器淡入，第四轮 silentRebuild 随 DOM 重建一起废弃');
   ok(!/classList\.(add|remove)\('theme-silent'\)/.test(app4) && css4.indexOf('html.theme-silent') < 0,
     '不用「临时挂类 + 延时摘除」方案（摘类会把 animation 从头重播，抖动只是延后）');
 }
@@ -2075,6 +2079,37 @@ if (P.sixdimTableHtml) {
     '坐标轴长线也换成 EDGE：旧位图不再有贯穿全宽的近白横线');
   ok(/theme-ghost/.test(ch5) && /function crossFadeCharts\(/.test(fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8')),
     '保留 canvas 交叉淡化：白边是位图内容问题，不靠删掉过渡来掩盖');
+}
+
+/* ================= 2026-11-07 第六轮：虚线 / 分数数字闪烁 + 登顶徽标左右抖动 =================
+   用户第五次反馈：「分数条不闪了，但年份虚线、条尾分数数字还在闪，登顶徽标左右抖动」。
+   三者同源，都在 crossFadeCharts() 这一条链上：
+     ① 旧 canvas 位图里的灰阶辅助元素（splitLine / axisLabel / 条尾分数 / 条内白字）
+        在两主题下一深一浅，旧图 opacity 1→0 盖在新图上时走一段颜色渐变 → 「闪烁」；
+     ② render(true) 重建 #view.innerHTML，#tlCrown 换新节点 → data-k 失效、
+        crownNameFit() 重新 remove/add .run，无限跑马灯从 translateX(0) 重播，
+        徽标宽度先窄后宽 → 「左右抖动」；
+     ③ settlePage() 给 .chart-box/.ec 挂 chartSettle（opacity .35→1）整图淡入 → 又闪一下。
+   修法：旧位图只保留高饱和彩色像素（灰阶擦透明）；网格虚线统一 EDGE；
+   crossFadeCharts 改为 Charts.refresh()+repaint()+P.drawTimeline() 重绘 canvas、
+   一个 DOM 节点都不换，也不再 settlePage。
+   CDP 实测（_cdpchk/theme_round6.mjs）：ghost 灰阶像素 149734→0、白像素 0；
+   DOM 标记 KEEP 与 data-k 双向保留；xAxis.axisLabel.color 从 rgb(139,150,168)
+   变 rgb(109,124,145)（确实用新配色重绘）；0 运行时错误。 */
+{
+  const ch6 = fs.readFileSync(path.join(ROOT, 'js/charts.js'), 'utf8');
+  const app6 = fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8');
+  ok(/__ecSpec = opt/.test(ch6) && /function repaint\(root\)/.test(ch6) && /repaint: repaint/.test(ch6),
+    '静态图表保存 __ecSpec 并提供 repaint()：复用同一 canvas 用新调色板重绘');
+  ok(/getImageData\(0, 0, w, h\)/.test(app6) && /d\[i \+ 3\] = 0/.test(app6) && /mx - mn < 34/.test(app6),
+    '旧 canvas 快照擦掉灰阶辅助像素（虚线 / 刻度 / 分数不再渐变闪烁）');
+  ok(!/splitLine: \{ lineStyle: \{ color: T\.border/.test(ch6),
+    '网格虚线不再随主题跳色，统一用主题无关 EDGE');
+  ok(/box\.__tlFastTs = Date\.now\(\)/.test(app6),
+    '时间轴重绘关掉这一帧的 ECharts 补间，条形与分数不二次缓动');
+  const cf6 = (app6.match(/function crossFadeCharts\(dur\)\s*\{([\s\S]*?)\n  \}/) || ['', ''])[1];
+  ok(/const cv = all\[s\.i\]/.test(cf6) && !/const now = /.test(cf6),
+    'canvas 节点不变，ghost 直接按序号盖回同一个容器');
 }
 
 console.log(fail ? ('\n❌ 失败 ' + fail + ' 项') : '\n✅ 全部通过');

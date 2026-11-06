@@ -148,7 +148,7 @@
       axisLine: { lineStyle: { color: EDGE } },
       axisTick: { show: false },
       axisLabel: { color: T.text3, fontSize: 11 },
-      splitLine: { lineStyle: { color: T.border, type: 'dashed' } }
+      splitLine: { lineStyle: { color: EDGE, type: 'dashed' } }
     };
   }
 
@@ -201,7 +201,7 @@
     });
     return Object.assign(base({ stagger: 22 }), {
       grid: { left: 8, right: 12, top: 10, bottom: 4, containLabel: true },
-      xAxis: Object.assign({ type: 'value', max: opts.max || 100 }, axisCommon(), { splitLine: { lineStyle: { color: T.border, type: 'dashed' } } }),
+      xAxis: Object.assign({ type: 'value', max: opts.max || 100 }, axisCommon(), { splitLine: { lineStyle: { color: EDGE, type: 'dashed' } } }),
       yAxis: Object.assign({ type: 'category', data: cats, inverse: true }, axisCommon(), { splitLine: { show: false } }),
       tooltip: Object.assign({ trigger: 'axis', axisPointer: { type: 'shadow' } }, base().tooltip),
       legend: { show: !!opts.legend, data: (opts.series || []).map(function (s) { return s.name; }), textStyle: { color: T.text2, fontSize: 11 }, bottom: 0, itemWidth: 10, itemHeight: 10 },
@@ -305,7 +305,7 @@
           return { name: n, max: maxArr ? (maxArr[i] || 1) : maxOne, color: T.text2 };
         }),
         axisName: { color: T.text2, fontSize: 11.5 },
-        splitLine: { lineStyle: { color: T.border } },
+        splitLine: { lineStyle: { color: EDGE } },
         splitArea: { areaStyle: { color: [T.soft, 'transparent'] } },
         axisLine: { lineStyle: { color: EDGE } }
       },
@@ -440,7 +440,7 @@
         return [
           Object.assign({ type: 'value', min: 0, max: xm }, axisCommon(), {
             axisLabel: { color: T.text3, fontSize: 11, formatter: fmtTick },
-            splitLine: { lineStyle: { color: T.border, type: 'dashed' } }
+            splitLine: { lineStyle: { color: EDGE, type: 'dashed' } }
           }),
           Object.assign({ type: 'value', min: 0, max: xm, position: 'top', gridIndex: 0 }, axisCommon(), {
             axisLabel: { color: T.text3, fontSize: 10.5, formatter: fmtTick },
@@ -1233,8 +1233,37 @@
         o.backgroundColor = 'transparent';
         resolveDeep(o);
         render(el, o, opt.opts || {});
+        /* 记下原始 spec：主题切换时 repaint() 要用新调色板重跑 builder，
+           而 data-ec 属性下面会被删掉（避免重复挂载）。 */
+        el.__ecSpec = opt;
         el.removeAttribute('data-ec');
       } catch (e) { /* 单个图表失败不影响其余 */ }
+    });
+  }
+  /* ★ 2026-11-07 第六轮：只重绘 canvas，不重建整页 DOM。
+     以前主题切换靠 app.js 的 render(true) 换掉 #view.innerHTML 来触发重新挂载，
+     代价是登顶徽标的跑马灯动画从头重播、crownNameFit() 重新 remove/add .run，
+     徽标宽度先窄后宽 → 用户反馈「登顶徽标左右抖动」。现在 pal() 刷新后直接
+     用 __ecSpec 重跑 builder，ECharts 实例复用同一个 canvas 节点。
+     时间轴竞速图不走 data-ec（由 pages-extra 逐帧绘制），app.js 会单独调
+     P.drawTimeline(box)。 */
+  function repaint(root) {
+    if (!has()) return;
+    refreshPalette();
+    const scope = root || document;
+    const nodes = scope.querySelectorAll ? scope.querySelectorAll('.ec') : [];
+    Array.prototype.forEach.call(nodes, function (el) {
+      const spec = el.__ecSpec;
+      if (!spec) return;
+      const builder = BUILDERS[spec.type];
+      if (!builder) return;
+      try { if (!window.echarts.getInstanceByDom(el)) return; } catch (e) { return; }
+      try {
+        const o = builder(spec.data || {}, spec.opts || {});
+        o.backgroundColor = 'transparent';
+        resolveDeep(o);
+        render(el, o, spec.opts || {});
+      } catch (e) { /* 单图失败不影响其余 */ }
     });
   }
 
@@ -1246,7 +1275,8 @@
   };
 
   window.Charts = {
-    has: has, mount: mount, render: render, refresh: refreshPalette, theme: pal, round: round,
+    has: has, mount: mount, render: render, refresh: refreshPalette, repaint: repaint,
+    theme: pal, round: round,
     resolveColor: resolveColor, resolveDeep: resolveDeep,
     stacked: stacked, waterfall: waterfall, donut: donut, radar: radar, bump: bump,
     barRace: barRace, lanes: lanes, line: lineChart, groupBars: groupBars,
