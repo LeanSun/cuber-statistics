@@ -293,6 +293,27 @@
     });
     return list;
   }
+  /* ★ 2026-11-06 第四轮：VT 结束后必须重建 DOM 才能用新配色重绘 canvas，
+     但 render(true) 会整页换掉 #view 的 innerHTML —— 新挂载的 .reveal 节点
+     会重播 revealIn 入场动画（translateY(14px)；CDP 实测切换后 1224ms 有
+     390 个按键在同一帧位移 14px，正是用户说的「部分按键会抖动」），
+     .chart-box 还会再叠一段 chartSettle 淡入。
+     做法：重建后立刻把「本次新建的」入场动画节点内联定格到终态。只改这些
+     节点的 inline style，下一次正常 render 会换成全新节点，入场动画照常。
+     不用全局 .theme-silent 类 + 延时摘除：animation:none 一摘掉会把动画
+     从头再播一遍，抖动只是被延后而已。 */
+  function silentRebuild(fn) {
+    fn();
+    const v = document.getElementById('view');
+    if (!v) return;
+    v.querySelectorAll('.reveal,.exp-inner,.evpicker,.rec-body,.chart-box,.ec').forEach(function (el) {
+      el.style.animation = 'none';
+      if (el.classList.contains('reveal')) {
+        el.style.opacity = '1';
+        el.style.transform = 'none';
+      }
+    });
+  }
   function crossFadeCharts(dur) {
     const old = captureCanvases();
     if (!old.length) { settlePage(); return; }
@@ -300,7 +321,7 @@
     const all = Array.prototype.slice.call(document.querySelectorAll('canvas'));
     const snap = old.map(function (o) { return { g: o.ghost, i: all.indexOf(o.cv) }; })
       .filter(function (o) { return o.i >= 0; });
-    try { render(true); } catch (e) { return; }
+    try { silentRebuild(function () { render(true); }); } catch (e) { return; }
     const now = Array.prototype.slice.call(document.querySelectorAll('canvas'));
     snap.forEach(function (s) {
       const cv = now[s.i];

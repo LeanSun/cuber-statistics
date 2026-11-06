@@ -201,7 +201,20 @@ html.theme-switching *::after{
    不需要任何组级动画。 */
 ::view-transition-group(root),
 ::view-transition-image-pair(root){animation:none!important}
-::view-transition-old(root){z-index:1}
+/* ★ 2026-11-06 第四轮：给 old 层加与 new 层「互补」的遮罩。此前 old 层完整
+   不透明（探针 mask:none/op:1），new 层带 56px 羽化 mask —— 羽化带里 new
+   半透明、old 整层透出，两张整页快照叠加一次：高对比的细长分数条
+   （.ministack / .bar-grow）边缘被重描出一圈「边框」，圆扫过又消失，
+   正是用户反馈的「切换一瞬间分数条边框闪烁、随后消失」。现在 old 层在
+   圆内透明、圆外不透明，羽化带内两层 alpha 互补（和为 1），任意像素只由
+   一层主导，不再产生双影；收缩方向由下方 .theme-reveal-contract 反过来。 */
+::view-transition-old(root){
+  z-index:1;
+  -webkit-mask-image:radial-gradient(circle var(--reveal-r) at var(--reveal-x,50%) var(--reveal-y,50%),
+    rgba(0,0,0,0) calc(100% - var(--reveal-feather,56px)),#000 100%);
+  mask-image:radial-gradient(circle var(--reveal-r) at var(--reveal-x,50%) var(--reveal-y,50%),
+    rgba(0,0,0,0) calc(100% - var(--reveal-feather,56px)),#000 100%);
+}
 ::view-transition-new(root){
   z-index:2;
   -webkit-mask-image:radial-gradient(circle var(--reveal-r) at var(--reveal-x,50%) var(--reveal-y,50%),
@@ -221,10 +234,23 @@ html.theme-reveal-contract::view-transition-new(root){
   mask-image:radial-gradient(circle var(--reveal-r) at var(--reveal-x,50%) var(--reveal-y,50%),
     rgba(0,0,0,0) calc(100% - var(--reveal-feather,56px)),#000 100%);
 }
+/* 浅 → 深：new 层圆内透明 / 圆外不透明，old 层必须反过来（圆内不透明、
+   圆外透明），两层才仍然互补，不会在羽化带里叠出双影。 */
+html.theme-reveal-contract::view-transition-old(root){
+  -webkit-mask-image:radial-gradient(circle var(--reveal-r) at var(--reveal-x,50%) var(--reveal-y,50%),
+    #000 calc(100% - var(--reveal-feather,56px)),rgba(0,0,0,0) 100%);
+  mask-image:radial-gradient(circle var(--reveal-r) at var(--reveal-x,50%) var(--reveal-y,50%),
+    #000 calc(100% - var(--reveal-feather,56px)),rgba(0,0,0,0) 100%);
+}
 html.theme-reveal-clip::view-transition-new(root){
   -webkit-mask-image:none;mask-image:none;
   clip-path:circle(0px at var(--reveal-x,50%) var(--reveal-y,50%));
   filter:none;
+}
+/* 无 @property 的硬圆回退：new 层是 clip-path 硬边、本身不存在半透明叠加，
+   old 层保持完整绘制即可，别再套 radial-gradient 遮罩。 */
+html.theme-reveal-clip::view-transition-old(root){
+  -webkit-mask-image:none;mask-image:none;
 }
 
 /* ============ 界面偏好（参数设置 → 外观与交互） ============

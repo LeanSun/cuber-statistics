@@ -1478,7 +1478,7 @@ console.log('== 默认值：停办项目计入 / 竞速图速率 ==');
       'sixyear.js 产出 M2 单轨年度曲线（m2s / m2a）');
     ok(bSrc.indexOf("SIXK.concat(['m2s', 'm2a'])") >= 0, 'build.js 把 M2 单轨曲线注入 p.sy');
     ok(peSrc2.indexOf('function dimCurveKey(p, dim)') >= 0 &&
-      /const dk = dimCurveKey\(p, dim\);[\s\S]{0,120}?dimRatioAt\(p, dk, fy\)/.test(peSrc2) &&
+      peSrc2.indexOf('dimRatioAt(p, dimCurveKey(p, dim), fy)') >= 0 &&
       peSrc2.indexOf("const k = rtype === 'single' ? 'm2s' : (rtype === 'avg' ? 'm2a' : 'm2')") >= 0,
       '单维竞速图按成绩口径选 M2 进度曲线');
     const s2map = (f) => {
@@ -1982,87 +1982,66 @@ if (P.sixdimTableHtml) {
   fail++;
 }
 
-/* ================= 2026-11-06 第三轮：丝滑比赛日曲线（smootherstep + 基线） =================
-   上一版「赛前 10 天三次加速 / 比赛日完成 85% / 无比赛严格 0 平台」被用户判「太生硬」，
-   整体回滚后又按用户确认的方向重做：过渡核换成 C² 的 quintic smootherstep、
-   窗口拉长到赛前 24 / 赛后 16 天、平台保留 32% 的极缓慢基线增长。这里守住：
-   ① 源码是新的常量 / 函数，没有旧版三次阶跃残留（避免两套分数口径）；
-   ② 数值上平台增速 > 0 但极小、比赛日附近快一个数量级、窗口边界增速连续
-      （没有「突然启动」的折角）、终值收敛、全生涯单调、四条分支可求值。 */
+/* ================= 2026-11-06 回滚：分数演进恢复「年度采样 + 年内线性插值」 =================
+   上一版把年度增量重参数化到真实比赛日（赛前 10 天加速 / 比赛日集中 / 无比赛严格平台），
+   用户实测「太生硬、不够丝滑连接」，已整体回滚。这里守住两点：
+   ① 源码里不再残留爆发曲线的函数 / 常量 / 探针（避免死代码与两套分数口径）；
+   ② 数值上同一年内仍是匀速推进 —— 不会出现整段 0 增量的平台或突发跳变。 */
 {
   const peSrc4 = fs.readFileSync(path.join(ROOT, 'js/pages-extra.js'), 'utf8');
-  ok(/const SMOOTH_PRE = 24 \/ 365\.25/.test(peSrc4) &&
-    /const SMOOTH_POST = 16 \/ 365\.25/.test(peSrc4) &&
-    /const BASE_SHARE = 0\.32/.test(peSrc4),
-    '长窗口 24/16 天 + 32% 极缓慢基线增长');
-  ok(/function smootherStep\(u\)[\s\S]{0,240}?u \* u \* u \* \(u \* \(u \* 6 - 15\) \+ 10\)/.test(peSrc4),
-    '过渡核是 quintic smootherstep（端点一/二阶导为 0，C² 连续）');
-  ok(peSrc4.indexOf('BURST_LEAD') < 0 && peSrc4.indexOf('burstStep(') < 0,
-    '旧版赛前 10 天三次阶跃已彻底移除（无两套分数口径）');
-  ok(/return BASE_SHARE \* base \+ \(1 - BASE_SHARE\) \* burstRatioAt\(bs, fy\)/.test(peSrc4) &&
-    /if \(bs == null\) return base/.test(peSrc4),
-    'raceRatio 混合匀速基线与比赛日累计；精简档无 records 时退回纯匀速');
-  ok(/acc \+= v\[i\] \* smoothKernel\(t, d\[i\]\)/.test(peSrc4) &&
-    /const cut = t - SMOOTH_POST/.test(peSrc4),
-    '窗口内逐项算 smootherstep、窗口外走前缀和');
-  ok(/function compDatesOf\(/.test(peSrc4) && /r\.date/.test(peSrc4) &&
-    /p\.records\[\]\.date/.test(peSrc4),
-    '比赛日只取 p.records[].date（不是被截断且无日期的 p.podiums）');
-  ok((peSrc4.match(/raceRatio\(bs/g) || []).length >= 4 &&
-    typeof P.tlValueProbe === 'function',
-    '项目 / 单维 / 成绩口径 / 兜底四条分支都走同一把尺子，并暴露逐日探针');
-  /* 数值回归只在全量数据上跑，CI 的 8 人样本选手太少。 */
+  const dead = ['BURST_LEAD', 'burstStep', 'compDatesOf', 'burstFor', 'burstRatioAt',
+    'raceRatio', 'tlValueProbe', '__burst'];
+  ok(dead.every((k) => peSrc4.indexOf(k) < 0),
+    '爆发曲线已整体回滚：无残留函数 / 常量 / 探针');
+  ok(/function seriesCum\(/.test(peSrc4) && /function dimRatioAt\(/.test(peSrc4) &&
+    /s \+= v \* frac/.test(peSrc4) &&
+    /dimRatioAt\(p, dimCurveKey\(p, dim\), fy\)/.test(peSrc4),
+    '恢复年度累计 seriesCum + 单维 dimRatioAt 的年内线性插值');
+  /* 逐季度取分：同一年内的季度增量应近似相等（匀速），且每一段都 > 0（无平台）。
+     只在全量数据上做，CI 的 8 人样本选手太少。 */
   const SAMPLE4 = M.ranked.length < 1000;
   if (!SAMPLE4) {
     const pid4 = '2009ZEMD01';
-    const p4 = M.ranked.find(function (x) { return x.id === pid4; });
-    const fyOf = function (str) {
-      const y = +str.slice(0, 4), m = +str.slice(5, 7), d = +str.slice(8, 10);
-      const doy = (Date.UTC(y, m - 1, d) - Date.UTC(y, 0, 1)) / 86400000;
-      const leap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
-      return y + doy / (leap ? 366 : 365);
-    };
-    const D = 1 / 365.25;
-    const ds = (p4.records || []).map(function (r) { return r.date; })
-      .filter(function (str) { return str && str.length >= 10; }).sort();
-    let center = null, bestGap = -1;
-    for (let i = 1; i < ds.length - 1; i++) {
-      const gl = (Date.parse(ds[i]) - Date.parse(ds[i - 1])) / 86400000;
-      const gr = (Date.parse(ds[i + 1]) - Date.parse(ds[i])) / 86400000;
-      const g = Math.min(gl, gr);
-      if (g > bestGap) { bestGap = g; center = ds[i]; }
-    }
-    const t = fyOf(center);
-    const at = function (o) { return P.tlValueProbe(pid4, t + o * D, 'all', [], ''); };
-    const rate = function (x, y) { return (at(y) - at(x)) / (y - x); };
-    const plat = rate(-70, -50), burst = rate(-8, 0), edge = rate(-24, -22);
-    ok(plat > 0, '平台段保留极缓慢基线增长（不再是严格 0，实得 ' + plat.toFixed(4) + '/天）');
-    ok(burst > plat * 8,
-      '比赛日附近明显更快、快慢可辨（' + (burst / plat).toFixed(1) + ' 倍）');
-    ok(edge > 0 && edge < plat * 3,
-      '窗口边界增速连续，没有「突然启动」的折角（边界为基线 ' + (edge / plat).toFixed(2) + ' 倍）');
-    const d1 = at(-2) - at(-3), d2 = at(0) - at(-1), d3 = at(2) - at(0);
-    ok(d1 > 0 && d2 > 0 && d3 > 0 && d3 < d1 * 3,
-      '不是瞬间跳变：赛前 / 赛日 / 赛后都有平滑增长');
-    const e1 = P.tlValueProbe(pid4, 2028, 'all', [], '');
-    const e2 = P.tlValueProbe(pid4, P.tlEndFy(), 'all', [], '');
-    const snapEnd = P.tlSnapshot([], P.tlEndFy(), 'all').find(function (r) { return r.id === pid4; });
-    ok(Math.abs(e1 - e2) < 1e-6 && snapEnd && Math.abs(e2 - snapEnd.value) < 1e-6,
-      '最后一次比赛后收敛到原终值，最终名次不变（' + e2.toFixed(4) + '）');
-    let mono = true, last = -1;
-    for (let y = 2009; y <= 2027; y += D * 2) {
-      const v = P.tlValueProbe(pid4, y, 'all', [], '');
-      if (v + 1e-9 < last) { mono = false; break; }
-      last = v;
-    }
-    ok(mono, '全生涯逐日单调不减（登顶时间线的前提仍成立）');
-    const four = [P.tlValueProbe(pid4, 2015.5, 'all', [], 'm1'),
-      P.tlValueProbe(pid4, 2015.5, 'all', ['333'], ''),
-      P.tlValueProbe(pid4, 2015.5, 'single', [], ''),
-      P.tlValueProbe(pid4, 2015.5, 'avg', [], 'm2')];
-    ok(four.every(function (v) { return isFinite(v) && v > 0; }),
-      '项目 / 单次 / 平均 / 单维四条分支都能用新曲线求值');
+    const qs = [2015.0, 2015.25, 2015.5, 2015.75];
+    const vals = qs.map((f) => {
+      const row = P.tlSnapshot([], f).find((r) => r.id === pid4);
+      return row ? row.value : 0;
+    });
+    const d = [vals[1] - vals[0], vals[2] - vals[1], vals[3] - vals[2]];
+    ok(vals.every((v) => v > 0) && d.every((x) => x > 0),
+      '同一年内每季度都在涨分（没有「无比赛就不涨」的平台）');
+    const avg = (d[0] + d[1] + d[2]) / 3;
+    ok(avg > 0 && d.every((x) => Math.abs(x - avg) < avg * 0.06),
+      '季度增量近似相等（年内匀速线性插值，实得 ' + d.map((x) => x.toFixed(2)).join(' / ') + '）');
   }
+}
+
+/* ================= 2026-11-06 第四轮：分数条边框闪烁 + 按键抖动 =================
+   用户第三次反馈：切换瞬间「图标可视化的分数条」出现边框又消失、部分按键抖动。
+   CDP 探针定位到两层独立原因：
+     ① VT 合成层：old 层 mask:none/op:1 完整不透明，new 层带 56px 羽化半透明
+        mask → 羽化带里两张整页快照叠加，细长高对比分数条边缘被重描出双影；
+     ② DOM 层：crossFadeCharts 在 VT 结束后 render(true) 重建整页，新挂载的
+        .reveal 重播 revealIn（translateY(14px)），实测 390 个按键同帧位移 14px。
+   修法分别是 old 层互补遮罩、重建后把入场动画节点内联定格到终态。 */
+{
+  const css4 = fs.readFileSync(path.join(ROOT, 'css/style.css'), 'utf8');
+  const app4 = fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8');
+  const oldBlock = (css4.match(/::view-transition-old\(root\)\{([\s\S]*?)\n\}/) || ['', ''])[1];
+  ok(/mask-image:radial-gradient/.test(oldBlock) &&
+    /rgba\(0,0,0,0\) calc\(100% - var\(--reveal-feather,56px\)\),#000 100%\)/.test(oldBlock),
+    'old 层加互补遮罩：羽化带内新旧快照 alpha 互补，分数条不再叠出双影边框');
+  ok(/html\.theme-reveal-contract::view-transition-old\(root\)\{[\s\S]{0,400}?mask-image:radial-gradient/.test(css4),
+    '收缩方向 old 层遮罩同步反向');
+  ok(/html\.theme-reveal-clip::view-transition-old\(root\)\{[\s\S]{0,120}?mask-image:none/.test(css4),
+    '硬圆回退下 old 层不套渐变遮罩');
+  ok(/function silentRebuild\(/.test(app4) &&
+    /silentRebuild\(function \(\) \{ render\(true\); \}\)/.test(app4) &&
+    /el\.style\.animation = 'none'/.test(app4) &&
+    /el\.style\.transform = 'none'/.test(app4),
+    'DOM 重建后入场动画节点内联定格到终态（按键不再抖 14px）');
+  ok(!/classList\.(add|remove)\('theme-silent'\)/.test(app4) && css4.indexOf('html.theme-silent') < 0,
+    '不用「临时挂类 + 延时摘除」方案（摘类会把 animation 从头重播，抖动只是延后）');
 }
 
 console.log(fail ? ('\n❌ 失败 ' + fail + ' 项') : '\n✅ 全部通过');
