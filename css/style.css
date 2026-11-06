@@ -397,7 +397,11 @@ code,kbd{font-family:var(--mono);font-size:.92em;background:var(--bg-soft);paddi
 .geo-opt{display:block;width:100%;text-align:left;padding:5px 9px;border:0;background:none;
   color:var(--text);font:inherit;font-size:13px;line-height:1.5;border-radius:var(--r-sm);
   cursor:pointer;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
-.geo-opt:hover,.geo-opt:focus{background:var(--bg-soft);outline:none}
+.geo-opt:hover{background:var(--bg-soft)}
+/* 2026-11-07：旧规则 `.geo-opt:focus{outline:none}` 权重高于全局 :focus-visible，
+   键盘在地区下拉里移动时完全没有焦点环。保留背景变化，另补可见轮廓。 */
+.geo-opt:focus{background:var(--bg-soft)}
+.geo-opt:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .geo-opt.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
 .geo-opt[hidden]{display:none}
 .geo-none{display:none;padding:8px 10px;font-size:12.5px;color:var(--text-3);white-space:nowrap}
@@ -482,6 +486,13 @@ details.card .card-body{padding-top:12px}
 @media (prefers-reduced-motion:reduce){
   .reveal{animation:none;opacity:1;transform:none}
   *{transition-duration:.01ms!important}
+  /* ★ 2026-11-07：系统级「减少动效」过去只压 transition，标题流动渐变、
+     大数字光带、皇冠脉冲、加载圈等 infinite 动画仍完整播放（站内手动开关
+     才有 animation-duration:.01ms）。这里只关装饰性循环 / 一次性入场动画；
+     ⚠ .tl-crown-name.run 跑马灯是「读不到全名」的兜底，站主明确要求保留；
+     主题圆形揭示走 WAAPI + @property，也不受这里影响。 */
+  .hero-title,.stat .v,.pid-rank .pr-val b,.tl-crown[data-st="pending"] .tl-crown-ic,
+  .home-loading .spinner,.bar-grow,.md-block,.ms-pop-body{animation:none!important}
 }
 
 /* ============ Home ============ */
@@ -1271,12 +1282,8 @@ table.sd-table tbody td{padding:7px 11px}
 .bk-num{text-align:right;font-variant-numeric:tabular-nums}
 .modlegend{display:flex;flex-wrap:wrap;gap:5px 14px;margin-top:10px;font-size:12px}
 .modlegend i{width:9px;height:9px;border-radius:2px;display:inline-block;margin-right:5px}
-.toast{
-  position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(10px);
-  background:var(--text);color:var(--bg-elev);padding:9px 18px;border-radius:999px;
-  font-size:13px;z-index:200;box-shadow:var(--shadow-lg);opacity:0;transition:opacity .2s,transform .2s;
-}
-.toast.show{opacity:1;transform:translateX(-50%)}
+/* 2026-11-07：旧 .toast / .toast.show 已删除 —— app.js 里两份同名 toast()
+   函数声明导致这一套从未生效，实际用的是 .wb-toast（定义见下方）。 */
 
 /* ============ Footer ============ */
 .footer{border-top:1px solid var(--border);background:var(--bg-elev);margin-top:26px}
@@ -1328,7 +1335,16 @@ table.sd-table tbody td{padding:7px 11px}
   .stat .v{font-size:22px}
   .flip-row{grid-template-columns:1fr 90px;gap:6px}
   .flip-bar{display:none}
-  .tip-body{right:auto;left:0}
+  /* ★ 2026-11-07：旧规则 left:0 让气泡从靠右的 .tip 起再向右伸 255px，
+     375px 视口下把 document.scrollWidth 撑到 587（整页出现横向滚动条，
+     而气泡本身 opacity:0 根本看不见）。改回右对齐，宽度由上面的
+     min(300px,100vw-28px) 夹住。 */
+  .tip-body{right:0;left:auto}
+  /* .tl-top 的两组按钮在 <=1000px 已允许换行，但 .fgroup 是 flex:0 0 auto
+     不收缩、.seg 按 max-content 排成 443px，375px 下仍撑破页面。
+     窄屏让 fgroup 可收缩、seg 占满后自然折行（不裁切，气泡仍可溢出显示）。 */
+  .tl-top .fgroup{flex:0 1 auto;min-width:0}
+  .tl-top .seg{width:100%}
 }
 @media (max-width:420px){
   table.data{min-width:760px}
@@ -1688,7 +1704,7 @@ button.exp-v3-wca.pid-copy:hover{color:var(--accent)}
 /* 主项说明气泡（加大） */
 .tag-tip .tip-body{min-width:280px;max-width:420px;white-space:normal;line-height:1.55;
   font-size:12.5px;padding:10px 12px}
-.tip-body{max-width:300px;white-space:normal;line-height:1.5}
+.tip-body{max-width:min(300px,calc(100vw - 28px));white-space:normal;line-height:1.5}
 
 /* 六维雷达放大 */
 .cmp-radar-wrap{max-width:720px;margin:0 auto}

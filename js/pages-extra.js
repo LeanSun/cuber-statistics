@@ -828,10 +828,15 @@
     const btn = document.getElementById('tlZoomReset');
     if (btn) btn.hidden = !zoomed;
   };
-  /* 绑定一次（容器换了会重新绑定，因为 data-zoom-bound 挂在元素上） */
+  /* 缩放交互：box 级监听随节点销毁无妨，但 window 上的 mousemove / mouseup
+     不会因为旧容器被 innerHTML 换掉而消失。全局只保留「当前活跃容器」的一对，
+     重绑前先解绑上一对 —— CDP DOMDebugger 实测旧实现每进出一次时间轴就 +1，
+     4 轮路由往返后 window.mousemove / mouseup 各 0→9。 */
+  let zoomWinCleanup = null;
   P.bindLaneZoom = function (box) {
     if (!box || box.__zoomBound || !window.echarts) return;
     box.__zoomBound = true;
+    if (zoomWinCleanup) { zoomWinCleanup(); zoomWinCleanup = null; }
     const px = function (e) { const r = box.getBoundingClientRect(); return e.clientX - r.left; };
     box.addEventListener('wheel', function (e) {
       /* 不按 ctrl / alt 时一律放行，页面照常滚动 —— 用户可能只是想往下看页面 */
@@ -863,13 +868,13 @@
       box.classList.add('dragging');
       e.preventDefault();
     });
-    window.addEventListener('mousemove', function (e) {
+    const onMove = function (e) {
       if (!drag) return;
       if (Math.abs(e.clientX - drag.x0) > 3 || Math.abs(e.clientY - drag.y0) > 3) drag.moved = true;
       const dy = (e.clientX - drag.x) * zoomYearsPerPx(box);
       zoomApply(box, drag.a - dy, drag.b - dy);
-    });
-    window.addEventListener('mouseup', function () {
+    };
+    const onUp = function () {
       if (!drag) return;
       /* ★ 真拖动过的，浏览器仍会补发一次 click（按下/抬起都落在 canvas 上就会）。
          若不拦掉，这次 click 会被当成「点击色块 → 跳选手主页」，刚拖完就离开页面了。
@@ -877,7 +882,13 @@
       if (drag.moved) box.__tlSkipClick = Date.now();
       drag = null;
       box.classList.remove('dragging');
-    });
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    zoomWinCleanup = function () {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
     /* 捕获阶段吞掉「拖动结束后的那次 click」：ECharts 的 click 监听挂在 canvas（子节点）上，
        父级在捕获阶段 stopPropagation 就能拦在它之前。 */
     box.addEventListener('click', function (e) {

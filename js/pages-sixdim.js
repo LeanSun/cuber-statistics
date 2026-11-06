@@ -287,6 +287,9 @@
     const chipsEl = document.getElementById('sdChips');
 
     function paint(D) {
+      /* ★ 2026-11-07：7MB 数据表加载期间用户可能已切走，ensureData 的回调队列里
+         还留着旧 root 的 paint。别给已脱离文档的节点跑 tableHtml / 写 innerHTML。 */
+      if (!root.isConnected) return;
       if (!D) {
         if (status) { status.textContent = l.fail; status.className = 'sd-status err'; }
         return;

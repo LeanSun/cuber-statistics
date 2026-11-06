@@ -352,7 +352,7 @@
     const lvCls = r.level === 'WR' ? 'var(--m1)' : (r.level === 'CR' ? 'var(--m2)' : 'var(--m5)');
     let h = '<div class="rec-item" data-ach="rec" data-pid="' + p.id + '" data-idx="' + i + '" data-level="' + r.level + '" data-type="' + (r.type === 'single' ? 'single' : 'avg') +
       '" data-score="' + r.R + '" data-date="' + esc(r.date) + '" data-held="' + r.held + '">';
-    h += '<div class="rec-row" data-toggle>';
+    h += '<div class="rec-row" data-toggle tabindex="0" role="button" aria-expanded="false">';
     h += '<span class="rc rc-lv"><b style="color:' + lvCls + '">' + esc(t('rec.level.' + r.level)) + '</b></span>';
     h += '<span class="rc rc-ev">' + Ic.event(r.ev, 'ev-mini') + ' ' + esc(evName(M.EV[r.ev])) + ' · ' + esc(t('rec.' + (r.type === 'single' ? 'single' : 'average'))) + '</span>';
     h += '<span class="rc rc-val mono">' + esc(r.value) + '</span>';
@@ -404,7 +404,7 @@
   function podRow(p, r, i) {
     const tierColor = r.tier === 'WC' ? 'var(--m1)' : (r.tier === 'CC' ? 'var(--m2)' : (r.tier === 'NC' ? 'var(--m5)' : 'var(--text-2)'));
     let h = '<div class="rec-item" data-ach="pod" data-pid="' + p.id + '" data-idx="' + i + '" data-tier="' + r.tier + '">';
-    h += '<div class="rec-row" data-toggle>';
+    h += '<div class="rec-row" data-toggle tabindex="0" role="button" aria-expanded="false">';
     h += '<span class="rc rc-lv"><b style="color:' + tierColor + '">' + esc(t('pod.level.' + r.tier)) + '</b></span>';
     h += '<span class="rc rc-ev">' + Ic.event(r.ev, 'ev-mini') + ' ' + esc(evName(M.EV[r.ev])) + ' · ' + esc(t('pod.placeName.' + r.place)) + '</span>';
     h += '<span class="rc rc-val mono tiny muted">' + esc(r.comp) + ' · ' + r.year + '</span>';

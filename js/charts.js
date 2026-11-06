@@ -152,6 +152,50 @@
     };
   }
 
+  /* ★ 2026-11-07 全站自查：图表生命周期收敛为「一个全局 resize + 一个共享 RO」。
+     旧实现每渲染一张图就 window.addEventListener('resize') 一次、并给每个 .ec
+     节点新建一个 ResizeObserver（闭包强引用 inst）。app.js 的 render() 会用
+     view.innerHTML 换掉整页节点，旧节点上的监听 / RO / ECharts 实例从不释放：
+     CDP DOMDebugger 实测走 4 轮路由往返，window resize 监听 1→22、最终 40，
+     mousemove / mouseup 各 0→9，随时间单调增长。
+     现在：resize 只绑一次并遍历「当前文档里」的实例；RO 全局共享且对已脱离
+     文档的节点自动 unobserve；disposeWithin() 在 innerHTML 替换前显式回收旧实例。 */
+  let sharedRO = null, globalResizeBound = false;
+  function resizeAll() {
+    if (!has()) return;
+    const nodes = document.querySelectorAll('.ec,#tlChart');
+    Array.prototype.forEach.call(nodes, function (el) {
+      try { const i = window.echarts.getInstanceByDom(el); if (i) i.resize(); } catch (e) { /* 单图失败不影响其余 */ }
+    });
+  }
+  function observeOne(el) {
+    if (!window.ResizeObserver) return;
+    if (!sharedRO) {
+      sharedRO = new window.ResizeObserver(function (entries) {
+        for (let j = 0; j < entries.length; j++) {
+          const target = entries[j].target;
+          /* 节点已被 innerHTML 换掉：立刻停止观察，别让 RO 继续强引用旧 DOM */
+          if (!target.isConnected) { try { sharedRO.unobserve(target); } catch (e) { } continue; }
+          try { const i = window.echarts.getInstanceByDom(target); if (i) i.resize(); } catch (e) { }
+        }
+      });
+    }
+    try { sharedRO.observe(el); } catch (e) { }
+  }
+  /* 在父容器被替换前调用：释放旧 ECharts 实例并停止观察，避免 zrender 动画帧常驻 */
+  function disposeWithin(root) {
+    if (!root || !has()) return;
+    const nodes = root.querySelectorAll ? root.querySelectorAll('.ec,#tlChart') : [];
+    Array.prototype.forEach.call(nodes, function (el) {
+      if (sharedRO) { try { sharedRO.unobserve(el); } catch (e) { } }
+      try {
+        const i = window.echarts.getInstanceByDom(el);
+        if (i) i.dispose();
+      } catch (e) { }
+      el.__ecSpec = null;
+    });
+  }
+
   /* ---------- 通用渲染 ---------- */
   function render(el, option, opts) {
     opts = opts || {};
@@ -171,16 +215,12 @@
     if ((!el.clientWidth && !el.offsetWidth) || (!el.clientHeight && !el.offsetHeight)) {
       requestAnimationFrame(function () { try { inst.resize(); } catch (e) { } });
     }
-    /* 尺寸变化（含从隐藏变可见）时自动重绘一次：仅靠 window.resize 兜不住 Tab / 视图切换 */
-    if (window.ResizeObserver && !el.__ecRO) {
-      try {
-        el.__ecRO = new window.ResizeObserver(function () { try { inst.resize(); } catch (e) { } });
-        el.__ecRO.observe(el);
-      } catch (e) { }
-    }
-    if (!el.__ecResized) {
-      el.__ecResized = true;
-      window.addEventListener('resize', function () { try { inst.resize(); } catch (e) { } });
+    /* 尺寸变化（含从隐藏变可见）时自动重绘一次：仅靠 window.resize 兜不住 Tab / 视图切换。
+       共享 RO + 单一全局 resize，不再为每张图各留一条永不释放的监听。 */
+    observeOne(el);
+    if (!globalResizeBound) {
+      globalResizeBound = true;
+      window.addEventListener('resize', resizeAll, { passive: true });
     }
     return inst;
   }
@@ -1276,6 +1316,7 @@
 
   window.Charts = {
     has: has, mount: mount, render: render, refresh: refreshPalette, repaint: repaint,
+    dispose: disposeWithin,
     theme: pal, round: round,
     resolveColor: resolveColor, resolveDeep: resolveDeep,
     stacked: stacked, waterfall: waterfall, donut: donut, radar: radar, bump: bump,

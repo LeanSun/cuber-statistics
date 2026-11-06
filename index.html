@@ -1,78 +1,40 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-theme="dark" style="--bar-max: 100%; --anim-rate: 1; --grad-egg: linear-gradient(100deg,#ff7bbf 0%,#ffcb93 17%,#4acc79 33%,#fe676a 50%,#00a7f5 67%,#b585ff 83%,#00c3c3 100%);" data-page-node-id="CfNZ7RqWwORQi9t5QaFStX"><head data-page-node-id="rCfFLfslHUs3POSaFUGTHr">
-<meta charset="utf-8" data-page-node-id="oOnhdiPPnR6Btnle0LuS5p">
-<meta name="viewport" content="width=device-width, initial-scale=1" data-page-node-id="O2GWtfZ4xUCt8sZRHRfmyP">
-<title data-page-node-id="689WY3NTN8wgLLFa6XaUuB">Cube GOAT · 谁是魔方历史上最伟大的选手？</title>
-<meta name="description" content="基于 WCA 官方成绩数据的魔方历史最伟大选手（GOAT）评分与排名系统：六维加权模型（纪录持有 / 大赛表现 / 领奖台 / 统治力 / 突破幅度 / 纪录比）、综合总榜、选手 PK、纪录演变时间轴、另类统计。" data-page-node-id="PCOIOBahvZKisHG8EgkZbz">
-<meta name="color-scheme" content="light dark" data-page-node-id="1tCM9xduHnQIe03NMtbwZI">
-<link rel="preconnect" href="https://flagcdn.com" data-page-node-id="b8fRUCwS84PuMoDqu0vmde">
-<link rel="stylesheet" href="css/style.css" data-page-node-id="Ku8mCzgQhdpahdBfnXHKS7">
+<html lang="zh-CN" data-theme="dark" style="--bar-max: 100%; --anim-rate: 1; --grad-egg: linear-gradient(100deg,#ff7bbf 0%,#ffcb93 17%,#4acc79 33%,#fe676a 50%,#00a7f5 67%,#b585ff 83%,#00c3c3 100%);"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cube GOAT · 谁是魔方历史上最伟大的选手？</title>
+<meta name="description" content="基于 WCA 官方成绩数据的魔方历史最伟大选手（GOAT）评分与排名系统：六维加权模型（纪录持有 / 大赛表现 / 领奖台 / 统治力 / 突破幅度 / 纪录比）、综合总榜、选手 PK、纪录演变时间轴、另类统计。">
+<meta name="color-scheme" content="light dark">
+<link rel="preconnect" href="https://flagcdn.com">
+<link rel="stylesheet" href="css/style.css">
 <link rel="stylesheet" href="vendor/cubing-icons.css">
 <link rel="stylesheet" href="css/flags.css">
 <!-- 语言包提前到 head：导航的静态占位需要在首屏第一帧就按用户语言渲染，
      不能等到 app.js（排在 65MB 的 data.js 之后）才初始化。i18n.js 无依赖，可安全前置。 -->
 <script src="js/i18n.js"></script>
-<style type="text/css" data-page-node-id="xUgB25rRXkQcslc1U5OVuO">.CtxtMenu_InfoClose {  top:.2em; right:.2em;}
-.CtxtMenu_InfoContent {  overflow:auto; text-align:left; font-size:80%;  padding:.4em .6em; border:1px inset; margin:1em 0px;  max-height:20em; max-width:30em; background-color:#EEEEEE;  white-space:normal;}
-.CtxtMenu_Info.CtxtMenu_MousePost {outline:none;}
-.CtxtMenu_Info {  position:fixed; left:50%; width:auto; text-align:center;  border:3px outset; padding:1em 2em; background-color:#DDDDDD;  color:black;  cursor:default; font-family:message-box; font-size:120%;  font-style:normal; text-indent:0; text-transform:none;  line-height:normal; letter-spacing:normal; word-spacing:normal;  word-wrap:normal; white-space:nowrap; float:none; z-index:201;  border-radius: 15px;                     /* Opera 10.5 and IE9 */  -webkit-border-radius:15px;               /* Safari and Chrome */  -moz-border-radius:15px;                  /* Firefox */  -khtml-border-radius:15px;                /* Konqueror */  box-shadow:0px 10px 20px #808080;         /* Opera 10.5 and IE9 */  -webkit-box-shadow:0px 10px 20px #808080; /* Safari 3 & Chrome */  -moz-box-shadow:0px 10px 20px #808080;    /* Forefox 3.5 */  -khtml-box-shadow:0px 10px 20px #808080;  /* Konqueror */  filter:progid:DXImageTransform.Microsoft.dropshadow(OffX=2, OffY=2, Color="gray", Positive="true"); /* IE */}
-</style><style type="text/css" data-page-node-id="ZGnVVJLTZZPM42MPpxA4Mh">.CtxtMenu_MenuClose {  position:absolute;  cursor:pointer;  display:inline-block;  border:2px solid #AAA;  border-radius:18px;  -webkit-border-radius: 18px;             /* Safari and Chrome */  -moz-border-radius: 18px;                /* Firefox */  -khtml-border-radius: 18px;              /* Konqueror */  font-family: "Courier New", Courier;  font-size:24px;  color:#F0F0F0}
-.CtxtMenu_MenuClose span {  display:block; background-color:#AAA; border:1.5px solid;  border-radius:18px;  -webkit-border-radius: 18px;             /* Safari and Chrome */  -moz-border-radius: 18px;                /* Firefox */  -khtml-border-radius: 18px;              /* Konqueror */  line-height:0;  padding:8px 0 6px     /* may need to be browser-specific */}
-.CtxtMenu_MenuClose:hover {  color:white!important;  border:2px solid #CCC!important}
-.CtxtMenu_MenuClose:hover span {  background-color:#CCC!important}
-.CtxtMenu_MenuClose:hover:focus {  outline:none}
-</style><style type="text/css" data-page-node-id="kbOAH990SnOpHLheid8dm9">.CtxtMenu_Menu {  position:absolute;  background-color:white;  color:black;  width:auto; padding:5px 0px;  border:1px solid #CCCCCC; margin:0; cursor:default;  font: menu; text-align:left; text-indent:0; text-transform:none;  line-height:normal; letter-spacing:normal; word-spacing:normal;  word-wrap:normal; white-space:nowrap; float:none; z-index:201;  border-radius: 5px;                     /* Opera 10.5 and IE9 */  -webkit-border-radius: 5px;             /* Safari and Chrome */  -moz-border-radius: 5px;                /* Firefox */  -khtml-border-radius: 5px;              /* Konqueror */  box-shadow:0px 10px 20px #808080;         /* Opera 10.5 and IE9 */  -webkit-box-shadow:0px 10px 20px #808080; /* Safari 3 & Chrome */  -moz-box-shadow:0px 10px 20px #808080;    /* Forefox 3.5 */  -khtml-box-shadow:0px 10px 20px #808080;  /* Konqueror */}
-.CtxtMenu_MenuItem {  padding: 1px 2em;  background:transparent;}
-.CtxtMenu_MenuArrow {  position:absolute; right:.5em; padding-top:.25em; color:#666666;  font-family: null; font-size: .75em}
-.CtxtMenu_MenuActive .CtxtMenu_MenuArrow {color:white}
-.CtxtMenu_MenuArrow.CtxtMenu_RTL {left:.5em; right:auto}
-.CtxtMenu_MenuCheck {  position:absolute; left:.7em;  font-family: null}
-.CtxtMenu_MenuCheck.CtxtMenu_RTL { right:.7em; left:auto }
-.CtxtMenu_MenuRadioCheck {  position:absolute; left: .7em;}
-.CtxtMenu_MenuRadioCheck.CtxtMenu_RTL {  right: .7em; left:auto}
-.CtxtMenu_MenuInputBox {  padding-left: 1em; right:.5em; color:#666666;  font-family: null;}
-.CtxtMenu_MenuInputBox.CtxtMenu_RTL {  left: .1em;}
-.CtxtMenu_MenuComboBox {  left:.1em; padding-bottom:.5em;}
-.CtxtMenu_MenuSlider {  left: .1em;}
-.CtxtMenu_SliderValue {  position:absolute; right:.1em; padding-top:.25em; color:#333333;  font-size: .75em}
-.CtxtMenu_SliderBar {  outline: none; background: #d3d3d3}
-.CtxtMenu_MenuLabel {  padding: 1px 2em 3px 1.33em;  font-style:italic}
-.CtxtMenu_MenuRule {  border-top: 1px solid #DDDDDD;  margin: 4px 3px;}
-.CtxtMenu_MenuDisabled {  color:GrayText}
-.CtxtMenu_MenuActive {  background-color: #606872;  color: white;}
-.CtxtMenu_MenuDisabled:focus {  background-color: #E8E8E8}
-.CtxtMenu_MenuLabel:focus {  background-color: #E8E8E8}
-.CtxtMenu_ContextMenu:focus {  outline:none}
-.CtxtMenu_ContextMenu .CtxtMenu_MenuItem:focus {  outline:none}
-.CtxtMenu_SelectionMenu {  position:relative; float:left;  border-bottom: none; -webkit-box-shadow:none; -webkit-border-radius:0px; }
-.CtxtMenu_SelectionItem {  padding-right: 1em;}
-.CtxtMenu_Selection {  right: 40%; width:50%; }
-.CtxtMenu_SelectionBox {  padding: 0em; max-height:20em; max-width: none;  background-color:#FFFFFF;}
-.CtxtMenu_SelectionDivider {  clear: both; border-top: 2px solid #000000;}
-.CtxtMenu_Menu .CtxtMenu_MenuClose {  top:-10px; left:-10px}
-</style><style id="__dm_no_drag_style__">* { -webkit-user-drag: none !important; }</style><style id="__dm_bindable_badge_style__">[data-sp-bindable="database"]{outline:1px dashed #0088ff;outline-offset:2px;border-radius:4px;}[data-sp-bindable="database"] *{pointer-events:none !important;transition:none !important;animation:none !important;}[data-sp-bindable="database"]{transition:none !important;animation:none !important;}</style></head>
-<body class="no-mjx" data-page-node-id="FVEpnWsLZtQENrv9z7fMzZ" style="">
+</head>
+<body class="no-mjx" style="">
 
-<a class="skip-link" href="#view" data-i18n="a11y.skip" data-page-node-id="cIWLrOriaNWYFb2DAMAhLj">跳到主要内容</a>
+<a class="skip-link" href="#view" data-i18n="a11y.skip">跳到主要内容</a>
 
-<header class="topbar" data-page-node-id="KuC8cULcI1zkjA8bGLaoUk">
-  <div class="topbar-inner" data-page-node-id="fGw9O4iE4rJ87UWV7YDH2a">
-    <a class="brand" href="#/home" title="Cube GOAT · 首页" data-page-node-id="KgnDWy7YXmKUXClg4zG5dV">
-      <span class="brand-mark" aria-hidden="true" data-page-node-id="ZFsdu4xU0Nl10WAnQzzEFY"></span>
-      <span class="brand-text" data-page-node-id="k9dQB21mhekl0D0Bq0YyTE">Cube&nbsp;GOAT</span>
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="#/home" title="Cube GOAT · 首页">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-text">Cube&nbsp;GOAT</span>
     </a>
 
     <!-- 静态占位与 app.js 的 renderNav() 产物保持一致（同为 4 项、同样文案、同样的
          data-i18n 键），避免等 65MB data.js 加载完才「换脸」。多语言与当前页高亮由紧随
          其后的首屏引导脚本处理。六维分数细则已移入「参数设置」子页面，不再单列导航。 -->
-    <nav class="nav" id="nav" aria-label="主导航" data-page-node-id="qF41OiVOm2Bi88gHduu0wV"><a href="#/rank" data-i18n="nav.rank">历史地位排名</a><a href="#/timeline" data-i18n="nav.timeline">图表可视化</a><a href="#/topics" data-i18n="nav.topics">另类统计</a><a href="#/model" data-i18n="nav.model">参数设置</a></nav>
-    <div class="tools" data-page-node-id="DBrRnXMSoMDHePwz9dqZMO">
-      <button class="icon-btn" id="langBtn" type="button" title="切换语言 / Switch language" aria-label="切换语言" data-page-node-id="LaW2EN7DvcO9iAImUDolg0">EN</button>
-      <button class="icon-btn" id="themeBtn" type="button" title="切换主题 / Toggle theme" aria-label="切换主题" data-page-node-id="yFBf8xOsuxY42FetSEcoeZ">
-        <span id="themeIcon" data-page-node-id="pEhRLF9QnpVox1dn8k0PBr">☾</span>
+    <nav class="nav" id="nav" aria-label="主导航"><a href="#/rank" data-i18n="nav.rank">历史地位排名</a><a href="#/timeline" data-i18n="nav.timeline">图表可视化</a><a href="#/topics" data-i18n="nav.topics">另类统计</a><a href="#/model" data-i18n="nav.model">参数设置</a></nav>
+    <div class="tools">
+      <button class="icon-btn" id="langBtn" type="button" title="切换语言 / Switch language" aria-label="切换语言">EN</button>
+      <button class="icon-btn" id="themeBtn" type="button" title="切换主题 / Toggle theme" aria-label="切换主题">
+        <span id="themeIcon">☾</span>
       </button>
-      <button class="icon-btn nav-toggle" id="navToggle" type="button" aria-label="展开导航" aria-expanded="false" data-page-node-id="eq3pjcOOlbqEKdeMiA49il">
-        <span data-page-node-id="eNGjAdpXSW8JMYkFWQM52S"></span><span data-page-node-id="hfjsdnsc3ArfUWknXlneVb"></span><span data-page-node-id="PSoHkd3CA046RwCw4eXWw5"></span>
+      <button class="icon-btn nav-toggle" id="navToggle" type="button" aria-label="展开导航" aria-expanded="false">
+        <span></span><span></span><span></span>
       </button>
     </div>
   </div>
@@ -119,38 +81,40 @@
   })();
 </script>
 
-<div class="demo-banner" id="demoBanner" style="display: none;" data-page-node-id="lQFGXhLH71WulSDEMxzH0B">
-  <span data-i18n="demo.banner" data-page-node-id="hUrGpHWqUFBnBrEReZLuXp">演示数据 · 页面中的人名与成绩均由程序生成的虚构样本构成，不代表任何真实选手</span>
+<div class="demo-banner" id="demoBanner" style="display: none;">
+  <span data-i18n="demo.banner">演示数据 · 页面中的人名与成绩均由程序生成的虚构样本构成，不代表任何真实选手</span>
 </div>
 
-<div class="filterbar" id="filterbar" hidden="" data-page-node-id="qBVJ619rdetHNVPDbHLWxC"></div>
+<div class="filterbar" id="filterbar" hidden=""></div>
 
-<main id="view" class="view" tabindex="-1" data-page-node-id="7iWn7cE3GbBiRyD3HTDsp9"><div class="home-loading"><div class="spinner"></div><p class="muted">页面加载中…</p></div></main>
+<main id="view" class="view" tabindex="-1"><div class="home-loading"><div class="spinner"></div><p class="muted">页面加载中…</p></div></main>
 
-<footer class="footer" data-page-node-id="B6GU3MArAFHME0glamH2Er">
-  <div class="footer-inner" data-page-node-id="ot7w0x0Nofw8RtEYx1gRSX">
-    <p class="foot-note" data-page-node-id="WDCs5EHDgkmkb4H47kr55m">数据来源：World Cube Association 官方成绩导出（2026-10-18，vv2.0.2）</p>
-    <p class="foot-note" id="wcaCredit" data-page-node-id="azPioibY6izpXLZZlWEceq">This information is based on competition results owned and maintained by the World Cube Association, published at https://worldcubeassociation.org/results as of 2026-10-18.</p>
-    <p class="foot-note" data-page-node-id="EA5xuR9rUJjiVUBq19V2iO">
-      <span data-i18n="foot.model" data-page-node-id="LxRKL0vfNoIX77gqMGCqix">模型版本 v1.0</span> ·
-      <a href="#/model" data-i18n="foot.how" data-page-node-id="EzfrW8k6Qiq1hj6VKHN1BU">评分原理说明</a> ·
-      <a id="ghLink" href="https://github.com/LeanSun/cuber-statistics" target="_blank" rel="noopener" data-i18n="foot.repo" data-page-node-id="M4bmKHF3F34ira228dFGMW">GitHub 仓库</a>
+<footer class="footer">
+  <div class="footer-inner">
+    <p class="foot-note">数据来源：World Cube Association 官方成绩导出（2026-10-18，vv2.0.2）</p>
+    <p class="foot-note" id="wcaCredit">This information is based on competition results owned and maintained by the World Cube Association, published at https://worldcubeassociation.org/results as of 2026-10-18.</p>
+    <p class="foot-note">
+      <span data-i18n="foot.model">模型版本 v1.0</span> ·
+      <a href="#/model" data-i18n="foot.how">评分原理说明</a> ·
+      <a id="ghLink" href="https://github.com/LeanSun/cuber-statistics" target="_blank" rel="noopener" data-i18n="foot.repo">GitHub 仓库</a>
     </p>
   </div>
 </footer>
 
-<div class="toast" id="toast" role="status" aria-live="polite" hidden="" data-page-node-id="vplC83uQFpMGp6pNJAxCBP"></div>
+<!-- 轻提示 live region 常驻：动态创建的 aria-live 节点不会被屏幕阅读器注册，
+     必须由 app.js 复用这个节点；.wb-toast 默认 opacity:0，不可见但不 display:none。 -->
+<div id="wbToast" class="wb-toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
-<div class="pk-tray" id="pkTray" hidden="" aria-label="对比托盘" data-page-node-id="P5E0LNwDqVsDBlT2UNqvav">
-  <div class="pk-tray-head" data-page-node-id="1lnAIf3fMvjOXzbJhXwCYf">
-    <span class="pk-tray-title" data-page-node-id="aIKrX0ZvbmGzwPawUEfqQq">对比托盘 <b id="pkTrayCount" data-page-node-id="YNOqBfpGkBMztt1TtvwuSW">0</b>/4</span>
-    <button class="pk-tray-clear" data-pktrayclear="1" type="button" data-page-node-id="82ZpSb2hk3UiJ3gt7HNToy">清空</button>
+<div class="pk-tray" id="pkTray" hidden="" aria-label="对比托盘">
+  <div class="pk-tray-head">
+    <span class="pk-tray-title">对比托盘 <b id="pkTrayCount">0</b>/4</span>
+    <button class="pk-tray-clear" data-pktrayclear="1" type="button">清空</button>
   </div>
-  <div class="pk-tray-list" id="pkTrayList" data-page-node-id="14CvEEFAbUQFWZyatoXORO"></div>
-  <a class="btn btn-primary pk-tray-go" id="pkTrayGo" href="#/pk" hidden="" data-page-node-id="Tsm6qxuQs92kkRFO2BF2mw">去 PK <span class="ic" aria-hidden="true" data-page-node-id="mBK7QzAbvKaVUTxlAf82bw">→</span></a>
+  <div class="pk-tray-list" id="pkTrayList"></div>
+  <a class="btn btn-primary pk-tray-go" id="pkTrayGo" href="#/pk" hidden="">去 PK <span class="ic" aria-hidden="true">→</span></a>
 </div>
 
-<script data-page-node-id="8YPUZrJ9JHZGq908QQt21F">
+<script>
   window.MathJax = {
     tex: {
       inlineMath: [['\\(', '\\)'], ['$', '$']],
@@ -161,18 +125,18 @@
     startup: { typeset: false }
   };
 </script>
-<script defer="" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" data-page-node-id="MqDWQnvjFbbduQrSNGiXr0"></script>
+<script defer="" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
 
-<script src="vendor/echarts.min.js" data-page-node-id="fn1XWmQgDWlIbvMwJKs5M6"></script>
+<script src="vendor/echarts.min.js"></script>
 <script src="js/country-table.js"></script>
 <!-- i18n.js 已提前到 head（首屏导航引导需要），此处不再重复加载 -->
-<script src="js/groups.js" data-page-node-id="xCQiJnKeVDqrUaQ59vJkWo"></script>
-<script src="js/params.js" data-page-node-id="tZMoqjKVsHtTXpiTV1Sb0g"></script>
-<script src="js/calc.js" data-page-node-id="SgQg1pWUQhr6AGuIOcb6gd"></script>
+<script src="js/groups.js"></script>
+<script src="js/params.js"></script>
+<script src="js/calc.js"></script>
 <!-- 真实 WCA 数据（由 etl/build.js 每周生成，本站唯一生产数据源）。
      演示样本（js/mock.js）只在 URL 显式带 ?demo=1 时才加载，
      避免「真实数据加载失败却静默显示虚构样本」的陷阱。 -->
-<script src="js/data.js" data-page-node-id="NbG8edD7dOVWITuB1LbxBQ"></script>
+<script src="js/data.js"></script>
 <script>
   /* 真实数据加载完成后 window.MOCK.meta.demo === false。
      若真实数据缺失/失败且用户未显式要求演示，则保持 window.MOCK 为空，
@@ -186,15 +150,15 @@
     }
   })();
 </script>
-<script src="js/icons.js" data-page-node-id="ghhnKhhnVBFOXlkX7HmIFf"></script>
+<script src="js/icons.js"></script>
 <script src="js/top10years.js"></script>
-<script src="js/charts.js" data-page-node-id="adp77MrIeozuo5SKNDwX7P"></script>
-<script src="js/pages-core.js" data-page-node-id="8F61idwGzg3Zn2KT7L6jDs"></script>
-<script src="js/pages-player.js" data-page-node-id="Tdoeuf2dmcNaLR6GfAZUer"></script>
-<script src="js/pages-extra.js" data-page-node-id="B1fx1PvtmEnSa1FlOxGc5B"></script>
+<script src="js/charts.js"></script>
+<script src="js/pages-core.js"></script>
+<script src="js/pages-player.js"></script>
+<script src="js/pages-extra.js"></script>
 <!-- 六维分数细则（参数设置子页面）逻辑；其 7MB 数据表在 pages-sixdim.js 里按需动态加载 -->
 <script src="js/pages-sixdim.js"></script>
-<script src="js/app.js" data-page-node-id="yNMmM1mOF1YQV6CKPVjFE6"></script>
+<script src="js/app.js"></script>
 
 
 </body></html>

@@ -6,7 +6,6 @@
   const view = document.getElementById('view');
   const navEl = document.getElementById('nav');
   const fbEl = document.getElementById('filterbar');
-  const toastEl = document.getElementById('toast');
   const esc = U.esc;
 
   /* ---------- 注入展示用项目 FTO ----------
@@ -97,18 +96,22 @@
       }).sort(function (a, b) { return b.overall - a.overall; }).slice(0, limit || 12);
     };
     const local = hit(M.ranked);
-    if (!roster) return Promise.resolve(local);
+    /* ★ 2026-11-07：只输入「#」时 q2 为空串，roster.forEach 里
+       `k.indexOf('') >= 0` 恒真 → 把 30 万条名册全量拼进 tail，必卡死。 */
+    if (!roster || !q2) return Promise.resolve(local);
     /* 先看名册里有没有更靠前的命中 */
     const tail = [];
     roster.forEach(function (arr, k) {
       if (k.indexOf(q2) >= 0 || k.indexOf(q) >= 0) tail.push.apply(tail, arr);
     });
-    const seen = {};
+    const seen = Object.create(null);
     const all = local.concat(tail);
-    all.forEach(function (p) { seen[p.id] = 1; });
-    return Promise.resolve(Object.keys(seen).map(function (id) {
-      return all.filter(function (p) { return p.id === id; })[0];
-    }).sort(function (a, b) { return b.overall - a.overall; }).slice(0, limit || 12));
+    /* 旧写法 `seen[id]=1` 之后 `Object.keys(seen).map(id => all.filter(...)[0])`：
+       每个 id 都线性扫一遍 all，短查询命中几十万条时是 10^10 量级比较。
+       直接存选手对象，去重与取回都是 O(n)。 */
+    all.forEach(function (p) { if (!seen[p.id]) seen[p.id] = p; });
+    return Promise.resolve(Object.keys(seen).map(function (id) { return seen[id]; })
+      .sort(function (a, b) { return b.overall - a.overall; }).slice(0, limit || 12));
   }
   window.WB_roster = { load: loadRoster, search: searchAll, has: function () { return !!roster; } };
 
@@ -953,6 +956,11 @@
     else if (route === 'model') html = (r.seg[1] === 'sixdim' && P.sixdim) ? P.sixdim(state) : P.model(state);
     else html = P.home();
 
+    /* ★ 换掉整页 DOM 之前先回收旧 ECharts 实例与 ResizeObserver 观察：
+       以前旧实例的 zrender 动画帧 / window resize 监听会一直留在内存里，
+       CDP 实测 4 轮路由往返把 window resize 监听从 1 累加到 22。
+       主题切换走 Charts.repaint() 复用同一 canvas，不经过这里。 */
+    if (window.Charts && window.Charts.dispose) window.Charts.dispose(view);
     view.innerHTML = html;
     updateSummary(route);
     bindReset();
@@ -987,17 +995,27 @@
   function markMjMissing() {
     if (!mjReady) document.body.classList.add('no-mjx');
   }
+  /* ★ 2026-11-07：MathJax 从 jsdelivr CDN 加载。离线 / CDN 不可达时旧实现
+     会 setTimeout(typeset,400) 无限自递归，且每次进入 #/model 或 #/player
+     都再起一条并行链，永久每 400ms 触发一次。现在全局只留一个重试定时器，
+     并在 6 秒后停止（与 markMjMissing 的降级时点一致）。 */
+  const MJ_WAIT_MS = 6000;
+  let mjDeadline = 0, mjRetryTimer = 0;
   function typeset(scope) {
     const root = scope || view;
     if (!window.MathJax || !window.MathJax.typesetPromise) {
-      setTimeout(function () { typeset(scope); }, 400);
+      if (!mjDeadline) mjDeadline = Date.now() + MJ_WAIT_MS;
+      if (Date.now() < mjDeadline && !mjRetryTimer) {
+        mjRetryTimer = setTimeout(function () { mjRetryTimer = 0; typeset(scope); }, 400);
+      }
       return;
     }
+    mjDeadline = 0;
     Promise.resolve(window.MathJax.startup.promise).then(function () {
       return window.MathJax.typesetPromise([root]);
     }).then(function () { mjReady = true; }).catch(function () { });
   }
-  setTimeout(markMjMissing, 6000);
+  setTimeout(markMjMissing, MJ_WAIT_MS);
 
   function scrollToAnchor(id) {
     const el = document.getElementById('md-' + id);
@@ -1014,21 +1032,34 @@
       const inp = document.getElementById('homeSearch');
       const box = document.getElementById('homeSearchResult');
       const form = document.getElementById('homeSearchForm');
+      let searchTimer = null, searchSeq = 0;
       function doSearch() {
         const q = (inp.value || '').trim().toLowerCase();
+        const seq = ++searchSeq;
+        clearTimeout(searchTimer);
         if (!q) { box.innerHTML = ''; return; }
         /* 搜索范围＝全量 WCA 选手：data.js 的可排名选手 +懒加载的长尾名册 */
         const q2 = q.replace(/^#/, '');
         box.innerHTML = '<p class="tiny muted">' + esc(t('home.searching')) + '</p>';
-        searchAll(q, q2, 12).then(function (hits) {
-          if (!hits.length) { box.innerHTML = '<p class="tiny muted">' + esc(t('ui.noresult')) + '</p>'; return; }
-          box.innerHTML = '<div class="card" style="padding:10px">' + hits.map(function (p) {
-            return '<div class="row" style="gap:10px;padding:5px 0;border-bottom:1px solid var(--border)">' +
-              '<a href="#/player/' + p.id + '" style="flex:1">' + esc(p.name) + '</a>' +
-              P.util.flag(p.country) + '<span class="tiny muted">' + esc(P.util.countryName(p.country)) + '</span>' +
-              '<span class="tiny muted">' + U.fmt(p.overall, 2) + '</span></div>';
-          }).join('') + '</div>';
-        });
+        /* 防抖 + 序号令牌：慢查询不能覆盖用户后来输入的结果，也不能写回已被换掉的节点 */
+        searchTimer = setTimeout(function () {
+          searchAll(q, q2, 12).then(function (hits) {
+            if (seq !== searchSeq || !box.isConnected) return;
+            if (!hits.length) { box.innerHTML = '<p class="tiny muted">' + esc(t('ui.noresult')) + '</p>'; return; }
+            box.innerHTML = '<div class="card" style="padding:10px">' + hits.map(function (p) {
+              /* 长尾名册选手不在 M.ranked 里，#/player/<id> 会落到空白「无结果」页。
+                 他们没有本站评分明细，直接链到 WCA 官方主页（外链标 ↗）。 */
+              const link = p.roster
+                ? '<a href="https://www.worldcubeassociation.org/persons/' + esc(p.wcaId || p.id) +
+                  '" target="_blank" rel="noopener" style="flex:1">' + esc(p.name) + ' ↗</a>'
+                : '<a href="#/player/' + p.id + '" style="flex:1">' + esc(p.name) + '</a>';
+              return '<div class="row" style="gap:10px;padding:5px 0;border-bottom:1px solid var(--border)">' +
+                link +
+                P.util.flag(p.country) + '<span class="tiny muted">' + esc(P.util.countryName(p.country)) + '</span>' +
+                '<span class="tiny muted">' + U.fmt(p.overall, 2) + '</span></div>';
+            }).join('') + '</div>';
+          });
+        }, 180);
       }
       if (inp) {
         /* 首次输入时才拉取长尾名册，避免首屏加载 30 万条 */
@@ -1484,17 +1515,6 @@
     });
   }
 
-  /* ---------- Toast ---------- */
-  let toastT = null;
-  function toast(msg) {
-    toastEl.textContent = msg;
-    toastEl.hidden = false;
-    void toastEl.offsetWidth;
-    toastEl.classList.add('show');
-    clearTimeout(toastT);
-    toastT = setTimeout(function () { toastEl.classList.remove('show'); }, 1700);
-  }
-
   /* ---------- 对比托盘（全局，跨路由持久） ---------- */
   const pkTrayEl = document.getElementById('pkTray');
   const pkTrayList = document.getElementById('pkTrayList');
@@ -1694,6 +1714,25 @@
      正是因为漏了 [data-dim]/[data-tldim]，事件委托根本收不到点击，才表现为「加了按钮但没功能」。 */
   const DELEGATE = '[data-sort],[data-page],[data-expand],[data-prow],[data-tab],[data-type],[data-stack],[data-dim],[data-tldim],[data-pkadd],[data-pkrm],[data-pktrayrm],[data-pktrayclear],[data-toggle],[data-expandall],[data-goto],[data-group],[data-gender],[data-retired],[data-tlmode],[data-tlview],[data-tlstep],[data-tlmetric],[data-tllane],[data-topic],[data-topicboard],[data-other],[data-nation],[data-scope],[data-continent],[data-evpick],[data-evtab],[data-evtoggle],[data-evall],[data-evnone],[data-evsave],[data-gload],[data-gdel],[data-reclevel],[data-rectype],[data-podtier],[data-mdanchor],[data-mdsec],[data-msimport],[data-msreset],[data-msdel],[data-msedit],[data-msunhide],[data-msjump],[data-copy]';
 
+  /* ★ 2026-11-07：纪录 / 领奖台明细行以前是纯 <div data-toggle>，可点却不可聚焦、
+     也没有展开状态播报。抽成公用函数，让 click 与 Enter/Space 走同一条路径。 */
+  function toggleRec(el) {
+    if (!el || !el.hasAttribute('data-toggle')) return;
+    const a = el.closest('.ach') || el.closest('.rec-item');
+    if (!a) return;
+    const open = !a.classList.contains('open');
+    a.classList.toggle('open', open);
+    el.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) fillAchBody(a);
+  }
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+    const el = e.target.closest ? e.target.closest('[data-toggle]') : null;
+    if (!el) return;
+    e.preventDefault();
+    toggleRec(el);
+  });
+
   document.addEventListener('click', function (e) {
     const el = e.target.closest ? e.target.closest(DELEGATE) : null;
 
@@ -1775,14 +1814,7 @@
       toggleRow(id);
       return;
     }
-    if (el.hasAttribute('data-toggle')) {
-      const a = el.closest('.ach') || el.closest('.rec-item');
-      if (!a) return;
-      const open = !a.classList.contains('open');
-      a.classList.toggle('open', open);
-      if (open) fillAchBody(a);
-      return;
-    }
+    if (el.hasAttribute('data-toggle')) { toggleRec(el); return; }
     if (el.hasAttribute('data-expandall')) {
       const kind = el.getAttribute('data-expandall');
       const list = view.querySelectorAll('.rec-item[data-ach="' + kind + '"]');
@@ -2104,33 +2136,44 @@
     }
     el.style.left = x + 'px'; el.style.top = y + 'px';
   }
+  function showTip(a, cx, cy) {
+    const txt = a.getAttribute('data-tip') || '';
+    if (!txt) return;
+    const el = tipBox();
+    /* 首行当标题加粗、其余按行铺开（全部用 textContent 写入，天然防注入） */
+    const parts = txt.split('\n');
+    el.textContent = '';
+    if (parts.length > 1) {
+      const b = document.createElement('b');
+      b.className = 'wb-tip-t';
+      b.textContent = parts[0];
+      el.appendChild(b);
+      const rest = document.createElement('span');
+      rest.textContent = parts.slice(1).join('\n');
+      el.appendChild(rest);
+    } else {
+      el.textContent = txt;
+    }
+    el.classList.add('on');
+    /* 先归零再量尺寸，否则会用上一次的内容宽度算位置 */
+    el.style.left = '0px'; el.style.top = '0px';
+    TIP_SIZE = { w: el.offsetWidth, h: el.offsetHeight };
+    TIP_ANCHOR = a;
+    placeTip(a, cx, cy);
+  }
   if (document.addEventListener) {
     document.addEventListener('mouseover', function (e) {
       const a = e.target.closest ? e.target.closest('[data-tip]') : null;
+      if (a) showTip(a, e.clientX, e.clientY);
+    });
+    /* ★ 2026-11-07 键盘等价：.tip[tabindex=0] / .cov-cell / 复制按钮等带
+       data-tip 的元素聚焦后也要能读到说明。旧实现只有 mouseover，
+       纯键盘与屏幕阅读器用户一律看不到悬浮提示。 */
+    document.addEventListener('focusin', function (e) {
+      const a = e.target.closest ? e.target.closest('[data-tip]') : null;
       if (!a) return;
-      const txt = a.getAttribute('data-tip') || '';
-      if (!txt) return;
-      const el = tipBox();
-      /* 首行当标题加粗、其余按行铺开（全部用 textContent 写入，天然防注入） */
-      const parts = txt.split('\n');
-      el.textContent = '';
-      if (parts.length > 1) {
-        const b = document.createElement('b');
-        b.className = 'wb-tip-t';
-        b.textContent = parts[0];
-        el.appendChild(b);
-        const rest = document.createElement('span');
-        rest.textContent = parts.slice(1).join('\n');
-        el.appendChild(rest);
-      } else {
-        el.textContent = txt;
-      }
-      el.classList.add('on');
-      /* 先归零再量尺寸，否则会用上一次的内容宽度算位置 */
-      el.style.left = '0px'; el.style.top = '0px';
-      TIP_SIZE = { w: el.offsetWidth, h: el.offsetHeight };
-      TIP_ANCHOR = a;
-      placeTip(a, e.clientX, e.clientY);
+      const r = a.getBoundingClientRect();
+      showTip(a, r.left + r.width / 2, r.bottom);
     });
     /* 跟随鼠标：data-tip-follow（堆叠条 / 卡片）与 data-tip-pos="top"（项目图标）都需要 */
     document.addEventListener('mousemove', function (e) {
@@ -2144,6 +2187,10 @@
       const to = e.relatedTarget;
       if (to && a.contains(to)) return; /* 仍在同一胶囊内部移动 */
       hideTip();
+    });
+    document.addEventListener('focusout', function (e) {
+      const a = e.target.closest ? e.target.closest('[data-tip]') : null;
+      if (a) hideTip();
     });
     /* 页面滚动 / 重新渲染后，浮层若还停在原位就会「飘」在无关内容上，直接收起 */
     window.addEventListener('scroll', hideTip, true);
@@ -2164,7 +2211,11 @@
     sync();
   })();
 
-  /* ---------- 轻提示（复制成功等） ---------- */
+  /* ---------- 轻提示（复制成功等） ----------
+     ★ 2026-11-07：此前同一 IIFE 里有两份 `function toast` 声明，后定义者提升覆盖
+     前者 —— index.html 的 #toast（唯一带 role=status / aria-live 的节点）与
+     css/.toast 整套样式从未生效，实际用的 .wb-toast 又没有 live region，
+     轻提示对屏幕阅读器完全不播报。现在只保留这一份并补齐无障碍属性。 */
   let TOAST_TIMER = 0;
   function toast(msg) {
     let el = document.getElementById('wbToast');
@@ -2172,6 +2223,9 @@
       el = document.createElement('div');
       el.id = 'wbToast';
       el.className = 'wb-toast';
+      el.setAttribute('role', 'status');
+      el.setAttribute('aria-live', 'polite');
+      el.setAttribute('aria-atomic', 'true');
       document.body.appendChild(el);
     }
     el.textContent = msg;

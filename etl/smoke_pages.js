@@ -2112,5 +2112,90 @@ if (P.sixdimTableHtml) {
     'canvas 节点不变，ghost 直接按序号盖回同一个容器');
 }
 
+/* ============================================================
+   2026-11-07 全站自查：运行时泄漏 / 同名函数 / 搜索复杂度 / 离线 MathJax /
+   懒加载竞态 / 键盘可访问性 / 窄屏溢出 / HTML 注入垃圾。
+   CDP 基线（_cdpchk/audit_baseline.mjs）：4 轮路由往返后 window resize 监听
+   1→22（最终 40）、mousemove / mouseup 各 0→9；375px 下选手页横向溢出 212px、
+   时间轴 95px。以下断言逐条锁住修复。 */
+{
+  const a7 = fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8');
+  const c7 = fs.readFileSync(path.join(ROOT, 'js/charts.js'), 'utf8');
+  const e7 = fs.readFileSync(path.join(ROOT, 'js/pages-extra.js'), 'utf8');
+  const s7 = fs.readFileSync(path.join(ROOT, 'js/pages-sixdim.js'), 'utf8');
+  const p7 = fs.readFileSync(path.join(ROOT, 'js/pages-player.js'), 'utf8');
+  const css7 = fs.readFileSync(path.join(ROOT, 'css/style.css'), 'utf8');
+  const h7 = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+
+  /* ① 两份同名 toast()：后者提升覆盖前者，带 aria-live 的 #toast 从未生效 */
+  ok((a7.match(/function toast\(/g) || []).length === 1 &&
+    /el\.setAttribute\('role', 'status'\)/.test(a7) &&
+    /id="wbToast" class="wb-toast" role="status" aria-live="polite"/.test(h7) &&
+    !/class="toast" id="toast"/.test(h7) && !/\.toast\.show\{/.test(css7),
+    '轻提示只留一份 toast()，live region 常驻且实际生效');
+
+  /* ② 搜索：空 WCA ID 全量命中 + O(n²) 去重 + 无防抖 + 长尾死链 */
+  ok(/if \(!roster \|\| !q2\) return Promise\.resolve\(local\)/.test(a7) &&
+    /if \(!seen\[p\.id\]\) seen\[p\.id\] = p/.test(a7) &&
+    !/all\.filter\(function \(p\) \{ return p\.id === id/.test(a7),
+    '搜索不再对 30 万条名册做 O(n²) 去重，只输入 # 时短路');
+  ok(/seq !== searchSeq \|\| !box\.isConnected/.test(a7) &&
+    /searchTimer = setTimeout\(function \(\)/.test(a7) &&
+    /worldcubeassociation\.org\/persons\//.test(a7) && /const link = p\.roster/.test(a7),
+    '搜索防抖 + 过期结果丢弃；长尾名册选手不再跳空白选手页');
+  ok(/function toggleRec\(el\)/.test(a7) &&
+    /document\.addEventListener\('keydown'/.test(a7) &&
+    /document\.addEventListener\('focusin'/.test(a7) &&
+    /document\.addEventListener\('focusout'/.test(a7) &&
+    (p7.match(/data-toggle tabindex="0" role="button" aria-expanded="false"/g) || []).length === 2,
+    '明细行可键盘展开并播报状态；data-tip 悬浮说明有键盘等价');
+
+  /* ③ 离线 MathJax 无限 400ms 自递归、每页各起一条链 */
+  ok(/const MJ_WAIT_MS = 6000/.test(a7) && /mjRetryTimer = 0; typeset\(scope\)/.test(a7) &&
+    /Date\.now\(\) < mjDeadline && !mjRetryTimer/.test(a7) &&
+    !/setTimeout\(function \(\) \{ typeset\(scope\); \}, 400\)/.test(a7),
+    'MathJax 不可用时最多重试 6 秒且全局只留一条重试链');
+
+  /* ④ 图表生命周期：单一全局 resize + 共享 RO + 替换 DOM 前 dispose */
+  ok(/let sharedRO = null, globalResizeBound = false/.test(c7) &&
+    /window\.addEventListener\('resize', resizeAll, \{ passive: true \}\)/.test(c7) &&
+    !/el\.__ecRO = new window\.ResizeObserver/.test(c7) &&
+    /if \(!target\.isConnected\) \{ try \{ sharedRO\.unobserve\(target\)/.test(c7),
+    'ECharts 改为共享 ResizeObserver + 单一全局 resize 监听');
+  ok(/function disposeWithin\(root\)/.test(c7) && /dispose: disposeWithin/.test(c7) &&
+    /window\.Charts\.dispose\(view\)/.test(a7),
+    '整页 DOM 替换前显式回收旧 ECharts 实例');
+  ok(/let zoomWinCleanup = null/.test(e7) &&
+    /if \(zoomWinCleanup\) \{ zoomWinCleanup\(\); zoomWinCleanup = null; \}/.test(e7) &&
+    /window\.removeEventListener\('mousemove', onMove\)/.test(e7) &&
+    /window\.removeEventListener\('mouseup', onUp\)/.test(e7),
+    '泳道缩放的 window 监听在重绑前解绑，不再随进出时间轴累积');
+  ok(/if \(!root\.isConnected\) return;/.test(s7),
+    '六维细则懒加载不往已脱离文档的旧节点写表');
+
+  /* ⑤ 系统级 reduced-motion + 375px 横向溢出 */
+  const rm7 = (css7.match(/@media \(prefers-reduced-motion:reduce\)\s*\{([\s\S]*?)\n\}/) || ['', ''])[1];
+  /* ⚠ 只看真实规则：注释里也写了 .tl-crown-name.run 的解释，直接拿整块
+     做 !/.../ 判断会误伤（本项目已多次踩「注释字符串误伤断言」的坑）。 */
+  const rmRule = rm7.replace(/\/\*[\s\S]*?\*\//g, '');
+  ok(/animation:none!important/.test(rmRule) && /\.hero-title,\.stat \.v/.test(rmRule) &&
+    !/\.tl-crown-name\.run/.test(rmRule),
+    '系统减少动效关掉装饰循环动画，但保留登顶徽标跑马灯');
+  ok(/\.tip-body\{right:0;left:auto\}/.test(css7) &&
+    /max-width:min\(300px,calc\(100vw - 28px\)\)/.test(css7) &&
+    /\.tl-top \.fgroup\{flex:0 1 auto;min-width:0\}/.test(css7) &&
+    !/\.tip-body\{right:auto;left:0\}/.test(css7),
+    '窄屏气泡右对齐限宽、时间轴按钮组可收缩，不再撑出整页横向滚动条');
+  ok(/\.geo-opt:focus-visible\{outline:2px solid var\(--accent\)/.test(css7) &&
+    !/\.geo-opt:hover,\.geo-opt:focus\{[^}]*outline:none/.test(css7),
+    '地区下拉键盘焦点环不再被 outline:none 抹掉');
+
+  /* ⑥ index.html 外部工具注入的垃圾：3 个 CtxtMenu 样式块、2 个扩展样式、58 个 node-id */
+  ok(!/data-page-node-id/.test(h7) && !/CtxtMenu_/.test(h7) &&
+    !/__dm_no_drag_style__|__dm_bindable_badge_style__/.test(h7) &&
+    /<script src="js\/app\.js"><\/script>/.test(h7),
+    '入口 HTML 清掉注入标记与无用样式块，脚本加载链保持不变');
+}
+
 console.log(fail ? ('\n❌ 失败 ' + fail + ' 项') : '\n✅ 全部通过');
 process.exit(fail ? 1 : 0);
