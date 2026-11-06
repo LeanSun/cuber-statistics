@@ -1288,8 +1288,30 @@ console.log('== 默认值：停办项目计入 / 竞速图速率 ==');
       '新主题层用羽化圆形遮罩（不是一刀切的硬圆边界）');
     ok(/::view-transition-old\(root\),[\s\S]{0,220}?animation:none/.test(css2),
       '关掉 VT 默认 cross-fade，圆形边界才不会被淡入淡出糊掉');
-    ok(/drop-shadow\(0 0 \d+px var\(--reveal-glow/.test(css2),
-      '圆周柔光环吃掉新旧主题的色差硬边');
+    /* ★ 2026-11-06 第三轮：用户第二次反馈「切换一瞬间图标边框闪烁、随后消失」。
+       CDP 伪元素探针抓到根因在 VT 合成层，不在 DOM 的 CSS transition（上一轮修错了层）：
+         · ::view-transition-new(root) 挂的 drop-shadow 柔光只在切换期间存在，
+           结束随 --reveal-glow 变透明 → 图标边缘「多一圈边框又消失」；
+         · WAAPI 把 new 层 opacity 从 .88 拉到 1 → 新旧两张快照半透明叠加、边框双影；
+         · root group 的 UA 默认动画 -ua-view-transition-group-anim-root 一直在跑。
+       修复后实测 new.filter=none / new.opacity 恒 1 / group.animation=none，
+       切换期间只剩 1 条半径动画；柔化改由加宽到 56px 的径向羽化带承担。 */
+    /* 只检查 VT new 规则块本身：CSS 里别的装饰元素本来就有 filter:drop-shadow，
+       注释也会提到 --reveal-glow，全文字符串检查会假红。 */
+    const vtNewBlock = (css2.match(/::view-transition-new\(root\)\{([\s\S]*?)\n\}/) || ['', ''])[1];
+    ok(!/filter\s*:/.test(vtNewBlock) && !/opacity\s*:/.test(vtNewBlock) &&
+      css2.indexOf('var(--reveal-glow') < 0,
+      'new 层不再挂 drop-shadow 柔光 / opacity 渐变（只在切换期间出现的假边框已移除）');
+    ok(/::view-transition-group\(root\),[\s\S]{0,140}?animation:none!important/.test(css2),
+      '禁掉 root group / image-pair 的 UA 默认动画（不再额外重描边框）');
+    ok(/\{ '--reveal-r': r0 \}, \{ '--reveal-r': r1 \}/.test(appSrc) &&
+      appSrc.indexOf("opacity: '.88'") < 0,
+      '半径动画不再叠加 opacity 渐变（新旧快照不半透明叠加）');
+    ok(/--reveal-feather', \(ms <= 300 \? 16 : 56\)/.test(appSrc) &&
+      /var\(--reveal-feather,56px\)/.test(css2),
+      '柔化改由加宽到 56px 的径向羽化带承担（圆形揭示仍不生硬）');
+    ok(/revealAnim\.cancel\(\)/.test(appSrc) && /fill: 'forwards'/.test(appSrc),
+      '半径动画结束后显式 cancel，避免 finished 动画对象逐次累积');
     ok(/theme-reveal-clip/.test(css2), '无 @property 的浏览器回退 clip-path 圆形扩散');
     /* 2026-11-05 晚二次调整：浅→深收缩、深→浅扩散（与上一版方向相反），速率不变。 */
     ok(/THEME_MS = 900/.test(appSrc) && /THEME_MS_QUICK = 280/.test(appSrc),
@@ -1456,7 +1478,7 @@ console.log('== 默认值：停办项目计入 / 竞速图速率 ==');
       'sixyear.js 产出 M2 单轨年度曲线（m2s / m2a）');
     ok(bSrc.indexOf("SIXK.concat(['m2s', 'm2a'])") >= 0, 'build.js 把 M2 单轨曲线注入 p.sy');
     ok(peSrc2.indexOf('function dimCurveKey(p, dim)') >= 0 &&
-      peSrc2.indexOf('dimRatioAt(p, dimCurveKey(p, dim), fy)') >= 0 &&
+      /const dk = dimCurveKey\(p, dim\);[\s\S]{0,120}?dimRatioAt\(p, dk, fy\)/.test(peSrc2) &&
       peSrc2.indexOf("const k = rtype === 'single' ? 'm2s' : (rtype === 'avg' ? 'm2a' : 'm2')") >= 0,
       '单维竞速图按成绩口径选 M2 进度曲线');
     const s2map = (f) => {
@@ -1960,37 +1982,86 @@ if (P.sixdimTableHtml) {
   fail++;
 }
 
-/* ================= 2026-11-06 回滚：分数演进恢复「年度采样 + 年内线性插值」 =================
-   上一版把年度增量重参数化到真实比赛日（赛前 10 天加速 / 比赛日集中 / 无比赛严格平台），
-   用户实测「太生硬、不够丝滑连接」，已整体回滚。这里守住两点：
-   ① 源码里不再残留爆发曲线的函数 / 常量 / 探针（避免死代码与两套分数口径）；
-   ② 数值上同一年内仍是匀速推进 —— 不会出现整段 0 增量的平台或突发跳变。 */
+/* ================= 2026-11-06 第三轮：丝滑比赛日曲线（smootherstep + 基线） =================
+   上一版「赛前 10 天三次加速 / 比赛日完成 85% / 无比赛严格 0 平台」被用户判「太生硬」，
+   整体回滚后又按用户确认的方向重做：过渡核换成 C² 的 quintic smootherstep、
+   窗口拉长到赛前 24 / 赛后 16 天、平台保留 32% 的极缓慢基线增长。这里守住：
+   ① 源码是新的常量 / 函数，没有旧版三次阶跃残留（避免两套分数口径）；
+   ② 数值上平台增速 > 0 但极小、比赛日附近快一个数量级、窗口边界增速连续
+      （没有「突然启动」的折角）、终值收敛、全生涯单调、四条分支可求值。 */
 {
   const peSrc4 = fs.readFileSync(path.join(ROOT, 'js/pages-extra.js'), 'utf8');
-  const dead = ['BURST_LEAD', 'burstStep', 'compDatesOf', 'burstFor', 'burstRatioAt',
-    'raceRatio', 'tlValueProbe', '__burst'];
-  ok(dead.every((k) => peSrc4.indexOf(k) < 0),
-    '爆发曲线已整体回滚：无残留函数 / 常量 / 探针');
-  ok(/function seriesCum\(/.test(peSrc4) && /function dimRatioAt\(/.test(peSrc4) &&
-    /s \+= v \* frac/.test(peSrc4) &&
-    /dimRatioAt\(p, dimCurveKey\(p, dim\), fy\)/.test(peSrc4),
-    '恢复年度累计 seriesCum + 单维 dimRatioAt 的年内线性插值');
-  /* 逐季度取分：同一年内的季度增量应近似相等（匀速），且每一段都 > 0（无平台）。
-     只在全量数据上做，CI 的 8 人样本选手太少。 */
+  ok(/const SMOOTH_PRE = 24 \/ 365\.25/.test(peSrc4) &&
+    /const SMOOTH_POST = 16 \/ 365\.25/.test(peSrc4) &&
+    /const BASE_SHARE = 0\.32/.test(peSrc4),
+    '长窗口 24/16 天 + 32% 极缓慢基线增长');
+  ok(/function smootherStep\(u\)[\s\S]{0,240}?u \* u \* u \* \(u \* \(u \* 6 - 15\) \+ 10\)/.test(peSrc4),
+    '过渡核是 quintic smootherstep（端点一/二阶导为 0，C² 连续）');
+  ok(peSrc4.indexOf('BURST_LEAD') < 0 && peSrc4.indexOf('burstStep(') < 0,
+    '旧版赛前 10 天三次阶跃已彻底移除（无两套分数口径）');
+  ok(/return BASE_SHARE \* base \+ \(1 - BASE_SHARE\) \* burstRatioAt\(bs, fy\)/.test(peSrc4) &&
+    /if \(bs == null\) return base/.test(peSrc4),
+    'raceRatio 混合匀速基线与比赛日累计；精简档无 records 时退回纯匀速');
+  ok(/acc \+= v\[i\] \* smoothKernel\(t, d\[i\]\)/.test(peSrc4) &&
+    /const cut = t - SMOOTH_POST/.test(peSrc4),
+    '窗口内逐项算 smootherstep、窗口外走前缀和');
+  ok(/function compDatesOf\(/.test(peSrc4) && /r\.date/.test(peSrc4) &&
+    /p\.records\[\]\.date/.test(peSrc4),
+    '比赛日只取 p.records[].date（不是被截断且无日期的 p.podiums）');
+  ok((peSrc4.match(/raceRatio\(bs/g) || []).length >= 4 &&
+    typeof P.tlValueProbe === 'function',
+    '项目 / 单维 / 成绩口径 / 兜底四条分支都走同一把尺子，并暴露逐日探针');
+  /* 数值回归只在全量数据上跑，CI 的 8 人样本选手太少。 */
   const SAMPLE4 = M.ranked.length < 1000;
   if (!SAMPLE4) {
     const pid4 = '2009ZEMD01';
-    const qs = [2015.0, 2015.25, 2015.5, 2015.75];
-    const vals = qs.map((f) => {
-      const row = P.tlSnapshot([], f).find((r) => r.id === pid4);
-      return row ? row.value : 0;
-    });
-    const d = [vals[1] - vals[0], vals[2] - vals[1], vals[3] - vals[2]];
-    ok(vals.every((v) => v > 0) && d.every((x) => x > 0),
-      '同一年内每季度都在涨分（没有「无比赛就不涨」的平台）');
-    const avg = (d[0] + d[1] + d[2]) / 3;
-    ok(avg > 0 && d.every((x) => Math.abs(x - avg) < avg * 0.06),
-      '季度增量近似相等（年内匀速线性插值，实得 ' + d.map((x) => x.toFixed(2)).join(' / ') + '）');
+    const p4 = M.ranked.find(function (x) { return x.id === pid4; });
+    const fyOf = function (str) {
+      const y = +str.slice(0, 4), m = +str.slice(5, 7), d = +str.slice(8, 10);
+      const doy = (Date.UTC(y, m - 1, d) - Date.UTC(y, 0, 1)) / 86400000;
+      const leap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+      return y + doy / (leap ? 366 : 365);
+    };
+    const D = 1 / 365.25;
+    const ds = (p4.records || []).map(function (r) { return r.date; })
+      .filter(function (str) { return str && str.length >= 10; }).sort();
+    let center = null, bestGap = -1;
+    for (let i = 1; i < ds.length - 1; i++) {
+      const gl = (Date.parse(ds[i]) - Date.parse(ds[i - 1])) / 86400000;
+      const gr = (Date.parse(ds[i + 1]) - Date.parse(ds[i])) / 86400000;
+      const g = Math.min(gl, gr);
+      if (g > bestGap) { bestGap = g; center = ds[i]; }
+    }
+    const t = fyOf(center);
+    const at = function (o) { return P.tlValueProbe(pid4, t + o * D, 'all', [], ''); };
+    const rate = function (x, y) { return (at(y) - at(x)) / (y - x); };
+    const plat = rate(-70, -50), burst = rate(-8, 0), edge = rate(-24, -22);
+    ok(plat > 0, '平台段保留极缓慢基线增长（不再是严格 0，实得 ' + plat.toFixed(4) + '/天）');
+    ok(burst > plat * 8,
+      '比赛日附近明显更快、快慢可辨（' + (burst / plat).toFixed(1) + ' 倍）');
+    ok(edge > 0 && edge < plat * 3,
+      '窗口边界增速连续，没有「突然启动」的折角（边界为基线 ' + (edge / plat).toFixed(2) + ' 倍）');
+    const d1 = at(-2) - at(-3), d2 = at(0) - at(-1), d3 = at(2) - at(0);
+    ok(d1 > 0 && d2 > 0 && d3 > 0 && d3 < d1 * 3,
+      '不是瞬间跳变：赛前 / 赛日 / 赛后都有平滑增长');
+    const e1 = P.tlValueProbe(pid4, 2028, 'all', [], '');
+    const e2 = P.tlValueProbe(pid4, P.tlEndFy(), 'all', [], '');
+    const snapEnd = P.tlSnapshot([], P.tlEndFy(), 'all').find(function (r) { return r.id === pid4; });
+    ok(Math.abs(e1 - e2) < 1e-6 && snapEnd && Math.abs(e2 - snapEnd.value) < 1e-6,
+      '最后一次比赛后收敛到原终值，最终名次不变（' + e2.toFixed(4) + '）');
+    let mono = true, last = -1;
+    for (let y = 2009; y <= 2027; y += D * 2) {
+      const v = P.tlValueProbe(pid4, y, 'all', [], '');
+      if (v + 1e-9 < last) { mono = false; break; }
+      last = v;
+    }
+    ok(mono, '全生涯逐日单调不减（登顶时间线的前提仍成立）');
+    const four = [P.tlValueProbe(pid4, 2015.5, 'all', [], 'm1'),
+      P.tlValueProbe(pid4, 2015.5, 'all', ['333'], ''),
+      P.tlValueProbe(pid4, 2015.5, 'single', [], ''),
+      P.tlValueProbe(pid4, 2015.5, 'avg', [], 'm2')];
+    ok(four.every(function (v) { return isFinite(v) && v > 0; }),
+      '项目 / 单次 / 平均 / 单维四条分支都能用新曲线求值');
   }
 }
 

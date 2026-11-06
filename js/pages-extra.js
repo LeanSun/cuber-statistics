@@ -1117,6 +1117,129 @@
     return Math.max(0, Math.min(1, (fy - a) / (b - a)));
   }
 
+  /* ================= 丝滑比赛日曲线（2026-11-06 第三轮） =================
+     上一版「赛前 10 天三次加速 → 比赛日完成 85% → 赛后 1.8 天三次收尾」被用户
+     实测「太生硬、衔接不够丝滑」并整体回滚。这一版按用户确认的方向重做三处：
+       ① 阶跃核换成 **smootherstep**（5 次多项式 6u⁵−15u⁴+10u³）：端点处
+          一阶、二阶导数都为 0，C² 连续，不再有曲率折角；旧的 u³ / 1−q³
+          只是 C¹，窗口又短，视觉上就是「突然启动 / 突然收住」；
+       ② 过渡窗口从「赛前 10 天 + 赛后 1.8 天」拉长到 **赛前 24 天 + 赛后 16 天**，
+          增速峰值落在比赛日前后，越靠近比赛日涨得越快，赛后缓慢减速；
+       ③ 平台段**保留极缓慢的基线增长**：
+             ratio = BASE_SHARE · 匀速基线 + (1 − BASE_SHARE) · 比赛日累计
+          两次比赛之间不再是严格 0 增量的水平线，因此「从平台进入爆发」
+          没有突然启动的折角；基线只占 32%，比赛日附近的增速仍高出一个数量级，
+          快慢节奏清楚，且符合「有比赛涨得多、没比赛也在极缓慢地涨」。
+     终值：两项各自归一到 1 → 0.32·1 + 0.68·1 = 1，最终分与名次完全不变。
+     单调性：两项都单调不减 → 全生涯逐日单调，登顶时间线的前提仍成立。
+     精简档没有 p.records → bs 为 null，raceRatio 直接返回原匀速曲线，不报错。
+     数据源仍是 p.records[].date（每条都带官方比赛日期）；
+     ⚠ p.podiums 被截断到前 10 条且没有日期字段，不能当比赛日源。 */
+  const SMOOTH_PRE = 24 / 365.25;     // 赛前 24 天进入过渡窗口
+  const SMOOTH_POST = 16 / 365.25;    // 赛后 16 天平滑收尾
+  const SMOOTH_SPAN = SMOOTH_PRE + SMOOTH_POST;
+  const BASE_SHARE = 0.32;            // 极缓慢基线增长占三成，其余七成跟比赛日走
+
+  function smootherStep(u) {
+    if (u <= 0) return 0;
+    if (u >= 1) return 1;
+    return u * u * u * (u * (u * 6 - 15) + 10);   // 6u⁵ − 15u⁴ + 10u³
+  }
+  function smoothKernel(t, d) {
+    return smootherStep((t - d + SMOOTH_PRE) / SMOOTH_SPAN);
+  }
+  function dateToFy(s) {
+    const y = +s.slice(0, 4), m = +s.slice(5, 7), dd = +s.slice(8, 10);
+    const doy = (Date.UTC(y, m - 1, dd) - Date.UTC(y, 0, 1)) / 86400000;
+    return y + doy / (tlIsLeap(y) ? 366 : 365);
+  }
+  /* 真实比赛日（按成绩口径 / 项目过滤），按人缓存到 p.__cd。
+     返回 { f: 小数年[], y: 年份[], w: 当天破纪录条数[] }，按日期升序。 */
+  function compDatesOf(p, calKey, rtype, evList) {
+    let C = p.__cd; if (!C) C = p.__cd = {};
+    if (C[calKey] !== undefined) return C[calKey];
+    const recs = p.records;
+    if (!recs || !recs.length) return (C[calKey] = null);
+    const hit = Object.create(null);
+    for (let i = 0; i < recs.length; i++) {
+      const r = recs[i];
+      if (rtype === 'single' && r.type !== 'single') continue;
+      if (rtype === 'avg' && r.type !== 'avg') continue;
+      if (evList && evList.indexOf(r.ev) < 0) continue;
+      const s = r.date;
+      if (!s || s.length < 10) continue;
+      const key = s.slice(0, 10);
+      hit[key] = (hit[key] || 0) + 1;
+    }
+    const keys = Object.keys(hit).sort();
+    if (keys.length < 2) return (C[calKey] = null);
+    const f = [], y = [], w = [];
+    for (let i = 0; i < keys.length; i++) {
+      const fy = dateToFy(keys[i]);
+      if (!isFinite(fy)) continue;
+      f.push(fy); y.push(+keys[i].slice(0, 4)); w.push(hit[keys[i]]);
+    }
+    return (C[calKey] = f.length >= 2 ? { f: f, y: y, w: w } : null);
+  }
+  /* 把「逐年增量」搬到比赛日上，按人缓存到 p.__burst。
+     curve = { years: [有增量的年份], delta: Y→该年的增量（未归一） } */
+  function burstFor(p, ck, calKey, rtype, evList, curve) {
+    const cal = compDatesOf(p, calKey, rtype, evList);
+    if (!cal) return null;
+    let C = p.__burst; if (!C) C = p.__burst = {};
+    if (C[ck] !== undefined) return C[ck];
+    const f = cal.f, y = cal.y, w = cal.w;
+    const gain = new Float64Array(f.length);
+    let placed = false;
+    /* 逐年在当年的比赛日之间分摊；没有比赛日的年份并到时间上最近的那一天，
+       绝不凭空造一个「比赛日」。 */
+    for (let j = 0; j < curve.years.length; j++) {
+      const Y = curve.years[j], dY = curve.delta(Y);
+      if (!(dY > 0)) continue;
+      let from = -1, to = -1, wsum = 0;
+      for (let i = 0; i < f.length; i++) {
+        if (y[i] !== Y) continue;
+        if (from < 0) from = i;
+        to = i; wsum += w[i];
+      }
+      if (from >= 0) {
+        for (let i = from; i <= to; i++) gain[i] += dY * (w[i] / wsum);
+        placed = true;
+      } else {
+        let best = 0, bd = Infinity;
+        for (let i = 0; i < f.length; i++) {
+          const dd = Math.abs(f[i] - (Y + 0.5));
+          if (dd < bd) { bd = dd; best = i; }
+        }
+        gain[best] += dY; placed = true;
+      }
+    }
+    if (!placed) return (C[ck] = null);
+    const d = [], v = [];
+    let tot = 0;
+    for (let i = 0; i < f.length; i++) {
+      if (!(gain[i] > 0)) continue;
+      d.push(f[i]); v.push(gain[i]); tot += gain[i];
+    }
+    if (d.length < 2 || !(tot > 0)) return (C[ck] = null);
+    const cs = new Float64Array(d.length + 1);
+    for (let i = 0; i < v.length; i++) { v[i] /= tot; cs[i + 1] = cs[i] + v[i]; }
+    return (C[ck] = { d: d, v: v, cs: cs });
+  }
+  /* 某一时刻的比赛日累计：窗口已结束的走前缀和，窗口内的逐项算 smootherstep。
+     相邻比赛日的窗口允许重叠（长窗口必然重叠），但 Σ v = 1 且 kernel ≤ 1，
+     所以结果恒在 [0,1]，不会冲过终值。 */
+  function burstRatioAt(bs, t) {
+    if (!bs) return null;
+    const d = bs.d, v = bs.v, cs = bs.cs, n = d.length;
+    const cut = t - SMOOTH_POST;
+    let lo = 0, hi = n;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (d[m] <= cut) lo = m + 1; else hi = m; }
+    let acc = cs[lo];
+    for (let i = lo; i < n && d[i] < t + SMOOTH_PRE; i++) acc += v[i] * smoothKernel(t, d[i]);
+    return acc > 1 ? 1 : (acc < 0 ? 0 : acc);
+  }
+
   /* 与时间无关的筛选池：region / country / gender / evs 一旦确定，「谁在范围内」就固定了。
      播放时每帧都重新做一遍 inScope（多选项目还要逐个比对 p.events 数组）纯属浪费，
      这里按签名缓存候选池，之后每帧只遍历池内的人（筛了国家 / 大洲时人数还会大幅减少）。 */
@@ -1168,6 +1291,33 @@
       ckEvY = '__evy' + rtype + '_' + combo;
       ckEvSer = '__sere' + rtype + '_' + combo;
     }
+    /* 真实比赛日历的缓存键：p.records 要按成绩口径 + 所选项目过滤。 */
+    const comboAll = evList ? evList.join('+') : '';
+    const calKey = 'C|' + rtype + '|' + comboAll;
+    /* 把「逐年增量」交给比赛日重新参数化：
+       · 普通年度表 ser.yv[Y] 本身就是该年的增量；
+       · 六维年度曲线 p.sy[dim] 是累计采样，增量 = cum(Y) − cum(Y−1)。 */
+    function curveOfSeries(ser) {
+      return { years: ser.ys, delta: function (Y) { return ser.yv[Y] || 0; } };
+    }
+    function curveOfDim(c) {
+      const ys = c.ys, rs = c.rs, years = [];
+      for (let Y = ys[0]; Y <= ys[ys.length - 1]; Y++) years.push(Y);
+      const cumAt = function (Y) {
+        let lo = 0, hi = ys.length - 1, idx = -1;
+        while (lo <= hi) { const m = (lo + hi) >> 1; if (ys[m] <= Y) { idx = m; lo = m + 1; } else hi = m - 1; }
+        return idx < 0 ? 0 : rs[idx];
+      };
+      return { years: years, delta: function (Y) { return Math.max(0, cumAt(Y) - cumAt(Y - 1)); } };
+    }
+    /* 统一入口：β·原匀速基线 + (1−β)·比赛日 smootherstep 累计。
+       bs 为 null（精简档没有 p.records）时 β 自动变成 1，与原实现逐字等价。
+       smooth（3 期滑动平均）只作用在基线上，不会抹平比赛日的快慢节奏。 */
+    function raceRatio(bs, fy, uniform) {
+      const base = uniform();
+      if (bs == null) return base;
+      return BASE_SHARE * base + (1 - BASE_SHARE) * burstRatioAt(bs, fy);
+    }
     /* 六维权重每帧只取一次（原来在 evScopeT 里每人取一次） */
     const W6 = (P.util && P.util.sixW) ? P.util.sixW() : { m1: 0.42, m2: 0.20, m3: 0.10, m4: 0.14, m5: 0.06, m6: 0.08 };
     const END_Y = 2026;
@@ -1217,8 +1367,13 @@
             }
           }
           if (!(base0 > 0)) return 0;
-          const dr = dimRatioAt(p, dimCurveKey(p, dim), fy);
-          return base0 * (dr == null ? careerRamp(p, fy) : dr);
+          const dk = dimCurveKey(p, dim);
+          const dr = dimRatioAt(p, dk, fy);
+          if (dr == null) return base0 * careerRamp(p, fy);
+          const c = dimCurve(p, dk);
+          const bs = c ? burstFor(p, 'BDE|' + dk + '|' + rtype + '|' + comboAll,
+            calKey, rtype, evList, curveOfDim(c)) : null;
+          return base0 * raceRatio(bs, fy, function () { return dr; });
         }
         const t = evScopeT(p, evList, rtype, W6, ckVec);
         if (t <= 0) return 0;
@@ -1231,9 +1386,13 @@
         const evAll = seriesCum(evSer, END_Y);
         let ratio;
         if (evAll > 0) {
-          let cf = seriesCum(evSer, fy);
-          if (smooth) cf = (seriesCum(evSer, fy) + seriesCum(evSer, fy - 1) + seriesCum(evSer, fy - 2)) / 3;
-          ratio = Math.max(0, Math.min(1, cf / evAll));
+          const bs = burstFor(p, 'BE|' + key + '|' + rtype + '|' + comboAll,
+            calKey, rtype, evList, curveOfSeries(evSer));
+          ratio = raceRatio(bs, fy, function () {
+            let cf = seriesCum(evSer, fy);
+            if (smooth) cf = (seriesCum(evSer, fy) + seriesCum(evSer, fy - 1) + seriesCum(evSer, fy - 2)) / 3;
+            return Math.max(0, Math.min(1, cf / evAll));
+          });
         } else {
           /* 该项目上没有任何领奖台 / 纪录（例如只靠「纪录比」拿分的人）：
              按生涯进度长出来，而不是从 2003 年起就满值站着。 */
@@ -1250,22 +1409,36 @@
         const base0 = sv ? (sv[dim] || 0) : 0;
         if (!(base0 > 0)) return 0;
         if (fy < (+p.start || 2003) - 1e-9) return 0;      /* 首次参赛之前不设此人 */
-        const dr = dimRatioAt(p, dimCurveKey(p, dim), fy);
-        if (dr != null) return base0 * dr;
+        const dk = dimCurveKey(p, dim);
+        const dr = dimRatioAt(p, dk, fy);
+        if (dr != null) {
+          const c = dimCurve(p, dk);
+          const bs = c ? burstFor(p, 'BD|' + dk + '|' + rtype,
+            calKey, rtype, null, curveOfDim(c)) : null;
+          return base0 * raceRatio(bs, fy, function () { return dr; });
+        }
         /* 旧数据包（没有 p.sy）：退回年度荣誉曲线，为空则按生涯进度，绝不直接给 1 */
         const serD = seriesOf(p, p[key] || {}, serKey);
         const allD = seriesCum(serD, END_Y);
-        let cfD = seriesCum(serD, fy);
-        if (smooth) cfD = (seriesCum(serD, fy) + seriesCum(serD, fy - 1) + seriesCum(serD, fy - 2)) / 3;
-        const ratioD = allD > 0 ? Math.max(0, Math.min(1, cfD / allD)) : careerRamp(p, fy);
+        const bsD = burstFor(p, 'BDF|' + key + '|' + rtype,
+          calKey, rtype, null, curveOfSeries(serD));
+        const ratioD = raceRatio(bsD, fy, function () {
+          let cfD = seriesCum(serD, fy);
+          if (smooth) cfD = (seriesCum(serD, fy) + seriesCum(serD, fy - 1) + seriesCum(serD, fy - 2)) / 3;
+          return allD > 0 ? Math.max(0, Math.min(1, cfD / allD)) : careerRamp(p, fy);
+        });
         return base0 * ratioD;
       }
       const ser = seriesOf(p, p[key] || {}, serKey);
       const all = seriesCum(ser, END_Y);
       if (all <= 0) return 0;
-      let cf = seriesCum(ser, fy);
-      if (smooth) cf = (seriesCum(ser, fy) + seriesCum(ser, fy - 1) + seriesCum(ser, fy - 2)) / 3;
-      const ratio = Math.max(0, Math.min(1, cf / all));
+      const bs = burstFor(p, 'B|' + key + '|' + rtype,
+        calKey, rtype, null, curveOfSeries(ser));
+      const ratio = raceRatio(bs, fy, function () {
+        let cf = seriesCum(ser, fy);
+        if (smooth) cf = (seriesCum(ser, fy) + seriesCum(ser, fy - 1) + seriesCum(ser, fy - 2)) / 3;
+        return Math.max(0, Math.min(1, cf / all));
+      });
       if (ratio <= 0) return 0;
       const sc = P.util.scoreOf(p, rtype);
       const career = sc.career * ratio;
@@ -1314,6 +1487,16 @@
   /* 暴露给冒烟测试：验证筛选项目确实改变了竞速图结果 */
   P.tlSnapshot = function (evs, fy, rtype, gender, country) {
     return snapshot('cumulative', fy == null ? P.tlEndFy() : fy, false, '', country || '', evs || [], gender || 'all', rtype || 'all');
+  };
+  /* 暴露给冒烟测试：只算一位选手在某时刻的竞速分。
+     2026-11-06 用来逐日扫描「平台段极缓慢基线 / 比赛日 smootherstep 爆发 /
+     非瞬间跳变 / 终值不变 / 全生涯单调」，比 tlSnapshot 的全量排序轻得多。 */
+  P.tlValueProbe = function (pid, fy, rtype, evs, dim) {
+    const val = mkScorer('cumulative', false, '', '', evs || [], 'all', rtype || 'all', dim || '');
+    for (let i = 0; i < val.pool.length; i++) {
+      if (val.pool[i].id === pid) return val(val.pool[i], fy);
+    }
+    return 0;
   };
   /* 暴露给冒烟测试：直接检查泳道 / 竞速图的图表配置（dim 传入 m1..m6 可测单维竞速） */
   P.tlOption = function (view, mode, fy, smooth, metric, region, country, lane, evs, gender, rtype, dim) {

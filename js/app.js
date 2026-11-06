@@ -337,8 +337,10 @@
      clip-path 是一条硬圆边，扫过瞬间整页定型 → 用户反馈「唰一下、很生硬」。
      这一版保留「从鼠标点下的地方」这个空间原点，改掉三处硬感：
        ① 新层不用硬 clip-path，改用 radial-gradient 羽化遮罩（边缘渐隐带）；
-       ② 新层自身 opacity .88 → 1，扫过的区域是「化开」而不是「啪」地换掉；
-       ③ 圆周挂一圈目标主题色的柔光（drop-shadow），吃掉新旧色差的硬边界。
+       ② 羽化带加宽到 56px，圆周扫过时是「化开」而不是「啪」地换掉；
+       ③ 2026-11-06 第三轮：新层不再挂 drop-shadow 柔光、也不做 opacity 渐变，
+          root group 的默认 UA 动画一并禁掉 —— 这些「只在切换期间存在」的额外
+          合成会把图标按钮的圆角边框重描一次再消失（用户两次反馈的边框闪烁）。
      方向由「当前主题 → 目标主题」决定（2026-11-05 晚用户二次调整，与上一版相反）：
        浅 → 深：新层（深色）圆外可见、圆内透明（露出旧浅色），
                r 从覆盖全屏缩到 1px = 浅色圆向点击点收拢消失、深色从外围合拢；
@@ -391,21 +393,24 @@
       root.style.setProperty('--reveal-x', o.x + 'px');
       root.style.setProperty('--reveal-y', o.y + 'px');
       root.style.setProperty('--reveal-max', R + 'px');
-      root.style.setProperty('--reveal-feather', (ms <= 300 ? 12 : 38) + 'px');
-      root.style.setProperty('--reveal-glow',
-        next === 'dark' ? 'rgba(13,17,23,.30)' : 'rgba(255,255,255,.55)');
+      root.style.setProperty('--reveal-feather', (ms <= 300 ? 16 : 56) + 'px');
     } catch (e) { }
     root.classList.toggle('theme-reveal-contract', contract);
     if (!maskOK) root.classList.add('theme-reveal-clip');
-    /* ★ 2026-11-06：切换期间关掉 DOM 里的逐元素 CSS transition。
+    /* ★ 2026-11-06：切换期间关掉 DOM 里的逐元素 CSS transition（DOM 层防御）。
        .ev-tab 等图标按钮常驻 `border-color/background/color/box-shadow .16s`
-       （本来只给 hover 用），主题变量一变就同时触发 500+ 条过渡 —— 用户看到
-       整排图标「边框闪一下又消失」。视觉过渡由 VT 圆形揭示独占，DOM 层应当硬切。
+       （本来只给 hover 用），主题变量一变会同时触发 500+ 条过渡。
+       注意：用户看到的「图标边框闪烁」主因其实在 VT 合成层（new 层的
+       drop-shadow / opacity 叠加 + root group 默认 UA 动画），已由 CSS 侧修掉；
+       这里保留禁 transition，避免 DOM 层再叠一层颜色渐变。
        类在 clearReveal 里移除；crossFadeCharts 的 ghost 淡出在移除之后才创建，
        所以它自己的 opacity 过渡不受影响。 */
     root.classList.add('theme-switching');
     deferCharts = true;
     let vt;
+    /* 半径动画带 fill:forwards，VT 伪元素销毁后 finished 动画对象仍会留在
+       document.getAnimations() 里，连切多次会累积。结束时显式 cancel 掉。 */
+    let revealAnim = null;
     try { vt = document.startViewTransition(function () { apply(); }); }
     catch (e) {
       deferCharts = false; clearReveal(seq);
@@ -414,12 +419,14 @@
     vt.ready.then(function () {
       const r0 = contract ? R + 'px' : '1px';
       const r1 = contract ? '1px' : R + 'px';
+      /* ★ 只动画半径。以前同时把 opacity .88→1 挂在这一层，会让新快照与旧
+         快照半透明叠加，图标圆角边框出现双影；柔化改由 56px 羽化遮罩承担。 */
       const kf = maskOK
-        ? [{ '--reveal-r': r0, opacity: '.88' }, { '--reveal-r': r1, opacity: '1' }]
+        ? [{ '--reveal-r': r0 }, { '--reveal-r': r1 }]
         : [{ clipPath: 'circle(0px at ' + o.x + 'px ' + o.y + 'px)' },
            { clipPath: 'circle(' + R + 'px at ' + o.x + 'px ' + o.y + 'px)' }];
       try {
-        root.animate(kf, {
+        revealAnim = root.animate(kf, {
           duration: ms,
           easing: 'cubic-bezier(.22,.61,.36,1)',
           fill: 'forwards',
@@ -430,13 +437,16 @@
     const done = function () {
       if (seq !== revealSeq) return;
       deferCharts = false;
+      if (revealAnim) { try { revealAnim.cancel(); } catch (e) { } revealAnim = null; }
       clearReveal(seq);
       clearTimeout(switchTheme._t3);
       crossFadeCharts(Math.max(240, Math.round(ms * 0.7)));
     };
     vt.finished.then(done).catch(function () {
       if (seq !== revealSeq) return;
-      deferCharts = false; clearReveal(seq); clearTimeout(switchTheme._t3);
+      deferCharts = false;
+      if (revealAnim) { try { revealAnim.cancel(); } catch (e) { } revealAnim = null; }
+      clearReveal(seq); clearTimeout(switchTheme._t3);
     });
     /* 兜底：页面被隐藏等情况下 finished 可能不 resolve，别把 deferCharts 卡住 */
     switchTheme._t3 = setTimeout(function () {

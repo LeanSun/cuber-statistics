@@ -144,7 +144,9 @@ html.theme-fade *::after{
 /* ★ 2026-11-06：View Transitions 主路径期间，视觉过渡由圆形揭示独占。
    DOM 里 .ev-tab 等图标按钮常驻 `border-color/background/color/box-shadow .16s`
    的 hover 过渡；主题变量在 apply() 里瞬间改变，会同时触发 500+ 条逐元素
-   transition —— 表现为切换瞬间整排图标「边框闪一下，随后消失」。
+   transition（实测峰值 572 条）。这是 DOM 层防御：真正的「图标边框闪烁」
+   主因在 VT 合成层（new 层 drop-shadow / opacity 叠加 + group UA 动画），
+   已在本文件圆形揭示一节修掉；这里只保证 DOM 不再额外叠一层颜色渐变。
    JS 在 circleReveal 里给 <html> 挂 .theme-switching、clearReveal 时摘掉，
    这里统一关掉后代的 transition。选择器不含 :root 自身，所以回退路径的
    变量插值不受影响；也只关 transition、不关 animation（chartSettle / evPop 照常）。
@@ -177,9 +179,12 @@ html.theme-switching *::after{
      · 深 → 浅（默认）：mask 圆内不透明、圆外透明，r 1px → R = 浅色扩散。
    这里只负责「怎么显示」：
      · 关掉 VT 默认的 cross-fade（否则新旧两层互相淡入淡出，圆形边界变糊）；
-     · radial-gradient 的边缘 --reveal-feather 是渐隐带，不是一刀切的硬圆
+     · radial-gradient 的边缘 --reveal-feather 加宽到 56px，不是一刀切的硬圆
        —— 这是消除「唰一下」的关键；
-     · drop-shadow 沿裁切圆周挂一圈目标主题色柔光，进一步吃掉新旧色差。
+     · 2026-11-06 第三轮：不再给 new 层挂 drop-shadow 柔光 / opacity 渐变，
+       也不跑 root group 的默认 UA 动画。这三种效果都「只在切换期间存在」，
+       会把图标按钮的圆角边框重描一次再消失（用户两次反馈的边框闪烁）。
+       合成层只保留 mask 一个效果，柔化全交给羽化带。
    不支持 @property 的浏览器（无法动画 --reveal-r）由 JS 加 .theme-reveal-clip，
    退回 clip-path 硬圆；收缩方向会直接回退颜色插值（硬圆做不出「圆外显示」）。 */
 @property --reveal-r{syntax:"<length>";inherits:true;initial-value:0px}
@@ -189,22 +194,32 @@ html.theme-switching *::after{
   mix-blend-mode:normal;
   display:block;
 }
+/* ★ 2026-11-06 第三轮：禁掉浏览器给 root group / image-pair 注入的默认 UA 动画
+   （探针实测 `-ua-view-transition-group-anim-root` 一直在跑）。它会在切换期间
+   再加一层组级合成，把图标按钮的圆角边框「重描一次」然后消失，正是用户两次
+   反馈的「切换一瞬间图标边框闪烁、随后消失」。圆形揭示只需 new 层的 mask，
+   不需要任何组级动画。 */
+::view-transition-group(root),
+::view-transition-image-pair(root){animation:none!important}
 ::view-transition-old(root){z-index:1}
 ::view-transition-new(root){
   z-index:2;
   -webkit-mask-image:radial-gradient(circle var(--reveal-r) at var(--reveal-x,50%) var(--reveal-y,50%),
-    #000 calc(100% - var(--reveal-feather,38px)),rgba(0,0,0,0) 100%);
+    #000 calc(100% - var(--reveal-feather,56px)),rgba(0,0,0,0) 100%);
   mask-image:radial-gradient(circle var(--reveal-r) at var(--reveal-x,50%) var(--reveal-y,50%),
-    #000 calc(100% - var(--reveal-feather,38px)),rgba(0,0,0,0) 100%);
-  filter:drop-shadow(0 0 14px var(--reveal-glow,transparent));
+    #000 calc(100% - var(--reveal-feather,56px)),rgba(0,0,0,0) 100%);
+  /* ★ 不要再给 new 层挂 filter / opacity 动画：drop-shadow 柔光只在切换期间存在、
+     结束后随 --reveal-glow 一起变成透明，图标边缘会「多出一圈边框又消失」；
+     opacity .88→1 会让新旧两张快照半透明叠加，边框出现双影。柔化全部交给
+     上面加宽到 56px 的径向羽化带，合成层只保留 mask 一个效果。 */
 }
 /* 浅 → 深：反向遮罩。圆内透明 → 露出下层旧主题（浅色）；圆外显示新主题（深色）。
    --reveal-r 从覆盖全屏收到 1px，视觉上是浅色圆收拢进点击点、深色从外围合拢。 */
 html.theme-reveal-contract::view-transition-new(root){
   -webkit-mask-image:radial-gradient(circle var(--reveal-r) at var(--reveal-x,50%) var(--reveal-y,50%),
-    rgba(0,0,0,0) calc(100% - var(--reveal-feather,38px)),#000 100%);
+    rgba(0,0,0,0) calc(100% - var(--reveal-feather,56px)),#000 100%);
   mask-image:radial-gradient(circle var(--reveal-r) at var(--reveal-x,50%) var(--reveal-y,50%),
-    rgba(0,0,0,0) calc(100% - var(--reveal-feather,38px)),#000 100%);
+    rgba(0,0,0,0) calc(100% - var(--reveal-feather,56px)),#000 100%);
 }
 html.theme-reveal-clip::view-transition-new(root){
   -webkit-mask-image:none;mask-image:none;
