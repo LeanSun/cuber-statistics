@@ -646,7 +646,7 @@
     if (ps.length === 2) {
       const a = ps[0], b = ps[1];
       h += ecBox('diverging', MOD.map(function (k) {
-        return { name: modName(k), d: [sixW(k) * sixK(a, k), sixW(k) * sixK(b, k)] };
+        return { name: modName(k), d: [sixW()[k] * sixK(a, k), sixW()[k] * sixK(b, k)] };
       }), {
         series: [{ name: a.name, color: colors[0] }, { name: b.name, color: colors[1] }]
       }, MOD.length * 34 + 70);
@@ -654,7 +654,7 @@
         '<span><i style="background:' + colors[1] + '"></i>' + esc(b.name) + '</span></div>';
     } else {
       h += ecBox('stacked', MOD.map(function (k) {
-        return { name: modName(k), values: ps.map(function (p) { return sixW(k) * sixK(p, k); }) };
+        return { name: modName(k), values: ps.map(function (p) { return sixW()[k] * sixK(p, k); }) };
       }), { series: ps.map(function (p, i) { return { name: p.name, color: colors[i] }; }), legend: true }, MOD.length * 30 + 90);
     }
     h += '</div>';

@@ -611,9 +611,41 @@ console.log('== 选手 PK ==');
   ok(hp2.indexOf('pk-charts') >= 0, '图表网格容器存在');
   ok(hp2.indexOf('diverging') >= 0, '优势领域图（diverging）容器存在');
   ok(hp2.indexOf('scatter') >= 0, '风格定位图（scatter）容器存在');
-  /* 关键回归：旧版 diverging 读 d[0]/d[1] 取到 undefined → 浏览器挂载时算成 NaN → 整图空白；
-     data-ec 序列化时 NaN 会变成 null，这里同时断言产物里没有 'NaN' 字面量。 */
-  ok(hp2.indexOf('NaN') < 0, 'PK 页渲染产物不含 NaN 字面量');
+  /* 关键回归：diverging 的 d 数组若混入 NaN/Infinity，浏览器挂载时整图空白。
+     data-ec 经 esc() 后引号变 &quot;，JSON.stringify(NaN) → null。
+     这里把 diverging 的 data-ec 抠出来解码，断言所有 d 值都是有限数。
+     （旧断言只用 indexOf('NaN')，但序列化后是 null，根本抓不到该回归。） */
+  (function () {
+    const re = /data-ec="([^"]*)"/g; let m, bad = 0, found = 0;
+    while ((m = re.exec(hp2))) {
+      const json = m[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+      let spec; try { spec = JSON.parse(json); } catch (e) { continue; }
+      if (spec.type !== 'diverging') continue;
+      found++;
+      (spec.data || []).forEach(function (row) {
+        (row.d || []).forEach(function (v) { if (typeof v !== 'number' || !isFinite(v)) bad++; });
+      });
+    }
+    ok(found === 1, '找到 1 个 diverging 图表 data-ec（实得 ' + found + '）');
+    ok(bad === 0, '优势领域图 d 数组全为有限数（实得异常 ' + bad + ' 个）');
+  })();
+  /* 风格定位 scatter：pts = [参赛场次, 总分, 名称标签, 归一化总分]；
+     数值位只有 [0][1][3]，[2] 是字符串标签，不能当数字校验。 */
+  (function () {
+    const re = /data-ec="([^"]*)"/g; let m, bad = 0, found = 0;
+    while ((m = re.exec(hp2))) {
+      const json = m[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+      let spec; try { spec = JSON.parse(json); } catch (e) { continue; }
+      if (spec.type !== 'scatter') continue;
+      found++;
+      (spec.data || []).forEach(function (row) {
+        if (!Array.isArray(row) || row.length < 4) { bad++; return; }
+        [0, 1, 3].forEach(function (i) { if (typeof row[i] !== 'number' || !isFinite(row[i])) bad++; });
+      });
+    }
+    ok(found === 1, '找到 1 个 scatter 图表 data-ec（实得 ' + found + '）');
+    ok(bad === 0, '风格定位图数值位全为有限数（实得异常 ' + bad + ' 个）');
+  })();
   ok(hp2.indexOf('pk-arena') < 0, '已弃用旧的 pk-arena 布局');
 
   const ids3 = M.ranked.slice(0, 3).map(function (p) { return p.id; });
