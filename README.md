@@ -6,19 +6,21 @@
 
 | 维度 | 名称 | 回答什么 | 权重 |
 |---|---|---|---|
-| M1 | 纪录持有 | 刷新了多少次纪录（守得久仅作加分） | 45% |
-| M3 | 大赛表现 | 锦标赛上突破的加成 | 20% |
-| M2 | 领奖台 | 拿过多少冠亚季军 | 15% |
-| M4 | 统治力 | 保持在世界前十有多久 | 15% |
-| M6 | 突破幅度 | 破纪录瞬间把人类前沿推远多少 | 4% |
-| M5 | 纪录比 | 最好成绩离世界纪录有多近（k = 100×WR/PB，17 项等权平均） | 1% |
+| M1 | 纪录持有 | 按纪录实际占有段纯持有计分 | 42% |
+| M2 | 领奖台 | WCA 官方名次 pos 口径的领奖台 | 20% |
+| M3 | 大赛表现 | 锦标赛突破加成（时代折算、开荒期不计） | 10% |
+| M4 | 统治力 | 方案 F：长期占据前列的程度 | 14% |
+| M5 | 纪录比 | 严格 Kinch：k = min(100, 100×WR/PB)，17 项一轨 | 6% |
+| M6 | 突破幅度 | 破纪录瞬间把人类前沿推远多少（时代平权双截顶） | 8% |
 
 总分 `t = Σ_d w_d · s_d`，维度分 `s_d` 映射到站点刻度 `FULL = 1000`（其余五维按榜首归一，M5 用 Kinch 绝对刻度，整维满分同为 1000）。
 
-> **名义权重 ≠ 实际贡献**：M5 几乎全员有分（其余维度只有 0.5%–31% 的选手有分），
-> 方案 A 统一量纲后 M5 名义 1% 的实际加权贡献约 24%（全站）/ 0.7%（Top100），
-> 差别来自覆盖广度而非量纲；M1 名义 42% 实际也只约两成，因为 98% 的选手在 M1 上是 0 分。
+> **名义权重 ≠ 实际贡献**：M5 几乎全员有分，而 M1 上 98% 的选手是 0 分，
+> 因此各维对全站总分的实际贡献与名义权重差别很大（Top100 又与全站不同）。
 > 调权重前请先核算各维的实际覆盖率与加权贡献，不要只看名义值。
+> 默认权重 2026-11-05 定稿为 **42:20:10:14:6:8**；改权重须同步
+> `etl/score/sixdim.js`、`etl/build.js`、`js/params.js` 与各处兜底，并重跑
+> `etl/score/rebuild_sixdim.js --track both`，否则榜单与选手页会出现两套分数。
 
 > **旧版七模块模型（M1–M7，含 Elo 对战强度）已整体停用**：不再参与总分、排序、
 > 雷达图与任何页面口径，代码里的相关字段仅作历史兼容保留。历史模型文档与归档已清理，
@@ -55,18 +57,23 @@
 
 ```
 cuber-statistics/
-├─ index.html            外壳：导航 / 筛选条 / 页脚 / WCA 版权声明（站点根，GitHub Pages 直接托管）
+├─ index.html            外壳：导航 / 筛选条 / 首屏骨架 / 页脚 / SEO meta（GitHub Pages 直接托管）
 ├─ css/style.css         主题变量（深浅双主题）+ 组件 + 响应式 + 动效
 ├─ vendor/echarts.min.js 本地 ECharts（离线可用）
+├─ sw.js                 Service Worker：代码壳 network-first、数据 stale-while-revalidate
+├─ robots.txt / sitemap.xml / 404.html / manifest.json / favicon.svg / favicon.ico
+├─ seo/                  构建期生成的无 JS 静态摘要页（rank / timeline / topics / model）
 ├─ js/
+│  ├─ boot.js            非阻塞启动器：流式取数 → 按序挂载 → 后台补明细 → 注册 SW
 │  ├─ calc.js            共享评分/聚合层（浏览器与 ETL 共用）：Calc.assemble → window.MOCK
 │  ├─ i18n.js            中英文语言包
 │  ├─ params.js          可配置参数（六维权重）
 │  ├─ groups.js          自定义项目分组（localStorage 持久化）
 │  ├─ mock.js            演示数据生成器（仅 ?demo=1 时加载，绝不静默覆盖真实数据）
-│  ├─ data.js            真实数据（由 etl/build.js 生成，本站唯一数据源）
-│  ├─ roster.js          长尾名册（精简档之后其余选手的懒加载名册）
-│  ├─ sixdim_data.js     六维分数细则数据（由 etl/score/sixdim.js 导出，子页面按需懒加载）
+│  ├─ data.js            主包：全部可排名选手的紧凑档 + CFG（由 etl/build.js 生成）
+│  ├─ data_detail.js     明细分片：顶尖选手的纪录 / 领奖台明细（首屏后后台补入）
+│  ├─ roster.js          长尾名册（输入搜索时才懒加载）
+│  ├─ sixdim_data.js     六维分数细则数据（子页面按需懒加载）
 │  ├─ icons.js           内联 SVG 图标（WCA 项目图标 + 界面图标）
 │  ├─ charts.js          ECharts 封装（主题取色 / 自适应 / 动画）
 │  ├─ pages-core.js      首页 · 综合总榜
@@ -74,15 +81,43 @@ cuber-statistics/
 │  ├─ pages-extra.js     动态可视化 · 另类统计 · 评分原理说明
 │  ├─ pages-sixdim.js    六维分数细则（参数设置子页面；数据表按需懒加载）
 │  └─ app.js             路由 / 状态 / 主题 / 语言 / 事件 / 数据模式切换
-├─ etl/                  WCA 导出下载 → 清洗 → js/data.js（详见 etl/README.md）
-└─ etl/score/            六维模型交付链：16 个脚本 + 交付表 + 各维当前定稿文档
+├─ etl/                  WCA 导出 → 清洗 → js/data.js + js/data_detail.js
+│  ├─ build.js           数据主构建（样本/诊断构建 --no-roster 自动回退单文件）
+│  ├─ build_seo.py       由当周数据生成 seo/*.html + sitemap.xml + favicon.ico
+│  ├─ check_static.js    静态体检：i18n 对齐 / 体积预算 / 表头语义 / SEO 产物
+│  └─ score/             六维模型交付链：脚本 + 交付表 + 各维当前定稿文档
+└─ .github/workflows/    CI 冒烟 + 每周 WCA 数据重建
 ```
 
 ## 本地预览
 
-直接双击 `index.html` 即可（无需构建、无需联网；国旗图片与公式渲染在离线时自动降级）。
+直接双击 `index.html` 即可（无需构建、无需联网）。`file://` 下 `boot.js` 自动改用
+`<script src>` 读取数据，并跳过 Service Worker / MathJax CDN / PWA manifest；
+公式与国旗走离线降级，浏览器控制台保持干净。
 
-要以**真实数据**本地预览，先按下方「接入真实 WCA 数据」生成 `js/data.js`，再打开 `index.html`。
+也可用静态服务预览（推荐，能看到真实的流式加载进度与缓存效果）：
+
+```bash
+python3 -m http.server 8751 --bind 127.0.0.1
+# 打开 http://127.0.0.1:8751/
+```
+
+要以**真实数据**本地预览，先按下方「接入真实 WCA 数据」生成 `js/data.js`。
+
+## 首屏加载架构
+
+历史版本把数十 MB 的 `js/data.js` 放在一串同步 `<script>` 中间，HTML 解析被卡住，
+用户只能看到一个转圈。现在：
+
+1. `index.html` 静态渲染首屏骨架与进度条，浏览器立刻可见；
+2. 小体积依赖用 `defer` 加载，`js/boot.js` 用 `fetch` **流式**取 `js/data.js` 并显示已接收字节；
+3. 数据就绪后按序挂载 `pages-*.js` 与 `app.js`，骨架被 `render()` 替换；
+4. 体积最大的选手明细分片 `js/data_detail.js` 在后台补入并原地合并，不阻塞任何交互；
+5. `sw.js` 把代码壳（network-first）与数据（stale-while-revalidate）分开缓存，二次访问秒开。
+
+`file://` 双击预览走 `<script src>` 回退；旧格式的 `data.js`（没有
+`__WCA_DETAIL_PENDING`）同样兼容，便于回滚。每周 CI 重建数据时会一并产出明细分片、
+静态摘要页与站点地图。
 
 ## 接入真实 WCA 数据
 

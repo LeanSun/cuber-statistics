@@ -2190,11 +2190,65 @@ if (P.sixdimTableHtml) {
     !/\.geo-opt:hover,\.geo-opt:focus\{[^}]*outline:none/.test(css7),
     '地区下拉键盘焦点环不再被 outline:none 抹掉');
 
-  /* ⑥ index.html 外部工具注入的垃圾：3 个 CtxtMenu 样式块、2 个扩展样式、58 个 node-id */
+  /* ⑥ index.html 外部工具注入的垃圾；2026-11-07 起脚本加载链也改了：
+     data.js 不再同步阻塞，改由 boot.js 流式取回后按序挂载页面模块。 */
   ok(!/data-page-node-id/.test(h7) && !/CtxtMenu_/.test(h7) &&
     !/__dm_no_drag_style__|__dm_bindable_badge_style__/.test(h7) &&
-    /<script src="js\/app\.js"><\/script>/.test(h7),
-    '入口 HTML 清掉注入标记与无用样式块，脚本加载链保持不变');
+    /<script src="js\/boot\.js" defer><\/script>/.test(h7) &&
+    !/<script src="js\/data\.js"/.test(h7) && /<script src="js\/i18n\.js"><\/script>/.test(h7),
+    '入口 HTML 清掉注入标记；巨型数据改由 boot.js 非阻塞加载');
+}
+
+/* ============================================================
+   2026-11-07 第八轮：全站体检修复（首屏分片 / SEO / 一致性 / a11y / 缓存）
+   逐条锁住本轮改动，防止后续重构悄悄回退。
+   ============================================================ */
+{
+  const boot = fs.readFileSync(path.join(ROOT, 'js/boot.js'), 'utf8');
+  const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  const app = fs.readFileSync(path.join(ROOT, 'js/app.js'), 'utf8');
+  const lang = fs.readFileSync(path.join(ROOT, 'js/i18n.js'), 'utf8');
+  const build = fs.readFileSync(path.join(ROOT, 'etl/build.js'), 'utf8');
+  const pcore = fs.readFileSync(path.join(ROOT, 'js/pages-core.js'), 'utf8');
+  const pextra = fs.readFileSync(path.join(ROOT, 'js/pages-extra.js'), 'utf8');
+  const psix = fs.readFileSync(path.join(ROOT, 'js/pages-sixdim.js'), 'utf8');
+  const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
+
+  ok(/fetchText\(/.test(boot) && /getReader\(\)/.test(boot) &&
+    /loadChain\(\[/.test(boot) && /attachDetail/.test(boot) &&
+    /__WCA_DETAIL_PENDING/.test(boot) && /bootRetry/.test(boot),
+    '首屏流式取数 + 按序挂载 + 后台明细分片 + 失败重试');
+  ok(/__WCA_DETAIL_PENDING/.test(build) && /DETAIL_OUT/.test(build) &&
+    /NO_DETAIL/.test(build) && /var PLAYERS = '/.test(build),
+    'ETL 产出 core + data_detail.js，样本构建自动回退单文件');
+  ok(/rel="canonical"/.test(html) && /og:title/.test(html) &&
+    /application\/ld\+json/.test(html) && /hreflang/.test(html) &&
+    /rel="icon"/.test(html) && /<noscript>/.test(html) && /theme-color/.test(html),
+    '首页补齐 canonical / OG / JSON-LD / hreflang / favicon / theme-color / noscript');
+  const seoFiles = ['robots.txt', 'sitemap.xml', '404.html', 'manifest.json', 'sw.js', 'favicon.svg', 'favicon.ico',
+    'seo/rank.html', 'seo/model.html', 'seo/timeline.html', 'seo/topics.html', 'etl/build_seo.py'];
+  ok(seoFiles.every(function (f) { return fs.existsSync(path.join(ROOT, f)); }),
+    'robots / sitemap / 404 / manifest / 静态摘要页 / SW / favicon 齐备');
+  ok(/data-i18n="foot\.data"/.test(html) && /M\.meta\.exportVersion/.test(app) &&
+    !/'，v' \+ \(M\.meta\.exportVersion/.test(app),
+    '页脚数据日期与版本号由 M.meta 渲染，去掉多余的 v');
+  const thAll = (pcore + pextra + psix).match(/<th(?=[\s>])/g) || [];
+  const thScope = (pcore + pextra + psix).match(/<th scope="col"/g) || [];
+  ok(thAll.length > 0 && thAll.length === thScope.length,
+    '所有数据表头都有 scope="col"（' + thScope.length + '/' + thAll.length + '）');
+  const iZ = lang.indexOf('const ZH = {'), iE = lang.indexOf('const EN = {'), iX = lang.indexOf('window.I18N');
+  const keysOf = function (s) {
+    return new Set((s.match(/'([A-Za-z0-9_.\-]+)'\s*:/g) || []).map(function (x) { return x.split("'")[1]; }));
+  };
+  const zhK = keysOf(lang.slice(iZ, iE)), enK = keysOf(lang.slice(iE, iX));
+  const miss = [].concat([...zhK].filter(function (k) { return !enK.has(k); }),
+    [...enK].filter(function (k) { return !zhK.has(k); }));
+  ok(!miss.length, '中英文案键完全对齐（差异：' + miss.join(',') + '）');
+  ok(!/tl\.smooth/.test(lang), '已回滚功能的残留文案键被清除');
+  ok(/integrity/.test(boot) && /mathjax@3\.2\.2/.test(boot) && !/flagcdn\.com/.test(html),
+    'MathJax 固定版本 + SRI 按需加载，删掉无引用的 preconnect');
+  ok(/SHELL_VER/.test(sw) && /staleWhileRevalidate/.test(sw) && /DATA_RE/.test(sw),
+    'Service Worker 分离代码壳（network-first）与数据（stale-while-revalidate）');
 }
 
 /* ============================================================

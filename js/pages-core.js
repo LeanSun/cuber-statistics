@@ -920,14 +920,14 @@
     COLS.forEach(function (c) {
       const isSorted = (state.sortKey || 'score') === c.k;
       const arw = isSorted ? (state.sortDir === 'asc' ? '▲' : '▼') : '';
-      if (c.k === 'exp') { h += '<th class="tl exp-col"></th>'; return; }
+      if (c.k === 'exp') { h += '<th scope="col" class="tl exp-col"></th>'; return; }
       if (c.k === 'bars') {
         const isTotSorted = (state.sortKey || 'score') === 'score';
         const totArw = isTotSorted ? (state.sortDir === 'asc' ? '▲' : '▼') : '';
-        h += '<th class="bars-head bars-full' + (isTotSorted ? ' sorted' : '') + '" data-sort="score">' + esc(dimCur ? modName(dimCur) : t(evMode ? 'rank.evScore' : c.label)) + '<span class="arw">' + totArw + '</span></th>';
+        h += '<th scope="col" class="bars-head bars-full' + (isTotSorted ? ' sorted' : '') + '" data-sort="score">' + esc(dimCur ? modName(dimCur) : t(evMode ? 'rank.evScore' : c.label)) + '<span class="arw">' + totArw + '</span></th>';
         return;
       }
-      h += '<th class="' + (c.cls || '') + (isSorted ? ' sorted' : '') + '" data-sort="' + c.k + '">' +
+      h += '<th scope="col" class="' + (c.cls || '') + (isSorted ? ' sorted' : '') + '" data-sort="' + c.k + '">' +
         esc(c.label ? t(c.label) : '') + '<span class="arw">' + arw + '</span></th>';
     });
     h += '</tr></thead><tbody>';

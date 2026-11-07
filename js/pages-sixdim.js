@@ -49,6 +49,7 @@
       fail: 'Could not load the score data. Please check your connection and refresh.',
       rank: '#', player: 'Player', totalCol: 'Weighted total',
       snapshot: 'Snapshot {d} · {n} players',
+      snapshotStale: 'Live leaderboard data is {d} days newer — the ranking takes precedence',
       weights: 'Weights',
       noteTitle: 'Method',
       noteBody: 'Weighted total = Σ (normalised dimension score × weight); each dimension is accumulated from per-event subtotals × event coefficients. Weights: M1 .42 / M3 .10 / M2 .20 / M4 .14 / M6 .08 / M5 .06.',
@@ -67,6 +68,7 @@
       fail: '分数数据加载失败，请检查网络后刷新重试。',
       rank: '#', player: '选手', totalCol: '六维总分',
       snapshot: '数据快照 {d} · {n} 名选手',
+      snapshotStale: '榜单数据比本快照新 {d} 天，排名请以榜单为准',
       weights: '权重',
       noteTitle: '口径说明',
       noteBody: '六维总分 = Σ 维度分（同筛选范围内按榜首 = 1 归一）× 维度权重，各维度内部先按项目小计 × 项目系数累加。权重：M1 纪录持有 .42 / M3 大赛表现 .10 / M2 领奖台 .20 / M4 统治力 .14 / M6 突破幅度 .08 / M5 纪录比 .06。',
@@ -171,7 +173,7 @@
     const show = v.arr.slice(pg.from, pg.to);
 
     const head = cols.map(function (c) {
-      return '<th class="' + c.cls + '">' + c.label + '</th>';
+      return '<th scope="col" class="' + c.cls + '">' + c.label + '</th>';
     }).join('');
 
     const body = show.map(function (r, i) {
@@ -299,10 +301,21 @@
       const weights = meta.weights || {};
       const labels = meta.labels || {};
       if (chipsEl && !chipsEl.innerHTML) {
+        /* 2026-11-07：细则页是随仓库入库的静态快照，而榜单由 CI 每周重建。
+           两者日期差超过两周时明确提示，避免用户把旧快照当成实时榜单。 */
+        let stale = '';
+        try {
+          const live = window.MOCK && window.MOCK.meta && window.MOCK.meta.updated;
+          if (meta.generated && live) {
+            const days = Math.floor((Date.parse(live) - Date.parse(meta.generated)) / 86400000);
+            if (days > 14) stale = '<span class="sd-chip sd-stale">' +
+              esc((l.snapshotStale || '').replace('{d}', String(days))) + '</span>';
+          }
+        } catch (e) { /* 日期不可解析时不做提示 */ }
         chipsEl.innerHTML = DIMS.map(function (d) {
           return '<span class="sd-chip"><b>' + esc(dimName(d, l, labels)) + '</b> ×' + esc(weights[d]) + '</span>';
         }).join('') + '<span class="sd-chip"><b>' + esc(l.chipsTotal) + '</b> = Σ ' + esc(l.weights) + '</span>' +
-          '<span class="sd-chip sd-snapshot">' + esc(l.snapshot.replace('{d}', meta.generated || '—').replace('{n}', String(meta.count || D.rows.length))) + '</span>';
+          '<span class="sd-chip sd-snapshot">' + esc(l.snapshot.replace('{d}', meta.generated || '—').replace('{n}', String(meta.count || D.rows.length))) + '</span>' + stale;
       }
       if (dimsEl && !dimsEl.innerHTML) {
         const keys = ['total'].concat(DIMS);

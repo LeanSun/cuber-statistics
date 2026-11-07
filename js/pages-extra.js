@@ -2270,8 +2270,8 @@
         h += '<div class="card reveal board-card"><div class="card-head"><h2>' + esc(t('stat.' + d.k)) + '</h2>' +
           '<span class="tiny muted">' + (t.isEn() ? 'Top' : '前') + ' ' + list.length + '</span></div>';
         h += '<div class="grid grid-2" style="align-items:start">';
-        h += '<div class="table-wrap" style="border:none"><table class="data mini"><thead><tr><th class="tl">#</th><th class="tl">' +
-          esc(t('col.player')) + '</th><th class="tl">' + esc(t('col.country')) + '</th><th>' + esc(t('stat.' + d.k)) + '</th></tr></thead><tbody>';
+        h += '<div class="table-wrap" style="border:none"><table class="data mini"><thead><tr><th scope="col" class="tl">#</th><th scope="col" class="tl">' +
+          esc(t('col.player')) + '</th><th scope="col" class="tl">' + esc(t('col.country')) + '</th><th scope="col">' + esc(t('stat.' + d.k)) + '</th></tr></thead><tbody>';
         list.forEach(function (row, i) {
           h += '<tr><td class="tl">' + (i + 1) + '</td>' +
             '<td class="tl"><div class="pname">' + playerLink(row.p) + '</div></td>' +
@@ -2325,9 +2325,9 @@
       h += '<div class="card reveal">' + ecBox('groupBars', items.map(function (n) {
         return { label: (countryName(n.iso) || n.iso), value: n[key], color: countryColor(n.iso) };
       }), { top: 14 }, 320) + '</div>';
-      h += '<div class="table-wrap reveal"><table class="data mini"><thead><tr><th class="tl">' + esc(t('f.region')) +
-        '</th><th class="tl">' + esc(t('f.continent')) + '</th><th>' + esc(t('top.nation.total')) + '</th><th>' +
-        esc(t('top.nation.per')) + '</th><th>' + esc(t('top.nation.top')) + '</th><th class="tl">' + esc(t('col.player')) + '</th></tr></thead><tbody>';
+      h += '<div class="table-wrap reveal"><table class="data mini"><thead><tr><th scope="col" class="tl">' + esc(t('f.region')) +
+        '</th><th scope="col" class="tl">' + esc(t('f.continent')) + '</th><th scope="col">' + esc(t('top.nation.total')) + '</th><th scope="col">' +
+        esc(t('top.nation.per')) + '</th><th scope="col">' + esc(t('top.nation.top')) + '</th><th scope="col" class="tl">' + esc(t('col.player')) + '</th></tr></thead><tbody>';
       M.nations.slice(0, 24).forEach(function (n) {
         h += '<tr><td class="tl">' + flag(n.iso) + ' ' + esc(countryName(n.iso) || n.name || n.iso) + '</td><td class="tl tiny muted">' + esc(contName(n.continent)) + '</td>' +
           '<td class="num">' + U.num(n.total) + '</td><td class="num">' + U.fmt(n.perCapita, 1) + '</td><td class="num">' + U.fmt(n.best, 2) + '</td>' +
@@ -2338,9 +2338,9 @@
     } else if (sub === 'unknown') {
       h += '<p class="tiny muted" style="margin-bottom:12px">' + esc(t('top.unknown.d')) + '</p>';
       const list = pool.filter(function (p) { return p.wr === 0; }).slice(0, 40);
-      h += '<div class="table-wrap reveal"><table class="data mini"><thead><tr><th class="tl">#</th><th class="tl">' +
-        esc(t('col.player')) + '</th><th>' + esc(t('col.total')) + '</th><th>' + esc(t('col.months')) + '</th><th>' +
-        esc(t('col.m4')) + '</th><th>' + esc(t('stat.yearsTop10')) + '</th></tr></thead><tbody>';
+      h += '<div class="table-wrap reveal"><table class="data mini"><thead><tr><th scope="col" class="tl">#</th><th scope="col" class="tl">' +
+        esc(t('col.player')) + '</th><th scope="col">' + esc(t('col.total')) + '</th><th scope="col">' + esc(t('col.months')) + '</th><th scope="col">' +
+        esc(t('col.m4')) + '</th><th scope="col">' + esc(t('stat.yearsTop10')) + '</th></tr></thead><tbody>';
       list.forEach(function (p, i) {
         h += '<tr><td class="tl">' + (i + 1) + '</td><td class="tl"><div class="pname">' + playerLink(p) + '</div></td>' +
           '<td class="num">' + U.fmt(scoreOf(p).overall, 2) + '</td><td class="num">' + p.months1 + '</td>' +
@@ -2362,8 +2362,8 @@
           zero === 'months' ? (p.months1 > 12 ? 0.65 : 1) : zero === 'm1' ? 0.7 : zero === 'm2' ? 0.75 : 0.8;
       };
       const after = base.slice().sort(function (a, b) { return scoreOf(b).overall * factor(b) - scoreOf(a).overall * factor(a); });
-      h += '<div class="table-wrap reveal"><table class="data mini"><thead><tr><th class="tl">' + esc(t('col.player')) +
-        '</th><th>' + esc(t('col.rank')) + '</th><th>' + esc(t('top.counter.result')) + '</th><th>' + esc(t('col.total')) + '</th></tr></thead><tbody>';
+      h += '<div class="table-wrap reveal"><table class="data mini"><thead><tr><th scope="col" class="tl">' + esc(t('col.player')) +
+        '</th><th scope="col">' + esc(t('col.rank')) + '</th><th scope="col">' + esc(t('top.counter.result')) + '</th><th scope="col">' + esc(t('col.total')) + '</th></tr></thead><tbody>';
       after.forEach(function (p, i) {
         const before = base.indexOf(p) + 1;
         const d = before - (i + 1);

@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://leansun.github.io/cuber-statistics/sitemap.xml

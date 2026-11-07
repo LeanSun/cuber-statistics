@@ -1,0 +1,15 @@
+{
+  "name": "Cube GOAT · 魔方历史地位排名",
+  "short_name": "Cube GOAT",
+  "description": "基于 WCA 官方成绩的六维加权 GOAT 评分与历史排名",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0d1117",
+  "theme_color": "#0d1117",
+  "lang": "zh-CN",
+  "icons": [
+    { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" },
+    { "src": "favicon.ico", "sizes": "32x32", "type": "image/x-icon" }
+  ]
+}

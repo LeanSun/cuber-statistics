@@ -1062,8 +1062,14 @@
         }, 180);
       }
       if (inp) {
-        /* 首次输入时才拉取长尾名册，避免首屏加载 30 万条 */
-        inp.addEventListener('focus', function () { loadRoster(); }, { once: true });
+        /* 2026-11-07：不再「一聚焦就拉 19MB 长尾名册」。输入到 2 个字符才按需加载，
+           下载期间搜索框仍可继续输入；名册到位后自动重跑一次当前查询。 */
+        let rosterAsked = false;
+        inp.addEventListener('input', function () {
+          if (rosterAsked || (inp.value || '').trim().length < 2) return;
+          rosterAsked = true;
+          loadRoster().then(function () { if (inp.value && inp.value.trim()) doSearch(); });
+        });
         inp.addEventListener('input', doSearch);
       }
       if (form) form.addEventListener('submit', function (e) { e.preventDefault(); doSearch(); });
@@ -2294,7 +2300,7 @@
       if (fd) {
         fd.removeAttribute('data-i18n');
         fd.textContent = '数据来源：World Cube Association 官方成绩导出（' +
-          (M.meta.updated || '') + '，v' + (M.meta.exportVersion || '') + '）';
+          (M.meta.updated || '') + '，' + (M.meta.exportVersion || '') + '）';
       }
       const wc = document.getElementById('wcaCredit');
       if (wc) wc.textContent = 'This information is based on competition results owned and maintained by the World Cube Association, published at https://worldcubeassociation.org/results as of ' + (M.meta.updated || '') + '.';
@@ -2320,7 +2326,7 @@
   if (gh) { gh.href = 'https://github.com/LeanSun/cuber-statistics'; }
   // 真实数据未能加载且非演示模式：显示明确错误页，避免白屏 / 避免误显示虚构数据
   if (!window.__REAL_OK && !window.__DEMO) {
-    const appEl = document.getElementById('app');
+    const appEl = document.getElementById('app') || document.getElementById('view');
     if (appEl) appEl.innerHTML = '<div style="max-width:680px;margin:72px auto;padding:24px;'
       + 'font:15px/1.7 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#c0392b">'
       + '<h2>⚠ 真实 WCA 数据加载失败</h2>'

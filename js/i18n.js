@@ -603,8 +603,8 @@
     'tl.race.rank': '#{n}', 'tl.race.ahead': '{p}% ahead of #2',
     'tl.race.ofTop': '{p}% of #1', 'tl.race.pt': ' pts',
     'tl.play': 'Play', 'tl.pause': 'Pause', 'tl.replay': 'Replay', 'tl.step': 'Step', 'tl.step.year': 'Year', 'tl.step.month': 'Month', 'tl.step.week': 'Week', 'tl.metric': 'Metric', 'tl.metric.overall': 'Overall', 'tl.lane': 'Single/Avg',
-    'tl.smooth': '3-period smoothing',
-    'tl.smooth.d': 'Averages each frame over three periods — the current day plus the two days before it. This smooths out spikes caused by a single day of unusually many records, so bars and rank changes move more steadily. Off = the true cumulative total for that day only. It only affects mid-playback jitter: the final frame is still the full all-time score and is never averaged away.',
+    /* 2026-11-07：已回滚的「比赛日平滑」功能对应的两个英文残留键已删除，
+       中文包早已清理，现在保持 604 / 604 对齐。 */
     'tl.holder': 'Holder', 'tl.days': 'Held', 'tl.events': 'Milestones',
     'tl.rail': 'Milestone rail',
     'tl.rail.d': 'Click any milestone to jump to its date; it highlights while playback passes it.',

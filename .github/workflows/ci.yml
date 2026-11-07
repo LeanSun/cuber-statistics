@@ -18,6 +18,8 @@ jobs:
       - name: Syntax check all JS
         run: |
           for f in js/*.js etl/*.js; do node --check "$f" || exit 1; done
+      - name: Static site checks (i18n / size budget / SEO / a11y)
+        run: node etl/check_static.js
       - name: Run ETL against real sample & verify output shape
         # etl/sample/*.tsv 是从真实 WCA 导出抽取的真实选手真实成绩（见 etl/make_sample.py），
         # 已随仓库提交；CI 环境无导出包，不再在流水线里重跑 make_sample.py。
