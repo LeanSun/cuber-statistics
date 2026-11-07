@@ -989,11 +989,37 @@ tr:hover .pname .linkish,tr:hover .pname .pname-txt{
 .pk-hero-stat{display:flex;flex-direction:column;gap:2px;min-width:0}
 .pk-hero-stat .hk{font-size:11px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pk-hero-stat .hv{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
-.pk-charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;margin-top:16px;align-items:start}
+/* 固定两列：4 张图表卡正好 2×2，不会在 auto-fit 下出现「最后一行孤卡 + 右侧空白」；
+   列宽也足够放下项目优势地图的多个项目标签。时间线卡用 1/-1 跨满整行。 */
+.pk-charts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:16px;align-items:start}
 .pk-charts > .card{margin-top:0}
+/* 网格下方的「胜负稳健性」双卡与图表区拉开间距 */
+.pk-charts + .grid{margin-top:16px}
+/* 生涯时间线（横向，跨全宽） */
+.pk-life{position:relative;padding:6px 2px 2px}
+.pk-life-axis{position:relative;height:15px;margin:0 0 8px;border-bottom:1px solid var(--border)}
+.pk-life-tick{position:absolute;bottom:0;transform:translateX(-50%);font-size:10.5px;color:var(--text-3);font-variant-numeric:tabular-nums}
+.pk-life-row{display:flex;align-items:center;gap:12px;margin:9px 0}
+.pk-life-name{flex:0 0 168px;display:inline-flex;align-items:baseline;gap:7px;font-size:12.5px;color:var(--text-2);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pk-life-name i{width:10px;height:10px;border-radius:50%;flex:none;margin-bottom:-1px}
+.pk-life-name b{font-weight:600;color:var(--text);font-variant-numeric:tabular-nums}
+.pk-life-track{position:relative;flex:1;height:18px;background:var(--bg-soft);border-radius:9px}
+.pk-life-bar{position:absolute;top:0;height:100%;border-radius:9px;opacity:.82;transition:width .3s ease,left .3s ease}
+.pk-life-bar:hover{opacity:1}
+/* 成就对照表 */
+.pk-ach-table{margin-top:14px;border-top:1px solid var(--border);padding-top:8px}
+.pk-ach-row{display:grid;align-items:center;gap:6px;padding:5px 0;border-bottom:1px dashed var(--border-2)}
+.pk-ach-head{border-bottom:1px solid var(--border);font-size:11.5px;color:var(--text-3)}
+.pk-ach-head .pk-ach-v{font-weight:600}
+.pk-ach-k{font-size:12.5px;color:var(--text-2);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pk-ach-v{text-align:right;font-variant-numeric:tabular-nums;font-size:13px;font-weight:600;color:var(--text)}
+.pk-ach-v.lead{color:var(--m1)}
+@media (max-width:900px){
+  .pk-charts{grid-template-columns:1fr}
+}
 @media (max-width:620px){
   .pk-hero{grid-template-columns:1fr}
-  .pk-charts{grid-template-columns:1fr}
+  .pk-life-name{flex-basis:120px}
 }
 
 /* ============ 动态可视化 ============ */

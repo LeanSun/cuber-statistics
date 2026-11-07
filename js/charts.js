@@ -249,6 +249,40 @@
     });
   }
 
+  /* ---------- 分组柱（多序列并列，PK 对位用） ----------
+     items：[{ name, values:[v0,v1,...] }]，values 与各序列一一对应；
+     opts.series：[{ name, color }]。
+     与 stacked 的区别：stacked 把多序列累加成一柱（看构成），grouped 把多序列
+     并排成一组（看「同口径下谁更高」），正是 PK 对位要的表达。 */
+  function grouped(items, opts) {
+    opts = opts || {};
+    const T = pal();
+    const cats = items.map(function (d) { return d.name; });
+    const series = (opts.series || []).map(function (s, i) {
+      return {
+        name: s.name, type: 'bar', barGap: '14%', barCategoryGap: '34%', barMaxWidth: 26,
+        itemStyle: { color: s.color || T.m[i % 7], borderRadius: [3, 3, 0, 0] },
+        emphasis: { focus: 'series' },
+        label: opts.label ? {
+          show: true, position: 'top', color: T.text3, fontSize: 10,
+          formatter: function (p) { return round(p.value, 0); }
+        } : undefined,
+        data: items.map(function (d) { return round(d.values[i]); })
+      };
+    });
+    return Object.assign(base({ stagger: 18 }), {
+      grid: { left: 8, right: 12, top: opts.legend === false ? 10 : 30, bottom: 6, containLabel: true },
+      xAxis: Object.assign({ type: 'category', data: cats, boundaryGap: true }, axisCommon(), {
+        splitLine: { show: false },
+        axisLabel: { color: T.text3, fontSize: 11, interval: 0, rotate: opts.rotate || 0 }
+      }),
+      yAxis: Object.assign({ type: 'value', min: 0 }, axisCommon()),
+      tooltip: Object.assign({ trigger: 'axis', axisPointer: { type: 'shadow' } }, base().tooltip),
+      legend: { show: opts.legend !== false, data: (opts.series || []).map(function (s) { return s.name; }), textStyle: { color: T.text2, fontSize: 11 }, top: 0, itemWidth: 10, itemHeight: 10 },
+      series: series
+    });
+  }
+
   /* ---------- 瀑布式贡献条（选手页） ---------- */
   function waterfall(items, opts) {
     const T = pal();
@@ -1317,7 +1351,7 @@
   }
 
   const BUILDERS = {
-    stacked: stacked, waterfall: waterfall, donut: donut, radar: radar, bump: bump,
+    stacked: stacked, grouped: grouped, waterfall: waterfall, donut: donut, radar: radar, bump: bump,
     barRace: barRace, lanes: lanes, line: lineChart, groupBars: groupBars,
     setLaneI18n: setLaneI18n, flagUri: flagUri,
     diverging: diverging, gauge: gauge, scatter: scatter
@@ -1328,7 +1362,7 @@
     dispose: disposeWithin,
     theme: pal, round: round,
     resolveColor: resolveColor, resolveDeep: resolveDeep,
-    stacked: stacked, waterfall: waterfall, donut: donut, radar: radar, bump: bump,
+    stacked: stacked, grouped: grouped, waterfall: waterfall, donut: donut, radar: radar, bump: bump,
     barRace: barRace, lanes: lanes, line: lineChart, groupBars: groupBars,
     setLaneI18n: setLaneI18n, flagUri: flagUri,
     diverging: diverging, gauge: gauge, scatter: scatter

@@ -641,8 +641,30 @@
       indicators: labels
     }, { radius: '46%', max: MOD.map(function (k) { return sixAxisMax()[k]; }), capAt: 1.5 }, 360) + '</div></div>';
 
-    /* —— 优势领域（2 人镜像对比条；多人堆叠对比） —— */
-    h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('pk.advantage')) + '</h2>' + infoTip(t('pk.advantage.d')) + '</div>';
+    /* —— 维度优势对比：六维加权贡献，谁在哪一维领先 —— */
+    h += pkDimCompare(ps, colors);
+
+    /* —— 项目优势地图：共同参赛项目上，谁更强 —— */
+    h += pkEventCompare(ps, colors);
+
+    /* —— 成就对比：纪录数 + 奖牌 / 参赛量 —— */
+    h += pkAchievements(ps, colors);
+
+    /* —— 生涯时间线（跨全宽；留在网格内让 grid-column:1/-1 生效） —— */
+    h += pkLifeline(ps, colors);
+
+    h += '</div>'; /* /.pk-charts */
+
+    /* —— 胜负稳健性（仅两人有意义） —— */
+    if (ps.length === 2) h += robustness(ps[0], ps[1], colors);
+
+    return h;
+  };
+
+  /* 维度优势对比：六维加权贡献（维度分 × 权重）逐维对比。
+     2 人用镜像 diverging（一眼看出谁在哪一维领先），3–4 人用并列 grouped 柱。 */
+  function pkDimCompare(ps, colors) {
+    let h = '<div class="card reveal"><div class="card-head"><h2>' + esc(t('pk.dims')) + '</h2>' + infoTip(t('pk.dims.d')) + '</div>';
     if (ps.length === 2) {
       const a = ps[0], b = ps[1];
       h += ecBox('diverging', MOD.map(function (k) {
@@ -653,46 +675,120 @@
       h += '<div class="legend"><span><i style="background:' + colors[0] + '"></i>' + esc(a.name) + '</span>' +
         '<span><i style="background:' + colors[1] + '"></i>' + esc(b.name) + '</span></div>';
     } else {
-      h += ecBox('stacked', MOD.map(function (k) {
+      h += ecBox('grouped', MOD.map(function (k) {
         return { name: modName(k), values: ps.map(function (p) { return sixW()[k] * sixK(p, k); }) };
-      }), { series: ps.map(function (p, i) { return { name: p.name, color: colors[i] }; }), legend: true }, MOD.length * 30 + 90);
+      }), { series: ps.map(function (p, i) { return { name: p.name, color: colors[i] }; }) }, MOD.length * 30 + 90);
     }
     h += '</div>';
-
-    /* —— 加权贡献（每人六维实际拿到的分数构成） —— */
-    const maxC = Math.max.apply(null, ps.map(function (p) { return contribs(p, 'career').reduce(function (a, c) { return a + c.v; }, 0); })) * 1.05;
-    h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('pk.contrib')) + '</h2>' + infoTip(t('pk.contrib.d')) + '</div>';
-    h += ecBox('stacked', ps.map(function (p) {
-      const cs = contribs(p, 'career');
-      return { name: p.name, values: cs.map(function (c) { return c.v; }) };
-    }), {
-      max: Math.round(maxC * 10) / 10, legend: true,
-      /* ECharts 用 canvas 绘制，必须给真实色值（var(--m1) 在 canvas 里无效） */
-      series: MOD.map(function (k) { return { name: modName(k), color: sixHex(k) }; })
-    }, Math.max(200, ps.length * 60 + 90));
-    h += '</div>';
-
-    /* —— 风格定位（参赛广度 × 综合实力；点大小 = 归一化总分） ——
-       旧版直接把 raw overall（数百~数千）塞进 symbolSize，导致圆点被放成
-       上百像素、几乎溢出画布；现按 max 归一化到 0–100，尺寸才有可比性。 */
-    const maxSc = Math.max.apply(null, ps.map(function (p) { return scoreOf(p).overall; })) || 1;
-    h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('pk.style')) + '</h2>' + infoTip(t('pk.style.d')) + '</div>';
-    const pts = ps.map(function (p) {
-      const sc = scoreOf(p);
-      return [p.comps || 0, round(sc.overall, 1), esc(p.name) + ' · ' + U.fmt(sc.overall, 2), 100 * sc.overall / maxSc];
-    });
-    h += ecBox('scatter', pts, {
-      xName: t('player.comps'), yName: t('rank.tab.overall')
-    }, 320);
-    h += '</div>';
-
-    h += '</div>'; /* /.pk-charts */
-
-    /* —— 胜负稳健性（仅两人有意义） —— */
-    if (ps.length === 2) h += robustness(ps[0], ps[1], colors);
-
     return h;
-  };
+  }
+
+  /* 项目优势地图：取所有选手都参赛的项目（sixEv 交集），用每个项目六维小计 t 比较实力。
+     这样无论两人项目重叠多寡，都能给出「谁在哪个项目更强」的真实对位。 */
+  function pkEventCompare(ps, colors) {
+    let shared = null;
+    ps.forEach(function (p) {
+      const arr = p.sixEv ? Object.keys(p.sixEv) : [];
+      if (shared == null) shared = arr.slice();
+      else shared = shared.filter(function (x) { return arr.indexOf(x) >= 0; });
+    });
+    const evs = shared || [];
+    evs.sort(function (x, y) {
+      const sx = ps.reduce(function (a, p) { return a + evT(p, x); }, 0);
+      const sy = ps.reduce(function (a, p) { return a + evT(p, y); }, 0);
+      return sy - sx;
+    });
+    const head = '<div class="card reveal"><div class="card-head"><h2>' + esc(t('pk.events')) + '</h2>' + infoTip(t('pk.events.d')) + '</div>';
+    if (!evs.length) return head + '<p class="tiny muted" style="padding:18px 4px">' + esc(t('pk.events.none')) + '</p></div>';
+    let h = head;
+    if (ps.length === 2) {
+      const a = ps[0], b = ps[1];
+      h += ecBox('diverging', evs.map(function (ev) {
+        return { name: evName(M.EV[ev]), d: [evT(a, ev), evT(b, ev)] };
+      }), {
+        series: [{ name: a.name, color: colors[0] }, { name: b.name, color: colors[1] }]
+      }, evs.length * 30 + 90);
+      h += '<div class="legend"><span><i style="background:' + colors[0] + '"></i>' + esc(a.name) + '</span>' +
+        '<span><i style="background:' + colors[1] + '"></i>' + esc(b.name) + '</span></div>';
+    } else {
+      h += ecBox('grouped', evs.map(function (ev) {
+        return { name: evName(M.EV[ev]), values: ps.map(function (p) { return evT(p, ev); }) };
+      }), { series: ps.map(function (p, i) { return { name: p.name, color: colors[i] }; }) }, evs.length * 30 + 90);
+    }
+    return h + '</div>';
+  }
+  function evT(p, ev) { return (p.sixEv && p.sixEv[ev] && p.sixEv[ev][6]) || 0; }
+
+  /* 成就对比：纪录数（WR/CR/NR）走分组柱；下方表格补充冠军、总领奖台与参赛量，每行高亮领先者。 */
+  function pkAchievements(ps, colors) {
+    let h = '<div class="card reveal"><div class="card-head"><h2>' + esc(t('pk.ach')) + '</h2>' + infoTip(t('pk.ach.d')) + '</div>';
+    h += ecBox('grouped', [
+      { name: t('col.wr'), values: ps.map(function (p) { return p.wr || 0; }) },
+      { name: t('col.cr'), values: ps.map(function (p) { return p.cr || 0; }) },
+      { name: t('col.nr'), values: ps.map(function (p) { return p.nr || 0; }) }
+    ], { series: ps.map(function (p, i) { return { name: p.name, color: colors[i] }; }), label: true }, 220);
+    const rows = [
+      { k: 'pod.level.WC', v: function (p) { return podGoldCount(p, 'WC'); } },
+      { k: 'pod.level.CC', v: function (p) { return podGoldCount(p, 'CC'); } },
+      { k: 'pod.level.NC', v: function (p) { return podGoldCount(p, 'NC'); } },
+      { k: 'stat.podiumTotal', v: function (p) { return M.stats(p).podiumTotal; } },
+      { k: 'player.comps', v: function (p) { return p.comps; } },
+      /* 世界前十年数优先读 T10Y（按年去重）。缺失时 months10 是跨项目×双轨
+         累加的月数，直接 /12 会算出上百年的荒谬值，故按实际生涯年数封顶。 */
+      { k: 'col.top10years', v: function (p) {
+        if (window.T10Y && window.T10Y[p.wcaId] != null) return window.T10Y[p.wcaId];
+        return Math.min(Math.max(0, (p.end || 0) - (p.start || 0) + 1), Math.round((p.months10 || 0) / 12));
+      } },
+      { k: 'player.events', v: function (p) { return p.events.length; } }
+    ];
+    const cols = '1.5fr repeat(' + ps.length + ',1fr)';
+    h += '<div class="pk-ach-table">';
+    h += '<div class="pk-ach-row pk-ach-head" style="grid-template-columns:' + cols + '"><span class="pk-ach-k">' + esc(t('pk.ach.more')) + '</span>' +
+      ps.map(function (p, i) { return '<span class="pk-ach-v" style="color:' + colors[i] + '">' + esc(p.name) + '</span>'; }).join('') + '</div>';
+    rows.forEach(function (r) {
+      const vals = ps.map(r.v);
+      const mx = Math.max.apply(null, vals);
+      h += '<div class="pk-ach-row" style="grid-template-columns:' + cols + '"><span class="pk-ach-k">' + esc(t(r.k)) + '</span>';
+      vals.forEach(function (v) {
+        const lead = v === mx && mx > 0;
+        h += '<span class="pk-ach-v' + (lead ? ' lead' : '') + '">' + U.num(v) + '</span>';
+      });
+      h += '</div>';
+    });
+    h += '</div></div>';
+    return h;
+  }
+
+  /* 生涯时间线：各选手活跃年份（start–end）相对位置，重叠区间即同时代竞技。 */
+  function pkLifeline(ps, colors) {
+    let minY = Infinity, maxY = -Infinity;
+    ps.forEach(function (p) { if (p.start < minY) minY = p.start; if (p.end > maxY) maxY = p.end; });
+    if (!isFinite(minY)) { minY = 2004; maxY = 2026; }
+    minY = Math.floor(minY / 2) * 2;
+    maxY = Math.ceil(maxY / 2) * 2;
+    const span = Math.max(1, maxY - minY);
+    let h = '<div class="card reveal" style="grid-column:1/-1"><div class="card-head"><h2>' + esc(t('pk.life')) + '</h2>' + infoTip(t('pk.life.d')) + '</div>';
+    h += '<div class="pk-life">';
+    const step = Math.max(2, Math.round(span / 8 / 2) * 2);
+    const ticks = [];
+    for (let y = minY; y < maxY; y += step) ticks.push(y);
+    ticks.push(maxY);
+    h += '<div class="pk-life-axis">';
+    ticks.forEach(function (y) {
+      const left = (y - minY) / span * 100;
+      h += '<span class="pk-life-tick" style="left:' + left + '%">' + y + '</span>';
+    });
+    h += '</div>';
+    ps.forEach(function (p, i) {
+      const L = (p.start - minY) / span * 100;
+      const W = Math.max(1.5, (p.end - p.start) / span * 100);
+      h += '<div class="pk-life-row"><span class="pk-life-name"><i style="background:' + colors[i] + '"></i>' +
+        esc(p.name) + ' <b>' + p.start + '–' + p.end + '</b></span>' +
+        '<div class="pk-life-track"><div class="pk-life-bar" style="left:' + L + '%;width:' + W + '%;background:' + colors[i] + '" title="' + p.start + '–' + p.end + '"></div></div></div>';
+    });
+    h += '</div></div>';
+    return h;
+  }
 
   /* 选手概览卡（PK 页顶部一排，自动适配 2–4 人） */
   function pkHeroCard(p, color) {
@@ -727,7 +823,8 @@
 
     let h = '<div class="grid grid-2">';
     h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('pk.robust')) + '</h2>' + infoTip(t('pk.robust.d')) + '</div>';
-    h += ecBox('gauge', prob, {}, 220);
+    /* gauge 的刻度是 0–100 且 detail 自带 % 后缀，传 0–1 概率会显示成 0.9%、指针归零 */
+    h += ecBox('gauge', prob * 100, {}, 220);
     h += '<p class="tiny muted" style="text-align:center">' + esc(winner.name) + ' ' + esc(t('pk.win')) + ' · ' +
       U.fmt(Math.max(sa.overall, sb.overall), 2) + ' vs ' + U.fmt(Math.min(sa.overall, sb.overall), 2) + '</p>';
     h += '</div>';

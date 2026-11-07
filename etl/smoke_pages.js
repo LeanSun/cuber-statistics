@@ -603,55 +603,81 @@ console.log('== 选手页：排名胶囊外框 / 分母 / 主项唯一 ==');
 
 console.log('== 选手 PK ==');
 {
+  const SMALL = M.ranked.length < 1000;
   const ids2 = M.ranked.slice(0, 2).map(function (p) { return p.id; });
   const hp2 = tryRender('选手 PK（2 人）', function () { return P.pk(Object.assign({}, base, { pk: ids2 })); });
   ok(hp2.indexOf('pk-hero') >= 0, 'PK 概览卡容器存在（pk-hero）');
   ok((hp2.match(/class="pk-hero-card/g) || []).length === 2, '2 人 → 2 张概览卡（实得 ' + (hp2.match(/class="pk-hero-card/g) || []).length + '）');
   ok(hp2.indexOf('pk-radar-wrap') >= 0, '六维雷达容器存在');
   ok(hp2.indexOf('pk-charts') >= 0, '图表网格容器存在');
-  ok(hp2.indexOf('diverging') >= 0, '优势领域图（diverging）容器存在');
-  ok(hp2.indexOf('scatter') >= 0, '风格定位图（scatter）容器存在');
-  /* 关键回归：diverging 的 d 数组若混入 NaN/Infinity，浏览器挂载时整图空白。
-     data-ec 经 esc() 后引号变 &quot;，JSON.stringify(NaN) → null。
-     这里把 diverging 的 data-ec 抠出来解码，断言所有 d 值都是有限数。
-     （旧断言只用 indexOf('NaN')，但序列化后是 null，根本抓不到该回归。） */
-  (function () {
-    const re = /data-ec="([^"]*)"/g; let m, bad = 0, found = 0;
-    while ((m = re.exec(hp2))) {
-      const json = m[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
-      let spec; try { spec = JSON.parse(json); } catch (e) { continue; }
-      if (spec.type !== 'diverging') continue;
-      found++;
-      (spec.data || []).forEach(function (row) {
-        (row.d || []).forEach(function (v) { if (typeof v !== 'number' || !isFinite(v)) bad++; });
-      });
-    }
-    ok(found === 1, '找到 1 个 diverging 图表 data-ec（实得 ' + found + '）');
-    ok(bad === 0, '优势领域图 d 数组全为有限数（实得异常 ' + bad + ' 个）');
-  })();
-  /* 风格定位 scatter：pts = [参赛场次, 总分, 名称标签, 归一化总分]；
-     数值位只有 [0][1][3]，[2] 是字符串标签，不能当数字校验。 */
-  (function () {
-    const re = /data-ec="([^"]*)"/g; let m, bad = 0, found = 0;
-    while ((m = re.exec(hp2))) {
-      const json = m[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
-      let spec; try { spec = JSON.parse(json); } catch (e) { continue; }
-      if (spec.type !== 'scatter') continue;
-      found++;
-      (spec.data || []).forEach(function (row) {
-        if (!Array.isArray(row) || row.length < 4) { bad++; return; }
-        [0, 1, 3].forEach(function (i) { if (typeof row[i] !== 'number' || !isFinite(row[i])) bad++; });
-      });
-    }
-    ok(found === 1, '找到 1 个 scatter 图表 data-ec（实得 ' + found + '）');
-    ok(bad === 0, '风格定位图数值位全为有限数（实得异常 ' + bad + ' 个）');
-  })();
+  ok(hp2.indexOf('pk-ach-table') >= 0, '成就对照表存在');
+  ok(hp2.indexOf('pk-life') >= 0, '生涯时间线存在');
   ok(hp2.indexOf('pk-arena') < 0, '已弃用旧的 pk-arena 布局');
+
+  /* 解码页面里所有 data-ec：统计图表类型并逐项校验数值有限。
+     JSON.stringify(NaN) 会变成 null，所以必须解码后判 typeof/isFinite，
+     只用 indexOf('NaN') 抓不到整图空白这个回归。radar 的 data 是 {rows,indicators}。 */
+  const decodeEc = function (html) {
+    const re = /data-ec="([^"]*)"/g; let m; const byType = {}; let bad = 0, parseBad = 0;
+    const divRows = [];
+    while ((m = re.exec(html))) {
+      const json = m[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+      let spec; try { spec = JSON.parse(json); } catch (e) { parseBad++; continue; }
+      byType[spec.type] = (byType[spec.type] || 0) + 1;
+      const check = function (v) { if (typeof v !== 'number' || !isFinite(v)) bad++; };
+      const rows = Array.isArray(spec.data) ? spec.data
+        : (spec.data && Array.isArray(spec.data.rows) ? spec.data.rows : []);
+      if (spec.type === 'diverging') divRows.push(rows);
+      rows.forEach(function (r) {
+        if (!r || typeof r !== 'object') return;
+        if (spec.type === 'diverging') (r.d || []).forEach(check);
+        else if (spec.type === 'grouped' || spec.type === 'stacked') (r.values || []).forEach(check);
+        else if (spec.type === 'radar') (r.values || []).forEach(check);
+        else if (spec.type === 'scatter' && Array.isArray(r)) [0, 1, 3].forEach(function (i) { check(r[i]); });
+      });
+    }
+    return { byType: byType, bad: bad, parseBad: parseBad, divRows: divRows };
+  };
+
+  const e2 = decodeEc(hp2);
+  ok(e2.parseBad === 0, 'PK 所有图表 data-ec 均可解析');
+  ok(e2.bad === 0, 'PK 所有图表数值均为有限数（异常 ' + e2.bad + ' 个）');
+  ok(e2.byType.radar === 1, '六维雷达图存在');
+  ok(e2.byType.diverging >= 1, '维度优势镜像对比图存在');
+  ok(e2.byType.grouped >= 1, '成就对比使用并列分组柱（grouped）');
+  ok(!e2.byType.scatter, '已移除不合适的风格定位散点图');
+  ok(!e2.byType.stacked, '已移除与维度优势重复的堆叠贡献图');
+  /* gauge 刻度是 0–100 且自带 % 后缀，传 0–1 概率会显示成 0.9%、指针归零 */
+  (function () {
+    let v = null; const re = /data-ec="([^"]*)"/g; let m;
+    while ((m = re.exec(hp2))) {
+      const json = m[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+      let s; try { s = JSON.parse(json); } catch (e) { continue; }
+      if (s.type === 'gauge') { v = s.data; break; }
+    }
+    ok(typeof v === 'number' && v >= 50 && v <= 100,
+      '胜负稳健性仪表盘按百分比刻度传入（实得 ' + v + '）');
+  })();
+  /* 全量数据下前两名必有共同项目 → 第二张 diverging 是项目优势地图 */
+  if (!SMALL) {
+    ok(e2.byType.diverging === 2, '全量数据下存在第二张 diverging（项目优势地图）');
+    const evRows = e2.divRows[1] || [];
+    ok(evRows.length > 0 && evRows.some(function (r) {
+      return (r.d || []).some(function (v) { return v > 0; });
+    }), '项目优势地图含真实共同项目且分值非全 0');
+  } else ok(true, '样本模式跳过共同项目数量校验');
 
   const ids3 = M.ranked.slice(0, 3).map(function (p) { return p.id; });
   const hp3 = tryRender('选手 PK（3 人）', function () { return P.pk(Object.assign({}, base, { pk: ids3 })); });
   ok((hp3.match(/class="pk-hero-card/g) || []).length === 3, '3 人 → 3 张概览卡（实得 ' + (hp3.match(/class="pk-hero-card/g) || []).length + '）');
-  ok(hp3.indexOf('stacked') >= 0, '多人优势领域改用堆叠（stacked）容器存在');
+  const e3 = decodeEc(hp3);
+  ok(!e3.byType.diverging && e3.byType.grouped >= 2, '3 人改用并列分组柱（维度/项目/成就），不再用镜像条');
+  ok(e3.bad === 0, '3 人 PK 所有图表数值均为有限数');
+
+  const ids4 = M.ranked.slice(0, 4).map(function (p) { return p.id; });
+  const hp4 = tryRender('选手 PK（4 人）', function () { return P.pk(Object.assign({}, base, { pk: ids4 })); });
+  ok((hp4.match(/class="pk-hero-card/g) || []).length === 4, '4 人 → 4 张概览卡');
+  ok(decodeEc(hp4).bad === 0, '4 人 PK 所有图表数值均为有限数');
 }
 
 console.log('== 样式与事件委托：防回归静态检查 ==');
