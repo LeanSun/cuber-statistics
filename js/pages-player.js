@@ -626,108 +626,93 @@
     const colors = ps.map(function (p) { return 'hsl(' + p.hue + ',58%,50%)'; });
     const labels = MOD.map(modName);
 
-    /* 二人对照：左数据 · 中能力图 · 右数据 */
+    /* 选手概览：整齐的一行卡片，自动适配 2–4 人 */
+    h += '<div class="pk-hero">';
+    ps.forEach(function (p, i) { h += pkHeroCard(p, colors[i]); });
+    h += '</div>';
+
+    /* 图表区：统一两列网格，整齐简洁 */
+    h += '<div class="pk-charts">';
+
+    /* —— 六维雷达（逐轴满分 = 该维度历史第一 × 0.7，避免冲出画布） —— */
+    h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('pk.radar')) + '</h2>' + infoTip(t('pk.radar.d')) + '</div>';
+    h += '<div class="pk-radar-wrap">' + ecBox('radar', {
+      rows: ps.map(function (p, i) { return { name: p.name, color: colors[i], values: MOD.map(function (k) { return sixK(p, k); }) }; }),
+      indicators: labels
+    }, { radius: '46%', max: MOD.map(function (k) { return sixAxisMax()[k]; }), capAt: 1.5 }, 360) + '</div></div>';
+
+    /* —— 优势领域（2 人镜像对比条；多人堆叠对比） —— */
+    h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('pk.advantage')) + '</h2>' + infoTip(t('pk.advantage.d')) + '</div>';
     if (ps.length === 2) {
       const a = ps[0], b = ps[1];
-      h += '<div class="pk-arena">';
-      h += pkSideCard(a, 'left', colors[0]);
-      h += '<div class="pk-center">';
-      h += '<div class="card reveal" style="margin-bottom:14px"><div class="card-head"><h2>' + esc(t('pk.radar')) + '</h2>' + infoTip(t('pk.radar.d')) + '</div>';
-      /* 六维雷达：逐轴满分 = 该维度世界前十均值（统一走 sixAxisMax）。
-         旧版这里读的是 p.m（已停用的旧七模块 0–100 分），又把满分设成 1000，
-         两个错误叠加 → 图形缩在圆心一小团，完全读不出强弱。 */
-      const AXM = MOD.map(function (k) { return sixAxisMax()[k]; });
-      h += '<div class="pk-radar-wrap">' + ecBox('radar', {
-        rows: [a, b].map(function (p, i) { return { name: p.name, color: colors[i], values: MOD.map(function (k) { return sixK(p, k); }) }; }),
-        indicators: labels
-      }, { radius: '46%', max: AXM, capAt: 1.5 }, 360) + '</div></div>';
-      h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('pk.advantage')) + '</h2>' + infoTip(t('pk.advantage.d')) + '</div>';
       h += ecBox('diverging', MOD.map(function (k) {
         return { name: modName(k), d: [sixW(k) * sixK(a, k), sixW(k) * sixK(b, k)] };
       }), {
         series: [{ name: a.name, color: colors[0] }, { name: b.name, color: colors[1] }]
       }, MOD.length * 34 + 70);
       h += '<div class="legend"><span><i style="background:' + colors[0] + '"></i>' + esc(a.name) + '</span>' +
-        '<span><i style="background:' + colors[1] + '"></i>' + esc(b.name) + '</span></div></div>';
-      h += '</div>';
-      h += pkSideCard(b, 'right', colors[1]);
-      h += '</div>';
-      h += robustness(a, b, colors);
+        '<span><i style="background:' + colors[1] + '"></i>' + esc(b.name) + '</span></div>';
     } else {
-      /* 雷达 */
-      h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('pk.radar')) + '</h2>' + infoTip(t('pk.radar.d')) + '</div>';
-      h += '<div class="pk-radar-wrap">' + ecBox('radar', {
-        rows: ps.map(function (p, i) { return { name: p.name, color: colors[i], values: MOD.map(function (k) { return sixK(p, k); }) }; }),
-        indicators: labels
-      }, { radius: '46%', max: MOD.map(function (k) { return sixAxisMax()[k]; }), capAt: 1.5 }, 360) + '</div>';
-      h += '</div>';
-
-      /* 加权贡献堆叠 */
-      const maxC = Math.max.apply(null, ps.map(function (p) { return contribs(p, 'career').reduce(function (a, c) { return a + c.v; }, 0); })) * 1.05;
-      h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('pk.contrib')) + '</h2>' + infoTip(t('pk.contrib.d')) + '</div>';
-      h += ecBox('stacked', ps.map(function (p) {
-        const cs = contribs(p, 'career');
-        return { name: p.name, values: cs.map(function (c) { return c.v; }) };
-      }), {
-        max: Math.round(maxC * 10) / 10, legend: true,
-        /* ECharts 用 canvas 绘制，必须给真实色值（var(--m1) 在 canvas 里无效） */
-        series: MOD.map(function (k) { return { name: modName(k), color: sixHex(k) }; })
-      }, Math.max(200, ps.length * 60 + 90));
-      h += '</div>';
-
-      /* 优势领域 */
-      h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('pk.advantage')) + '</h2>' + infoTip(t('pk.advantage.d')) + '</div>';
       h += ecBox('stacked', MOD.map(function (k) {
-        return {
-          name: modName(k),
-          values: ps.map(function (p) { return sixW(k) * sixK(p, k); })
-        };
+        return { name: modName(k), values: ps.map(function (p) { return sixW(k) * sixK(p, k); }) };
       }), { series: ps.map(function (p, i) { return { name: p.name, color: colors[i] }; }), legend: true }, MOD.length * 30 + 90);
-      h += '</div>';
     }
+    h += '</div>';
 
-    /* 风格定位散点（所有人） */
+    /* —— 加权贡献（每人六维实际拿到的分数构成） —— */
+    const maxC = Math.max.apply(null, ps.map(function (p) { return contribs(p, 'career').reduce(function (a, c) { return a + c.v; }, 0); })) * 1.05;
+    h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('pk.contrib')) + '</h2>' + infoTip(t('pk.contrib.d')) + '</div>';
+    h += ecBox('stacked', ps.map(function (p) {
+      const cs = contribs(p, 'career');
+      return { name: p.name, values: cs.map(function (c) { return c.v; }) };
+    }), {
+      max: Math.round(maxC * 10) / 10, legend: true,
+      /* ECharts 用 canvas 绘制，必须给真实色值（var(--m1) 在 canvas 里无效） */
+      series: MOD.map(function (k) { return { name: modName(k), color: sixHex(k) }; })
+    }, Math.max(200, ps.length * 60 + 90));
+    h += '</div>';
+
+    /* —— 风格定位（参赛广度 × 综合实力；点大小 = 归一化总分） ——
+       旧版直接把 raw overall（数百~数千）塞进 symbolSize，导致圆点被放成
+       上百像素、几乎溢出画布；现按 max 归一化到 0–100，尺寸才有可比性。 */
+    const maxSc = Math.max.apply(null, ps.map(function (p) { return scoreOf(p).overall; })) || 1;
     h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('pk.style')) + '</h2>' + infoTip(t('pk.style.d')) + '</div>';
-    const pts = ps.map(function (p, i) {
+    const pts = ps.map(function (p) {
       const sc = scoreOf(p);
-      return [round(sixK(p, 'm1'), 1), round(sixK(p, 'm2'), 1), esc(p.name) + ' · ' + U.fmt(sc.overall, 2), sc.overall];
+      return [p.comps || 0, round(sc.overall, 1), esc(p.name) + ' · ' + U.fmt(sc.overall, 2), 100 * sc.overall / maxSc];
     });
     h += ecBox('scatter', pts, {
-      xName: t('m1.name'), yName: t('m2.name')
+      xName: t('player.comps'), yName: t('rank.tab.overall')
     }, 320);
     h += '</div>';
+
+    h += '</div>'; /* /.pk-charts */
+
+    /* —— 胜负稳健性（仅两人有意义） —— */
+    if (ps.length === 2) h += robustness(ps[0], ps[1], colors);
+
     return h;
   };
 
-  /* 左侧 / 右侧 选手详情卡 */
-  function pkSideCard(p, side, color) {
+  /* 选手概览卡（PK 页顶部一排，自动适配 2–4 人） */
+  function pkHeroCard(p, color) {
     const sc = scoreOf(p);
-    const cs = contribs(p, 'career');
-    const tot = cs.reduce(function (a, c) { return a + c.v; }, 0) || 1;
-    let h = '<div class="pk-side pk-' + side + '">';
-    h += '<div class="pk-pcard" style="--pkc:' + color + '">';
-    h += '<div class="pk-phead"><div class="pk-pav">' + avatar(p, 'lg') + '</div>' +
-      '<div class="pk-pid"><h3>' + esc(p.nameZh || p.name) + '</h3>' +
-      '<div class="row" style="gap:6px;margin-top:4px">' + flag(p.country) + '<span class="tiny muted">' + esc(countryName(p.country)) + '</span>' +
+    let h = '<div class="pk-hero-card reveal" style="--pkc:' + color + '">';
+    h += '<div class="pk-hero-head"><div class="pk-hero-av">' + avatar(p, 'lg') + '</div>' +
+      '<div class="pk-hero-id"><h3>' + esc(p.nameZh || p.name) + '</h3>' +
+      '<div class="row" style="gap:6px;margin-top:3px">' + flag(p.country) + '<span class="tiny muted">' + esc(countryName(p.country)) + '</span>' +
       '<span class="tiny muted">' + (p.gender === 'F' ? t('f.gender.f') : t('f.gender.m')) + '</span></div></div>' +
-      '<div class="pk-pscore"><b>' + U.fmt(sc.overall, 2) + '</b><span>' + esc(t('rank.tab.overall')) + '</span></div>';
+      '<div class="pk-hero-score"><b>' + U.fmt(sc.overall, 2) + '</b><span>' + esc(t('rank.tab.overall')) + '</span></div>';
     h += '</div>';
-    h += '<div class="pk-pbars">';
-    cs.forEach(function (c) {
-      h += '<div class="pk-pbar"><span class="pk-pbk"><i style="background:' + c.color + '"></i>' + esc(c.name) + '</span>' +
-        '<span class="pk-pbb"><i style="width:' + Math.min(100, c.v / tot * 100) + '%;background:' + c.color + '"></i></span>' +
-        '<span class="pk-pbv">' + U.fmt(c.v, 1) + '</span></div>';
+    const keys = [['col.wr', p.wr], ['col.wc', p.wcGold], ['player.events', p.events.length],
+      ['player.comps', p.comps], ['m4.name', U.fmt(sixK(p, 'm4'), 2)], ['m5.name', U.fmt(sixK(p, 'm5'), 2)]];
+    h += '<div class="pk-hero-stats">';
+    keys.forEach(function (s) {
+      h += '<div class="pk-hero-stat"><span class="hk">' + esc(t(s[0])) + '</span><span class="hv">' + s[1] + '</span></div>';
     });
     h += '</div>';
-    h += '<div class="pk-keys">';
-    [['rank.tab.overall', U.fmt(sc.overall, 2)], ['m4.name', U.fmt(sixK(p, 'm4'), 2)], ['col.wr', p.wr],
-      ['col.wc', p.wcGold], ['m5.name', U.fmt(sixK(p, 'm5'), 2)], ['col.months', p.months1],
-      ['player.events', p.events.length], ['player.comps', p.comps]].forEach(function (s) {
-        h += '<div class="pk-key"><span class="pk-kk">' + esc(t(s[0])) + '</span><span class="pk-kv">' + s[1] + '</span></div>';
-      });
+    h += '<button class="btn" data-pkrm="' + p.id + '" style="width:100%;margin-top:12px">' + esc(t('pk.remove')) + '</button>';
     h += '</div>';
-    h += '<button class="btn" data-pkrm="' + p.id + '" style="width:100%;margin-top:10px">' + esc(t('pk.remove')) + '</button>';
-    h += '</div></div>';
     return h;
   }
 

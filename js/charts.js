@@ -1192,17 +1192,26 @@
   function diverging(items, opts) {
     opts = opts || {};
     const T = pal();
+    /* 数据兼容两种形状：
+       · 本站 PK 页传入 { name, d:[vA, vB] }（d 为各序列取值数组）
+       · 旧式裸数组 [vA, vB]（无分类名）
+       统一先归一为「每项的取值数组 arr」，再按序列下标 si 取数，
+       避免直接读 d[si] 时对象形态下取到 undefined → NaN → 整张图空白。 */
+    const valOf = function (d, si) {
+      const arr = Array.isArray(d) ? d : (d && (d.d || d.values));
+      return Number((arr && arr[si]) || 0);
+    };
     return Object.assign(base({ stagger: 40 }), {
       grid: { left: 6, right: 12, top: 10, bottom: 6, containLabel: true },
       xAxis: Object.assign({ type: 'value' }, axisCommon()),
-      yAxis: Object.assign({ type: 'category', inverse: true, data: items.map(function (d) { return d.name; }) }, axisCommon(), { splitLine: { show: false }, axisLabel: { color: T.text2, fontSize: 11.5 } }),
+      yAxis: Object.assign({ type: 'category', inverse: true, data: items.map(function (d) { return d && d.name != null ? d.name : ''; }) }, axisCommon(), { splitLine: { show: false }, axisLabel: { color: T.text2, fontSize: 11.5 } }),
       tooltip: Object.assign({ trigger: 'axis', axisPointer: { type: 'shadow' } }, base().tooltip),
-      series: opts.series.map(function (s, si) {
+      series: (opts.series || []).map(function (s, si) {
         return {
           name: s.name, type: 'bar', stack: 'x', barMaxWidth: 20,
           itemStyle: { color: s.color, borderRadius: 3 },
           label: { show: true, position: si === 0 ? 'left' : 'right', color: T.text2, fontSize: 10.5, formatter: function (p) { return Math.abs(p.value) > 0.05 ? round(Math.abs(p.value), 1) : ''; } },
-          data: items.map(function (d) { return si === 0 ? -Math.abs(d[si]) : Math.abs(d[si]); })
+          data: items.map(function (d) { const v = valOf(d, si); return si === 0 ? -Math.abs(v) : Math.abs(v); })
         };
       })
     });

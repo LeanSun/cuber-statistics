@@ -975,33 +975,25 @@ tr:hover .pname .linkish,tr:hover .pname .pname-txt{
 .flip-v{text-align:right;font-variant-numeric:tabular-nums}
 
 /* ============ PK 对战布局 ============ */
-.pk-arena{display:grid;grid-template-columns:300px minmax(0,1fr) 300px;gap:16px;align-items:start}
-.pk-side{min-width:0}
-.pk-center{display:flex;flex-direction:column;gap:14px;min-width:0}
-.pk-pcard{position:relative;border:1px solid var(--border);border-radius:var(--r-lg);padding:14px 16px;background:var(--bg-elev);border-top:3px solid var(--pkc,var(--accent));box-shadow:var(--shadow)}
-.pk-phead{display:flex;gap:12px;align-items:center}
-.pk-pav{flex:none}
-.pk-pid{min-width:0}
-.pk-pid h3{font-size:16px;line-height:1.2;word-break:break-word}
-.pk-pid .row{gap:6px;margin-top:4px}
-.pk-pscore{margin-left:auto;text-align:right;flex:none}
-.pk-pscore b{display:block;font-size:27px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
-.pk-pscore span{font-size:11.5px;color:var(--text-3)}
-.pk-pbars{display:flex;flex-direction:column;gap:7px;margin-top:13px}
-.pk-pbar{display:grid;grid-template-columns:74px minmax(0,1fr) 42px;gap:8px;align-items:center;font-size:12px}
-.pk-pbk{display:flex;align-items:center;gap:6px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.pk-pbk i{width:9px;height:9px;border-radius:2px;flex:none}
-.pk-pbb{height:9px;border-radius:5px;background:var(--bg-soft-2);overflow:hidden}
-.pk-pbb i{display:block;height:100%;border-radius:5px}
-.pk-pbv{text-align:right;font-variant-numeric:tabular-nums;color:var(--text-2)}
-.pk-keys{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;margin-top:13px;padding-top:11px;border-top:1px solid var(--border)}
-.pk-key{display:flex;justify-content:space-between;gap:8px;font-size:12px}
-.pk-kk{color:var(--text-3)}
-.pk-kv{font-weight:600;font-variant-numeric:tabular-nums}
-.pk-empty{text-align:center;color:var(--text-3);padding:40px 0}
-@media (max-width:980px){
-  .pk-arena{grid-template-columns:1fr}
-  .pk-pcard{border-top-width:3px}
+.pk-hero{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin-top:16px}
+.pk-hero-card{position:relative;border:1px solid var(--border);border-radius:var(--r-lg);padding:14px 16px;background:var(--bg-elev);border-top:3px solid var(--pkc,var(--accent));box-shadow:var(--shadow)}
+.pk-hero-head{display:flex;gap:12px;align-items:center}
+.pk-hero-av{flex:none}
+.pk-hero-id{min-width:0}
+.pk-hero-id h3{font-size:16px;line-height:1.2;word-break:break-word}
+.pk-hero-id .row{gap:6px;margin-top:4px}
+.pk-hero-score{margin-left:auto;text-align:right;flex:none}
+.pk-hero-score b{display:block;font-size:27px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.pk-hero-score span{font-size:11.5px;color:var(--text-3)}
+.pk-hero-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 10px;margin-top:13px;padding-top:11px;border-top:1px solid var(--border)}
+.pk-hero-stat{display:flex;flex-direction:column;gap:2px;min-width:0}
+.pk-hero-stat .hk{font-size:11px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pk-hero-stat .hv{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
+.pk-charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;margin-top:16px;align-items:start}
+.pk-charts > .card{margin-top:0}
+@media (max-width:620px){
+  .pk-hero{grid-template-columns:1fr}
+  .pk-charts{grid-template-columns:1fr}
 }
 
 /* ============ 动态可视化 ============ */

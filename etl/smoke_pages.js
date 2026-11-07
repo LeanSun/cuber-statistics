@@ -601,6 +601,27 @@ console.log('== 选手页：排名胶囊外框 / 分母 / 主项唯一 ==');
   else ok(true, '样本无 nationTotals，跳过国家分母校验');
 }
 
+console.log('== 选手 PK ==');
+{
+  const ids2 = M.ranked.slice(0, 2).map(function (p) { return p.id; });
+  const hp2 = tryRender('选手 PK（2 人）', function () { return P.pk(Object.assign({}, base, { pk: ids2 })); });
+  ok(hp2.indexOf('pk-hero') >= 0, 'PK 概览卡容器存在（pk-hero）');
+  ok((hp2.match(/class="pk-hero-card/g) || []).length === 2, '2 人 → 2 张概览卡（实得 ' + (hp2.match(/class="pk-hero-card/g) || []).length + '）');
+  ok(hp2.indexOf('pk-radar-wrap') >= 0, '六维雷达容器存在');
+  ok(hp2.indexOf('pk-charts') >= 0, '图表网格容器存在');
+  ok(hp2.indexOf('diverging') >= 0, '优势领域图（diverging）容器存在');
+  ok(hp2.indexOf('scatter') >= 0, '风格定位图（scatter）容器存在');
+  /* 关键回归：旧版 diverging 读 d[0]/d[1] 取到 undefined → 浏览器挂载时算成 NaN → 整图空白；
+     data-ec 序列化时 NaN 会变成 null，这里同时断言产物里没有 'NaN' 字面量。 */
+  ok(hp2.indexOf('NaN') < 0, 'PK 页渲染产物不含 NaN 字面量');
+  ok(hp2.indexOf('pk-arena') < 0, '已弃用旧的 pk-arena 布局');
+
+  const ids3 = M.ranked.slice(0, 3).map(function (p) { return p.id; });
+  const hp3 = tryRender('选手 PK（3 人）', function () { return P.pk(Object.assign({}, base, { pk: ids3 })); });
+  ok((hp3.match(/class="pk-hero-card/g) || []).length === 3, '3 人 → 3 张概览卡（实得 ' + (hp3.match(/class="pk-hero-card/g) || []).length + '）');
+  ok(hp3.indexOf('stacked') >= 0, '多人优势领域改用堆叠（stacked）容器存在');
+}
+
 console.log('== 样式与事件委托：防回归静态检查 ==');
 {
   const css = fs.readFileSync(path.join(ROOT, 'css/style.css'), 'utf8');
