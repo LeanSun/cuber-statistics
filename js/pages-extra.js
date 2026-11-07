@@ -1273,7 +1273,16 @@
       }
       const ser = seriesOf(p, p[key] || {}, serKey);
       const all = seriesCum(ser, END_Y);
-      if (all <= 0) return 0;
+      if (all <= 0) {
+        /* ★ 2026-11-07 修复：首屏 core-only（明细分片未到达）时 p.yearly 可能尚缺。
+           原逻辑直接 return 0，会让「全项目 / 全维度」总分行全员 0 分、分数演进图整张空白。
+           退回生涯进度曲线，保证图表立即可见；分片到达后自然切换回精确的年度演化。 */
+        const cr = careerRamp(p, fy);
+        if (!(cr > 0)) return 0;
+        const sc0 = P.util.scoreOf(p, rtype);
+        const r2 = Math.max(0.05, Math.min(3, sc0.peak / Math.max(sc0.career, 0.01)));
+        return sc0.career * cr * Math.pow(r2, 0.4);
+      }
       let cf = seriesCum(ser, fy);
       if (smooth) cf = (seriesCum(ser, fy) + seriesCum(ser, fy - 1) + seriesCum(ser, fy - 2)) / 3;
       const ratio = Math.max(0, Math.min(1, cf / all));

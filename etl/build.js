@@ -1659,7 +1659,11 @@ function buildEventMilestones() {
      不再冗余存储；约 150 字节/人，可把全部约 30 万 WCA 选手随包下发、可搜索。 */
   const SLIM_KEYS = ['id', 'name', 'country', 'gender', 'start', 'end', 'comps', 'mainEvent', 'events',
     'm', 'pk', 'esum', 'evRk', 'wr', 'cr', 'nr', 'resultRows', 'attempts', 'solves', 'dnf', 'cities',
-    'maxEventsPerComp', 'multiEventComp', 'six', 'sixEv', 'sixS', 'sixA', 'sy'];
+    'maxEventsPerComp', 'multiEventComp', 'six', 'sixEv', 'sixS', 'sixA', 'sy',
+    /* ★ 2026-11-07 第十四轮修复：分数竞速图「全项目 / 全维度」总分行用 p.yearly 做时间演化，
+       原先被误放进 37MB 明细分片，导致首屏 core-only 时 p.yearly 缺失 → 全员 0 分 → 图表空白。
+       竞速图首屏就要画，yearly 必须随 core 主包下发（旧 71MB 全包本就含它）。yearlyS/yearlyA
+       仍留分片（单/均口径次要，core-only 时竞速图按 careerRamp 回退，不空白）。 */ 'yearly'];
   const MODK = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm1s', 'm1a'];
   /* 按项目六维分紧凑编码：'333:1.2,3.4,0,0,0,0.5,1.9;222:…'
      3 位小数足够（排序与 1 位小数展示都不受影响），比对象数组省约一半字节。 */

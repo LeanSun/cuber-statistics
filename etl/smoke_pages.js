@@ -65,6 +65,9 @@ const p0 = M.ranked[0];
 ok(/^[A-Z]{2}$/.test(p0.country), '国家已归一化为 ISO2: ' + p0.country);
 ok(!!M.countriesZh[p0.country], '中文国名: ' + M.countriesZh[p0.country]);
 ok(!!M.continentOf[p0.country], '洲际: ' + M.continentOf[p0.country]);
+/* ★ 2026-11-07 第十四轮回归：分数演进图「全项目 / 全维度」总分行依赖 p.yearly 做时间演化，
+   yearly 必须随 core 主包下发；若被误放进明细分片，首屏 core-only 时竞速图会整张空白。 */
+ok(!!(M.ranked[0] && M.ranked[0].yearly), 'core 主包含 yearly（分数演进图默认总分行时间演化必需）');
 /* CI 跑的是 etl/_sample_data.js（8 人），本地与线上跑完整 data.js（6 万+）。
    凡是「覆盖面 / 比例」类断言在样本上天然不成立（样本里压根没有换籍选手、纪录持有者只有 7 位），
    一律用这个标志兜住，否则 CI 必假红。 */
