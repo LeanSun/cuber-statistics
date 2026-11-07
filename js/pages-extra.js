@@ -2217,16 +2217,37 @@
     ['eff', 'top.eff', 'lab'], ['other', 'top.other', 'star']
   ];
 
+  /* 指标数值格式化：百分比型（如转化率）按 ×100 显示，其余走千分位 */
+  function fmtBoardVal(d, v) { return d.pct ? U.fmt(v * 100, 1) + '%' : U.num(v); }
+  /* 领奖台：当前指标前 3，作为视觉锚点。头像用首字母占位（不拉外链），轻量且稳定 */
+  function podiumHtml(list, d) {
+    const n = Math.min(3, list.length);
+    if (!n) return '';
+    let s = '<div class="podium reveal">';
+    for (let i = 0; i < n; i++) {
+      const row = list[i], p = row.p;
+      s += '<div class="pod pod-' + (i + 1) + '">';
+      s += '<div class="pod-medal"><span class="rank-no top' + (i + 1) + '">' + (i + 1) + '</span></div>';
+      s += '<div class="pod-av">' + avatar(p, 'sm') + '</div>';
+      s += '<div class="pod-name">' + playerLink(p) + '</div>';
+      s += '<div class="pod-meta">' + flag(p.country) + '<span class="tiny muted">' + esc(countryName(p.country)) + '</span></div>';
+      s += '<div class="pod-val">' + fmtBoardVal(d, row.v) + '</div>';
+      s += '</div>';
+    }
+    s += '</div>';
+    return s;
+  }
+
   P.topics = function (state) {
     const tab = state.topicTab || 'rec';
-    let h = '<div class="page-head reveal"><h1>' + esc(t('top.title')) + '</h1></div>';
+    let h = '<div class="page-head reveal"><h1>' + esc(t('top.title')) + '</h1><p class="sub">' + esc(t('top.lead')) + '</p></div>';
     /* 2026-10-27：顶端五个分类标签改用与「图表可视化」页完全相同的 .seg 分段控件，
        不再用下划线 tab —— 用户要求「与其他两个板块风格一致」。 */
-    h += '<div class="seg reveal" id="topicTabs">';
+    h += '<div class="top-tabs reveal"><div class="seg" id="topicTabs">';
     TABS.forEach(function (x) {
       h += '<button data-topic="' + x[0] + '" class="' + (tab === x[0] ? 'on' : '') + '">' + Ic.glyph(x[2]) + ' ' + esc(t(x[1])) + '</button>';
     });
-    h += '</div>';
+    h += '</div></div>';
 
     if (tab === 'other') return h + otherTab(state);
 
@@ -2249,26 +2270,26 @@
     const rt = state.recType || 'all';
 
     const defs = M.boards[tab] || [];
-    h += '<div class="note-box reveal">' + Ic.glyph('info') + '<div>' + esc(t('top.' + tab + '.d')) +
-      (tab === 'part' ? ' <b>' + esc(t('stat.mbldNote')) + '</b>' : '') +
-      (tab === 'medal' ? ' ' + esc(t('top.medal.d')) : '') +
-      (evScoped ? ' <b>' + esc(t('top.eventFiltered')) + '</b>' : '') +
-      (rt !== 'all' ? ' <b>' + esc(t('top.typeNote')) + '</b>' : '') + '</div></div>';
-
     /* 指标筛选：同一 tab 下只展示选中的一个排行，其余通过此处切换 */
     const tbKey = (state.topicBoard && defs.some(function (b) { return b.k === state.topicBoard; })) ? state.topicBoard : (defs[0] && defs[0].k);
+
+    /* 统计指标切换条：与顶部筛选条同一套 .seg，收敛进工具栏 */
     if (defs.length > 1) {
-      h += '<div class="row topic-fbar reveal">';
-      h += '<div class="fgroup"><span class="flabel">' + esc(t('top.board')) + '</span>' +
-        '<div class="fctl"><div class="seg" role="group" aria-label="' + esc(t('top.board')) + '">';
-      /* 用 .seg 原生按钮，不要再套 .chip：两条 CSS 会抢背景色
-         （.seg button.on 白底 vs .chip.on 强调色），选中块还会顶到 .flabel 上。 */
+      h += '<div class="rank-toolbar topic-toolbar reveal">';
+      h += '<span class="tiny muted">' + esc(t('top.board')) + '</span>';
+      h += '<div class="seg" id="topicBoardSeg" role="group" aria-label="' + esc(t('top.board')) + '">';
       defs.forEach(function (b) {
         h += '<button class="' + (b.k === tbKey ? 'on' : '') + '" data-topicboard="' + b.k + '">' + esc(t('stat.' + b.k)) + '</button>';
       });
-      h += '</div></div></div>';
-      h += '</div>'; /* /.topic-fbar（排行切换） */
+      h += '</div><span class="spacer"></span></div>';
     }
+
+    /* 口径说明 + 动态提示（项目筛选 / 成绩口径） */
+    let note = esc(t('top.' + tab + '.d'));
+    if (tab === 'part') note += ' <b>' + esc(t('stat.mbldNote')) + '</b>';
+    if (evScoped) note += ' <b>' + esc(t('top.eventFiltered')) + '</b>';
+    if (rt !== 'all') note += ' <b>' + esc(t('top.typeNote')) + '</b>';
+    h += '<div class="note-box reveal">' + Ic.glyph('info') + '<div>' + note + '</div></div>';
 
     const d = defs.filter(function (b) { return b.k === tbKey; })[0];
     if (d) {
@@ -2276,21 +2297,25 @@
          与另外两页「切成绩口径 → 数值变」的操作语义一致（人数不变）。 */
       const list = M.board(tab, d.k, 12, te, pool, rt);
       if (list.length) {
+        /* 领奖台：当前指标前 3，作为视觉锚点 */
+        h += podiumHtml(list, d);
         h += '<div class="card reveal board-card"><div class="card-head"><h2>' + esc(t('stat.' + d.k)) + '</h2>' +
           '<span class="tiny muted">' + (t.isEn() ? 'Top' : '前') + ' ' + list.length + '</span></div>';
         h += '<div class="grid grid-2" style="align-items:start">';
         h += '<div class="table-wrap" style="border:none"><table class="data mini"><thead><tr><th scope="col" class="tl">#</th><th scope="col" class="tl">' +
           esc(t('col.player')) + '</th><th scope="col" class="tl">' + esc(t('col.country')) + '</th><th scope="col">' + esc(t('stat.' + d.k)) + '</th></tr></thead><tbody>';
         list.forEach(function (row, i) {
-          h += '<tr><td class="tl">' + (i + 1) + '</td>' +
+          h += '<tr><td class="tl"><span class="rank-no ' + (i < 3 ? 'top' + (i + 1) : '') + '">' + (i + 1) + '</span></td>' +
             '<td class="tl"><div class="pname">' + playerLink(row.p) + '</div></td>' +
             '<td class="tl">' + flag(row.p.country) + '</td>' +
-            '<td class="num"><b>' + (d.pct ? U.fmt(row.v * 100, 1) + '%' : U.num(row.v)) + '</b></td></tr>';
+            '<td class="num"><b>' + fmtBoardVal(d, row.v) + '</b></td></tr>';
         });
         h += '</tbody></table></div>';
-        h += '<div>' + ecBox('groupBars', list.slice(0, 8).map(function (row, i) {
-          return { label: row.p.name.split(' ')[0], value: d.pct ? round(row.v * 100, 1) : row.v };
-        }), { rotate: 30 }, 240) + '</div>';
+        /* 图表：柔和面板包裹，与左侧表格形成平衡 */
+        h += '<div class="chart-side"><div class="chart-cap">' + (t.isEn() ? 'Top 8 · ' : '前 8 · ') + esc(t('stat.' + d.k)) + '</div>' +
+          ecBox('groupBars', list.slice(0, 8).map(function (row) {
+            return { label: row.p.name.split(' ')[0], value: d.pct ? round(row.v * 100, 1) : row.v };
+          }), { rotate: 30 }, 240) + '</div>';
         h += '</div></div>';
       } else {
         h += '<div class="empty reveal">' + esc(t('ui.noresult')) + '</div>';
@@ -2304,37 +2329,42 @@
   function otherTab(state) {
     const sub = state.otherTab || 'king';
     const pool = P.util.topicPool ? P.util.topicPool(state) : M.ranked;
-    let h = '<div class="seg reveal" id="otherSeg" style="margin-bottom:12px">';
+    let h = '<div class="seg reveal" id="otherSeg" style="margin-bottom:14px">';
     [['king', 'top.king'], ['nation', 'top.nation'], ['unknown', 'top.unknown'], ['counter', 'top.counter']].forEach(function (x) {
       h += '<button data-other="' + x[0] + '" class="' + (sub === x[0] ? 'on' : '') + '">' + esc(t(x[1])) + '</button>';
     });
     h += '</div>';
     if (sub === 'king') {
-      h += '<p class="tiny muted" style="margin-bottom:12px">' + esc(t('top.king.d')) + '</p>';
-      h += '<div class="grid grid-3">';
+      h += '<p class="tiny muted" style="margin-bottom:14px">' + esc(t('top.king.d')) + '</p>';
+      h += '<div class="grid grid-3 king-grid">';
       M.events.filter(function (e) { return !e.retired; }).forEach(function (e) {
         const best = pool.filter(function (p) { return p.events.indexOf(e.id) >= 0; })[0] || pool[0] || M.ranked[0];
-        h += '<div class="card reveal king-card"><div class="row" style="gap:10px">' + Ic.event(e.id, 'ev-ic') +
-          '<div><div class="tiny muted">' + esc(evName(e)) + '</div><div style="font-weight:600">' + playerLink(best) + '</div></div></div>';
-        h += '<div class="row tiny muted" style="margin-top:8px;gap:12px"><span>' + flag(best.country) + '</span>' +
-          '<span>' + notation('w_{e}') + ' ' + U.fmt(e.w, 2) + '</span><span>' + U.fmt(best.overall * (0.5 + e.w / 2), 2) + '</span></div>';
+        h += '<div class="card reveal king-card">';
+        h += '<div class="king-head"><span class="king-ic">' + Ic.event(e.id, 'ev-ic') + '</span><span class="king-ev">' + esc(evName(e)) + '</span></div>';
+        h += '<div class="king-body"><div class="king-av">' + avatar(best, 'sm') + '</div>' +
+          '<div class="king-info"><div class="king-name">' + playerLink(best) + '</div>' +
+          '<div class="king-meta">' + flag(best.country) + ' <span class="tiny muted">' + esc(countryName(best.country)) + '</span></div></div></div>';
+        h += '<div class="king-foot"><span>' + notation('w_{e}') + ' ' + U.fmt(e.w, 2) + '</span><span>' + U.fmt(best.overall * (0.5 + e.w / 2), 2) + '</span></div>';
         h += '</div>';
       });
       h += '</div>';
     } else if (sub === 'nation') {
       const metric = state.nationMetric || 'total';
-      h += '<p class="tiny muted" style="margin-bottom:12px">' + esc(t('top.nation.d')) + '</p>';
-      h += '<div class="seg" id="nationSeg" style="margin-bottom:12px">';
+      h += '<p class="tiny muted" style="margin-bottom:14px">' + esc(t('top.nation.d')) + '</p>';
+      h += '<div class="seg" id="nationSeg" style="margin-bottom:14px">';
       [['total', 'top.nation.total'], ['per', 'top.nation.per'], ['top', 'top.nation.top']].forEach(function (x) {
         h += '<button data-nation="' + x[0] + '" class="' + (metric === x[0] ? 'on' : '') + '">' + esc(t(x[1])) + '</button>';
       });
       h += '</div>';
       const key = metric === 'per' ? 'perCapita' : (metric === 'top' ? 'best' : 'total');
       const items = M.nations.slice().sort(function (a, b) { return b[key] - a[key]; }).slice(0, 14);
-      h += '<div class="card reveal">' + ecBox('groupBars', items.map(function (n) {
-        return { label: (countryName(n.iso) || n.iso), value: n[key], color: countryColor(n.iso) };
-      }), { top: 14 }, 320) + '</div>';
-      h += '<div class="table-wrap reveal"><table class="data mini"><thead><tr><th scope="col" class="tl">' + esc(t('f.region')) +
+      h += '<div class="grid grid-2 nation-grid">';
+      h += '<div class="card reveal nation-chart"><div class="card-head"><h2>' + esc(t('top.nation.' + metric)) + '</h2><span class="tiny muted">Top 14</span></div>' +
+        ecBox('groupBars', items.map(function (n) {
+          return { label: (countryName(n.iso) || n.iso), value: n[key], color: countryColor(n.iso) };
+        }), { top: 14 }, 320) + '</div>';
+      h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('top.nation.total')) + ' · ' + esc(t('col.player')) + '</h2></div>';
+      h += '<div class="table-wrap" style="border:none"><table class="data mini"><thead><tr><th scope="col" class="tl">' + esc(t('f.region')) +
         '</th><th scope="col" class="tl">' + esc(t('f.continent')) + '</th><th scope="col">' + esc(t('top.nation.total')) + '</th><th scope="col">' +
         esc(t('top.nation.per')) + '</th><th scope="col">' + esc(t('top.nation.top')) + '</th><th scope="col" class="tl">' + esc(t('col.player')) + '</th></tr></thead><tbody>';
       M.nations.slice(0, 24).forEach(function (n) {
@@ -2342,24 +2372,26 @@
           '<td class="num">' + U.num(n.total) + '</td><td class="num">' + U.fmt(n.perCapita, 1) + '</td><td class="num">' + U.fmt(n.best, 2) + '</td>' +
           '<td class="tl tiny">' + esc(n.bestName) + '</td></tr>';
       });
-      h += '</tbody></table></div>';
-      h += '<p class="tiny muted" style="margin-top:10px">' + esc(t('top.nation.split')) + '</p>';
+      h += '</tbody></table></div></div>';
+      h += '</div>';
+      h += '<p class="tiny muted" style="margin-top:12px">' + esc(t('top.nation.split')) + '</p>';
     } else if (sub === 'unknown') {
-      h += '<p class="tiny muted" style="margin-bottom:12px">' + esc(t('top.unknown.d')) + '</p>';
+      h += '<p class="tiny muted" style="margin-bottom:14px">' + esc(t('top.unknown.d')) + '</p>';
       const list = pool.filter(function (p) { return p.wr === 0; }).slice(0, 40);
-      h += '<div class="table-wrap reveal"><table class="data mini"><thead><tr><th scope="col" class="tl">#</th><th scope="col" class="tl">' +
+      h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('top.unknown')) + '</h2><span class="tiny muted">Top ' + list.length + '</span></div>';
+      h += '<div class="table-wrap" style="border:none"><table class="data mini"><thead><tr><th scope="col" class="tl">#</th><th scope="col" class="tl">' +
         esc(t('col.player')) + '</th><th scope="col">' + esc(t('col.total')) + '</th><th scope="col">' + esc(t('col.months')) + '</th><th scope="col">' +
         esc(t('col.m4')) + '</th><th scope="col">' + esc(t('stat.yearsTop10')) + '</th></tr></thead><tbody>';
       list.forEach(function (p, i) {
-        h += '<tr><td class="tl">' + (i + 1) + '</td><td class="tl"><div class="pname">' + playerLink(p) + '</div></td>' +
+        h += '<tr><td class="tl"><span class="rank-no ' + (i < 3 ? 'top' + (i + 1) : '') + '">' + (i + 1) + '</span></td><td class="tl"><div class="pname">' + playerLink(p) + '</div></td>' +
           '<td class="num">' + U.fmt(scoreOf(p).overall, 2) + '</td><td class="num">' + p.months1 + '</td>' +
           '<td class="num">' + U.fmt((p.six && p.six.m4) || 0, 2) + '</td><td class="num">' + Math.round(p.months10 / 12) + '</td></tr>';
       });
-      h += '</tbody></table></div>';
+      h += '</tbody></table></div></div>';
     } else {
       const zero = state.counterZero || 'wr';
-      h += '<p class="tiny muted" style="margin-bottom:12px">' + esc(t('top.counter.d')) + '</p>';
-      h += '<div class="row reveal" style="margin-bottom:12px"><span class="tiny muted">' + esc(t('top.counter.pick')) + '</span>';
+      h += '<p class="tiny muted" style="margin-bottom:14px">' + esc(t('top.counter.d')) + '</p>';
+      h += '<div class="row reveal" style="margin-bottom:14px"><span class="tiny muted">' + esc(t('top.counter.pick')) + '</span>';
       h += '<select id="counterSel">';
       [['wr', 'col.wr'], ['wc', 'col.wc'], ['months', 'col.months'], ['m1', 'col.m1'], ['m2', 'col.m2'], ['m6', 'col.m6']].forEach(function (x) {
         h += '<option value="' + x[0] + '"' + (zero === x[0] ? ' selected' : '') + '>' + esc(t(x[1])) + '</option>';
@@ -2371,17 +2403,18 @@
           zero === 'months' ? (p.months1 > 12 ? 0.65 : 1) : zero === 'm1' ? 0.7 : zero === 'm2' ? 0.75 : 0.8;
       };
       const after = base.slice().sort(function (a, b) { return scoreOf(b).overall * factor(b) - scoreOf(a).overall * factor(a); });
-      h += '<div class="table-wrap reveal"><table class="data mini"><thead><tr><th scope="col" class="tl">' + esc(t('col.player')) +
+      h += '<div class="card reveal"><div class="card-head"><h2>' + esc(t('top.counter.result')) + '</h2></div>';
+      h += '<div class="table-wrap" style="border:none"><table class="data mini"><thead><tr><th scope="col" class="tl">' + esc(t('col.player')) +
         '</th><th scope="col">' + esc(t('col.rank')) + '</th><th scope="col">' + esc(t('top.counter.result')) + '</th><th scope="col">' + esc(t('col.total')) + '</th></tr></thead><tbody>';
       after.forEach(function (p, i) {
         const before = base.indexOf(p) + 1;
-        const d = before - (i + 1);
+        const dd = before - (i + 1);
         h += '<tr><td class="tl"><div class="pname">' + playerLink(p) + '</div></td><td class="num">' + before + '</td>' +
-          '<td class="num" style="color:' + (d > 0 ? 'var(--m4)' : (d < 0 ? 'var(--m1)' : 'var(--text-3)')) + '">' +
-          (d > 0 ? '↑' : (d < 0 ? '↓' : '·')) + ' ' + Math.abs(d) + '</td>' +
+          '<td class="num" style="color:' + (dd > 0 ? 'var(--m4)' : (dd < 0 ? 'var(--m1)' : 'var(--text-3)')) + '">' +
+          (dd > 0 ? '↑' : (dd < 0 ? '↓' : '·')) + ' ' + Math.abs(dd) + '</td>' +
           '<td class="num">' + U.fmt(scoreOf(p).overall * factor(p), 2) + '</td></tr>';
       });
-      h += '</tbody></table></div>';
+      h += '</tbody></table></div></div>';
     }
     return h;
   }

@@ -1133,14 +1133,47 @@ tr:hover .pname .linkish,tr:hover .pname .pname-txt{
 .board-card .table-wrap{border:none}
 .ev-filter-head{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
 .ev-filter-label{font-size:12px;font-weight:600;color:var(--text-3);letter-spacing:.02em}
-/* 趣味统计页只剩「统计指标」一个页内切换行（2026-11-05）：
-   项目筛选已统一到顶部筛选条，正文不再有第二套带文字的项目按钮。
-   样式仍沿用顶部筛选条的 .fgroup/.flabel/.fctl，保证同一套控件观感。 */
-.row.topic-fbar{align-items:flex-start;gap:20px;margin:2px 0 12px}
-.topic-fbar .fgroup{min-width:0;max-width:100%}
-.topic-fbar .fctl{gap:8px}
-.king-card{padding:13px 15px}
-.king-card .ev-ic{width:28px;height:28px;font-size:28px;color:var(--accent)}
+/* 顶部分类标签条：单独成行，与主体内容拉开间距 */
+.top-tabs{margin-bottom:16px}
+.topic-toolbar{margin-bottom:12px}
+.topic-toolbar .seg{flex-wrap:wrap}
+
+/* 领奖台：当前指标前 3，作为视觉锚点 */
+.podium{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px}
+.pod{background:var(--bg-elev);border:1px solid var(--border);border-radius:var(--r-lg);
+  padding:14px 14px 16px;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;
+  box-shadow:var(--shadow);transition:box-shadow .2s ease,transform .2s ease,border-color .2s ease}
+.pod:hover{box-shadow:var(--shadow-lg);transform:translateY(-2px);border-color:var(--border-2)}
+.pod-1{border-color:color-mix(in srgb,var(--gold) 50%,var(--border))}
+.pod-medal .rank-no{width:30px;height:30px;font-size:13px}
+.pod-av .avatar{width:46px;height:46px;font-size:15px;border-radius:13px}
+.pod-name{font-weight:600;font-size:14px}
+.pod-name .linkish{font-weight:600}
+.pod-meta{display:flex;align-items:center;gap:5px;justify-content:center}
+.pod-val{font-size:23px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--accent);line-height:1.1}
+@media (max-width:620px){.podium{grid-template-columns:1fr;gap:10px}.pod{flex-direction:row;flex-wrap:wrap;justify-content:center;text-align:left}}
+
+/* 图表柔和面板：与左侧表格形成平衡 */
+.chart-side{background:var(--bg-soft);border-radius:var(--r-lg);padding:12px 14px;display:flex;flex-direction:column;min-width:0}
+.chart-cap{font-size:12px;color:var(--text-3);margin-bottom:6px;letter-spacing:.01em}
+
+/* 专题 · 项目王者 */
+.king-card{padding:14px 15px}
+.king-head{display:flex;align-items:center;gap:9px;margin-bottom:11px}
+.king-ic{width:28px;height:28px;font-size:26px;color:var(--accent);flex:none}
+.king-ev{font-weight:600;font-size:13.5px}
+.king-body{display:flex;align-items:center;gap:10px;margin-bottom:11px}
+.king-av .avatar{width:40px;height:40px;font-size:14px;border-radius:11px}
+.king-name{font-weight:600;font-size:13.5px}
+.king-name .linkish{font-weight:600}
+.king-meta{display:flex;align-items:center;gap:5px}
+.king-foot{display:flex;justify-content:space-between;gap:8px;border-top:1px solid var(--border);
+  padding-top:9px;font-size:11.5px;color:var(--text-3)}
+.king-foot b{color:var(--text-2);font-weight:600}
+
+/* 国家实力：图表卡 + 表格卡并排 */
+.nation-grid{align-items:start}
+.nation-chart .ec{width:100%}
 
 /* ============ 评分原理 ============ */
 .md-layout{display:grid;grid-template-columns:230px 1fr;gap:16px;align-items:start}

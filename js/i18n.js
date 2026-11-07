@@ -259,6 +259,7 @@
     'tl.dimTip': '分数演进图按所选维度单独比拼（总分 = 某一维）',
 
     'top.title': '趣味统计',
+    'top.lead': '换个角度看魔方圈的历史地位：从纪录、参赛、奖牌、效率到专题。',
     'top.board': '统计指标',
     'top.eventFiltered': '已按所选项目筛选，仅显示参加过这些项目的选手',
     'top.typeNote': '成绩口径为「单次 / 平均」时，纪录类指标只统计该轨的纪录。',
@@ -616,6 +617,7 @@
     'tl.dimTip': 'Score evolution by a single dimension (score = that dimension only)',
 
     'top.title': 'Fun stats',
+    'top.lead': 'A different angle on cubing history — records, participation, medals, efficiency and special topics.',
     'top.board': 'Statistic',
     'top.rec': 'Records', 'top.part': 'Participation & volume', 'top.medal': 'Medals & placings', 'top.eff': 'Efficiency & experiments', 'top.other': 'Specials',
     'top.eventFiltered': 'Filtered by the selected events — only players who competed in them',
