@@ -126,7 +126,11 @@
     stackMode: '',
     scope: 'country', geo: '',
     pk: [], tlView: 'race', tlMode: 'cumulative', tlFy: 0, tlStep: 'day', tlMetric: 'overall', tlLane: 'single', tlSmooth: false, tlPlaying: false, tlRegion: '', tlCountry: '', tlDim: '', msPopOpen: false,
-    topicTab: 'rec', topicStat: '', otherTab: 'king', nationMetric: 'total', counterZero: 'wr', topicBoard: '', dimSel: ''
+    topicTab: 'rec', topicStat: '', otherTab: 'king', nationMetric: 'total', counterZero: 'wr', topicBoard: '', dimSel: '',
+    /* 维度模式下的「只看有分」开关：默认 false = 保留全池（无分者垫底），
+       因为 M1/M3/M4/M6 是成就型维度，全库只有几百到几千人有分，
+       硬砍会让「单项目 + 单维度」只剩几个人，看起来像筛选坏了。 */
+    dimOnly: false
   };
 
   /* 播放原点（天索引 / 起始毫秒），供拖动时间轴实时跳转而保留连续播放 */
@@ -911,7 +915,9 @@
     const allEvents = Object.keys(M.EV || {});
     const evAll = (state.evSel && state.evSel.length) ? state.evSel.length >= allEvents.length : true;
     const noFilt = !state.geo && (!state.gender || state.gender === 'all') && !state.y0 && !state.y1
-      && evAll && (!state.group || state.group === 'all') && !state.retired;
+      && evAll && (!state.group || state.group === 'all') && !state.retired
+      /* 六维单独筛选也算「筛过」：它的分母是「该维度有分的人」，不是全库 */
+      && !state.dimSel && !state.dimOnly;
     let matched = listed;
     if (route === 'rank' || route === 'timeline') matched = noFilt ? listed : P.filtered(state).length;
     else if (route === 'topics') matched = P.util.topicPool(state).length;
@@ -1718,7 +1724,7 @@
   /* ---------- 全局事件委托 ---------- */
   /* ⚠ 这里少一个选择器，对应的按钮就「点了没反应」——2026-10-27 的六维筛选按钮
      正是因为漏了 [data-dim]/[data-tldim]，事件委托根本收不到点击，才表现为「加了按钮但没功能」。 */
-  const DELEGATE = '[data-sort],[data-page],[data-expand],[data-prow],[data-tab],[data-type],[data-stack],[data-dim],[data-tldim],[data-pkadd],[data-pkrm],[data-pktrayrm],[data-pktrayclear],[data-toggle],[data-expandall],[data-goto],[data-group],[data-gender],[data-retired],[data-tlmode],[data-tlview],[data-tlstep],[data-tlmetric],[data-tllane],[data-topic],[data-topicboard],[data-other],[data-nation],[data-scope],[data-continent],[data-evpick],[data-evtab],[data-evtoggle],[data-evall],[data-evnone],[data-evsave],[data-gload],[data-gdel],[data-reclevel],[data-rectype],[data-podtier],[data-mdanchor],[data-mdsec],[data-msimport],[data-msreset],[data-msdel],[data-msedit],[data-msunhide],[data-msjump],[data-copy]';
+  const DELEGATE = '[data-sort],[data-page],[data-expand],[data-prow],[data-tab],[data-type],[data-stack],[data-dim],[data-dimonly],[data-tldim],[data-pkadd],[data-pkrm],[data-pktrayrm],[data-pktrayclear],[data-toggle],[data-expandall],[data-goto],[data-group],[data-gender],[data-retired],[data-tlmode],[data-tlview],[data-tlstep],[data-tlmetric],[data-tllane],[data-topic],[data-topicboard],[data-other],[data-nation],[data-scope],[data-continent],[data-evpick],[data-evtab],[data-evtoggle],[data-evall],[data-evnone],[data-evsave],[data-gload],[data-gdel],[data-reclevel],[data-rectype],[data-podtier],[data-mdanchor],[data-mdsec],[data-msimport],[data-msreset],[data-msdel],[data-msedit],[data-msunhide],[data-msjump],[data-copy]';
 
   /* ★ 2026-11-07：纪录 / 领奖台明细行以前是纯 <div data-toggle>，可点却不可聚焦、
      也没有展开状态播报。抽成公用函数，让 click 与 Enter/Space 走同一条路径。 */
@@ -1786,6 +1792,13 @@
     /* 六维单独筛选（总榜）：选某一维后榜单按该维度分重排 */
     if (el.hasAttribute('data-dim')) {
       state.dimSel = el.getAttribute('data-dim') || ''; state.page = 1; state.sortKey = 'score'; state.sortDir = 'desc';
+      /* 换维度时复位「只看有分」，避免上一维的收窄被误带到新的维度上 */
+      state.dimOnly = false;
+      render(); return;
+    }
+    /* 维度模式下「只看有分 / 全部」开关 */
+    if (el.hasAttribute('data-dimonly')) {
+      state.dimOnly = el.getAttribute('data-dimonly') === '1'; state.page = 1;
       render(); return;
     }
     if (el.hasAttribute('data-type')) {

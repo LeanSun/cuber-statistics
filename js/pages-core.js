@@ -696,6 +696,10 @@
     }
     return sel;
   }
+  /* P.filtered 的旁路统计：本次结果里「该维度 0 分」的人数，供工具栏说明文案使用
+     （P.filtered 只返回数组，不改签名，避免动到 timeline / 筛选条计数等既有调用点）。 */
+  const DIMSTAT = { zero: 0, n: 0 };
+  P.dimStat = function () { return { zero: DIMSTAT.zero, n: DIMSTAT.n }; };
   P.filtered = function (state) {
     const pool = eventSet(state);
     const rt = state.recType || 'all';
@@ -733,8 +737,7 @@
     /* 六维单独筛选：state.dimSel 取 m1..m6 之一时，榜上分数改用该维度的维度分 s_d，
        等于「只看这一维」的单维排行榜（与项目筛选叠加时取所选项目范围内的该维分）。 */
     const dimSel = (state.dimSel && MOD.indexOf(state.dimSel) >= 0) ? state.dimSel : '';
-    const dimIx = dimSel ? SIXD.indexOf(dimSel) : -1;
-    rows = rows.map(function (p) {
+    const dimIx = dimSel ? SIXD.indexOf(dimSel) : -1;    rows = rows.map(function (p) {
       const sc = scoreOf(p, rt);
       let score = sc.overall, vec = null, inEv = null;
       if (useEv) {
@@ -752,7 +755,7 @@
           score = dv && dimIx >= 0 ? (dv[dimIx] || 0) : 0;
         }
       }
-      const row = { p: p, score: score, sc: sc, six: vec, ev: sev || '', be: bd ? (bd.idx[p.id] || null) : null, bdLen: bd ? bd.len : 0, evs: null, evHit: inEv ? inEv.hit : 0, evSum: 0, evParts: inEv ? inEv.parts : null, orderVal: score };
+      const row = { p: p, score: score, sc: sc, six: vec, ev: sev || '', be: bd ? (bd.idx[p.id] || null) : null, bdLen: bd ? bd.len : 0, evs: null, evHit: inEv ? inEv.hit : 0, evTot: inEv ? inEv.t : 0, evSum: 0, evParts: inEv ? inEv.parts : null, orderVal: score };
       /* 多项目：额外算出每个所选项目上的世界名次，用于「色块」展示与排序。 */
       if (bdM) {
         let sw = 0, sv = 0, hit = 0;
@@ -770,10 +773,28 @@
          单项目 / 多项目 / 全部项目共用同一把尺子，名次与条尾数字永远一致。 */
       return row;
     });
-    /* 项目筛选下，在该范围内没有任何六维得分的选手不进榜（分数为 0 无意义） */
-    if (useEv) rows = rows.filter(function (r) { return r.score > 0; });
+    /* 项目范围内的成员判定与「分数是否为 0」是两件事，必须分开：
+       旧写法把它俩揉成一条 `score > 0`，于是维度模式一旦不再砍 0 分，
+       项目筛选也跟着失效（333 场景实测从 21154 涨回 21174 / 11030）。
+       成员 = 在所选项目集合里至少命中一个（row.evHit > 0）；
+       分数 = 之后按维度或总分算出来的数值，可以为 0。 */
+    /* 成员判定：在所选项目集合里至少命中一个，且该项目范围内确实有六维分。
+       与「本次排序用的是哪一维」彻底解耦 —— 换维度不再改人数（旧写法把两件事
+       揉进同一条 `score > 0`，切维度时人数会跟着跳动）。 */
+    if (useEv) rows = rows.filter(function (r) { return r.evHit > 0 && r.evTot > 0; });
     if (bdM) rows = rows.filter(function (r) { return r.evHit > 0; });
-    if (dimSel) rows = rows.filter(function (r) { return r.score > 0; });
+    /* ── 单维筛选不再硬砍「0 分」（2026-11-13 用户报的重大问题）──────────────
+       M1 纪录持有 / M3 大赛表现 / M4 统治力 / M6 领先幅度 都是**成就型**维度：
+       全库只有 m1 4191 人、m3 2250 人、m4 1356 人、m6 281 人有非零分（实测 21235 人库）。
+       以前这里与项目筛选叠加时直接 `score > 0`，于是「单项目 + 单维度」只剩几百人甚至
+       27 人（333 + M6），底部计数、筛选条计数一起塌到个位 / 十位数，读起来就是筛选坏了。
+       正确语义：维度是**排序口径**，不是「有没有这项成就」的资格线 —— 全池保留，
+       按该维度分降序，无分者垫底并以「—」占位；想只看有分的人自己开「只看有分」。 */
+    const dimTot = rows.length;
+    const dimZero = dimSel ? rows.filter(function (r) { return !(r.score > 0); }).length : 0;
+    if (dimSel && state.dimOnly) rows = rows.filter(function (r) { return r.score > 0; });
+    DIMSTAT.zero = dimZero;
+    DIMSTAT.n = dimTot;
     return sortRows(rows, state);
   };
 
@@ -869,6 +890,14 @@
       h += '<button data-dim="' + k + '" class="' + (dimCur === k ? 'on' : '') + '">' + esc(modName(k)) + '</button>';
     });
     h += '</div>';
+    /* 维度模式：全池 / 只看有分。默认全池 —— 成就型维度（M1/M3/M4/M6）全库只有
+       几百到几千人有分，默认收窄会让人误以为「切了维度就只剩几个人」。 */
+    if (dimCur) {
+      h += '<div class="seg dim-seg dim-only-seg" role="group" aria-label="' + esc(t('rank.dimScope')) + '">';
+      h += '<button data-dimonly="0" class="' + (!state.dimOnly ? 'on' : '') + '">' + esc(t('rank.dimAll')) + '</button>';
+      h += '<button data-dimonly="1" class="' + (state.dimOnly ? 'on' : '') + '">' + esc(t('rank.dimOnly')) + '</button>';
+      h += '</div>';
+    }
     h += '<span class="spacer"></span>';
     /* 成绩口径（总计 / 单次 / 平均）已由顶部筛选条统一提供，
        此处不再重复放一套，避免两处控件看起来互相独立却只有一个生效。 */
@@ -878,6 +907,16 @@
     h += '<span class="tiny muted">' + esc(t('rank.perPage')) + '</span>';
     h += '<a class="btn" href="#/model">' + Ic.glyph('sliders') + ' ' + esc(t('rank.params')) + '</a>';
     h += '</div>';
+    /* 维度覆盖度说明：把「这一维全库到底有多少人有分」明说出来，
+       否则切成 M6（领先幅度，全库 281 人）时看到一屏「—」会以为数据坏了。 */
+    if (dimCur) {
+      const ds = P.dimStat();
+      const has = Math.max(0, ds.n - ds.zero);
+      h += '<div class="note-box reveal dim-cov">' + Ic.glyph('info') + '<div>' +
+        esc(t('rank.dimCover', { dim: modName(dimCur), has: U.num(has), zero: U.num(ds.zero) })) +
+        (ds.zero > 0 && !state.dimOnly ? esc(t('rank.dimZeroTail', { zero: U.num(ds.zero) })) : '') +
+        '</div></div>';
+    }
     /* 单次/平均 + 项目筛选：逐项目精确档是懒加载的，这里如实告知加载状态。
        加载中先显示近似值，完成后 ensureSixEv 会自动重渲染；失败则明确说是近似值。 */
     if ((evMode || multiMode) && (rt === 'single' || rt === 'avg')) {
@@ -937,10 +976,15 @@
       const p = row.p, no = startNo + i + 1;
       const score = row.score;
       const cap = (window.GOAT && typeof window.GOAT.barMax === 'number') ? window.GOAT.barMax : 100;
-      const bw = Math.max(6, Math.min(score / maxScore * 100, cap));
-      const topCls = no === 1 ? 'top1' : (no === 2 ? 'top2' : (no === 3 ? 'top3' : ''));
-      h += '<tr data-pid="' + p.id + '" data-prow="' + p.id + '" class="' + (topCls ? topCls + '-row' : '') + '" style="cursor:pointer">';
-      h += '<td class="tl"><div class="rank-cell"><span class="rank-no ' + topCls + '">' + no + '</span></div></td>';
+      /* 维度模式下的 0 分选手：条长为 0（不再给 6% 的最小宽度），
+         否则一屏「6% 短条 + —」看起来像有个很小的值。 */
+      const bw = (dimCur && !(score > 0)) ? 0 : Math.max(6, Math.min(score / maxScore * 100, cap));
+      const isZero = !!(dimCur && !(score > 0));
+      const topCls = isZero ? '' : (no === 1 ? 'top1' : (no === 2 ? 'top2' : (no === 3 ? 'top3' : '')));
+      h += '<tr data-pid="' + p.id + '" data-prow="' + p.id + '" class="' + (topCls ? topCls + '-row' : '') + (isZero ? ' na-row' : '') + '" style="cursor:pointer">';
+      /* 该维度无分的选手不参与名次编号：名次列显示「—」，
+         否则「第 28 名 / 0.00」会被读成排行结果，其实是「没有这项成就」。 */
+      h += '<td class="tl"><div class="rank-cell"><span class="rank-no' + (isZero ? ' na' : ' ' + topCls) + '">' + (isZero ? '—' : no) + '</span></div></td>';
       h += '<td class="tl"><div class="pname">' + playerLink(p) + '</div></td>';
       h += '<td class="tl gcol">' + genderBadge(p) + '</td>';
       h += '<td class="tl"><span class="region-cell">' + flag(p.country) + '<span class="rname">' + esc(countryName(p.country)) + '</span></span></td>';
@@ -952,8 +996,14 @@
          这样只看一个项目时也能看清是 M1…M6 哪几维在撑着这个分数。 */
       const stack = stackHtml(row, stackMode, useEv ? scopeIds : null, rt, dimCur);
       h += '<td class="barcell bars-full"><div class="bar-row' + (evMode || multiMode ? ' evmode' : '') + '"><div class="bar-track">' +
-        '<div class="bar-grow" style="width:' + bw.toFixed(1) + '%">' + stack + '</div></div>' +
-        '<span class="bar-total">' + U.fmt(score, 2) + '</span>' +
+        /* 无分者连条都不画：留一个 0 宽度但带背景的 div 会在行首留下一个小色点，
+           看起来像「有个很小的值」。 */
+        (isZero ? '' : '<div class="bar-grow" style="width:' + bw.toFixed(1) + '%">' + stack + '</div>') +
+        '</div>' +
+        /* 维度模式下该选手在此维度无分（0）时显示「—」而不是 0.00：
+           0 分与「没有这项成就」在成就型维度里是两回事，写 0.00 会被读成算错了。 */
+        '<span class="bar-total' + (dimCur && !(score > 0) ? ' na' : '') + '">' +
+          (dimCur && !(score > 0) ? '—' : U.fmt(score, 2)) + '</span>' +
         /* 世界名次只作参考（排序按六维分），放在 tooltip 里避免又被读成排序依据 */
         (evMode && row.be ? '<span class="ev-rank" title="' + esc(t('rank.evRankTip')) + '">No.' + row.be.r + '</span>' : '') +
         (multiMode ? '<span class="ev-hitnote">' + row.evHit + '/' + evsShown.length + '</span>' : '') +
@@ -975,9 +1025,13 @@
     h += '<button data-page="' + pages + '"' + (pg === pages ? ' disabled' : '') + '">»</button>';
     h += '<span class="info">' + esc(t('rank.pager', { a: startNo + 1, b: Math.min(startNo + per, rowsAll.length), n: rowsAll.length })) + '</span>';
     const tot = (M.meta && M.meta.players) || rowsAll.length;
-    /* 达到 1000 名上限时说明是「按上限截断」，否则说明是筛选后的真实人数 */
+    /* 达到 1000 名上限时说明是「按上限截断」，否则说明是筛选后的真实人数。
+       维度模式下上限内还混着「无分垫底」的人，文案要分开说清楚。 */
     if (allRows.length > rowsAll.length) {
-      h += '<span class="info tiny muted">' + esc(t('rank.topCap', { n: U.num(rowsAll.length) })) + '</span>';
+      const ds2 = dimCur ? P.dimStat() : null;
+      h += '<span class="info tiny muted">' + esc(dimCur
+        ? t('rank.topCapDim', { n: U.num(rowsAll.length), has: U.num(Math.max(0, ds2.n - ds2.zero)) })
+        : t('rank.topCap', { n: U.num(rowsAll.length) })) + '</span>';
     } else if (tot > rowsAll.length) {
       h += '<span class="info tiny muted">' + esc(t('rank.coverage', { n: U.num(rowsAll.length), t: U.num(tot) })) + '</span>';
     }

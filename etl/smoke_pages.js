@@ -301,6 +301,41 @@ ok(h3.indexOf('bar-track') >= 0, '条形外层有可收缩的弹性轨道（bar-
   void c;
 }
 
+/* ── 单项目 + 单维度不再把选手砍光（2026-11-13 用户报的重大问题）──────────────
+   症状：选一个项目后逐个点 M1…M6，榜单只剩几百人甚至 27 人（333 + M6），
+   底部计数与筛选条计数一起塌掉，读起来就是「筛选坏了」。
+   根因：`score > 0` 同时承担了「是否属于该项目」和「该维度是否有分」两件事，
+   而 M1/M3/M4/M6 是成就型维度（全库只有几百到几千人有分），一叠加就塌。
+   现在成员判定走 evHit > 0，维度只做排序口径：全池保留、无分者垫底显示「—」，
+   另给「只看有分」开关恢复旧的收窄行为。 */
+{
+  const DIMS = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'];
+  const poolEv = P.filtered(Object.assign({}, base, { evSel: ['333'] })).length;
+  ok(poolEv > 0, '单项目基准池 ' + poolEv + ' 人');
+  let allSame = true, perDim = [];
+  DIMS.forEach(function (d) {
+    const n = P.filtered(Object.assign({}, base, { evSel: ['333'], dimSel: d })).length;
+    const st = P.dimStat();
+    perDim.push(d + ':' + n + '（有分 ' + (st.n - st.zero) + '）');
+    /* 允许 ±1 的浮动（sixEv 里挂着全 0 组的极端个案），但绝不允许塌到几百人 */
+    if (Math.abs(n - poolEv) > Math.max(2, poolEv * 0.01)) allSame = false;
+  });
+  ok(allSame, '单项目 + 任意维度：选手池不塌（' + perDim.join(' / ') + '）');
+  /* 成就型维度确实稀疏 —— 这是数据事实，而不是 bug；文案必须把它说出来 */
+  const z = (function () { P.filtered(Object.assign({}, base, { evSel: ['333'], dimSel: 'm6' })); return P.dimStat(); })();
+  ok(z.zero > 0, '维度模式统计出「无分垫底」人数（M6 场上 ' + z.zero + ' 人）');
+  const only = P.filtered(Object.assign({}, base, { evSel: ['333'], dimSel: 'm6', dimOnly: 1 })).length;
+  ok(only > 0 && only === z.n - z.zero, '「只看有分」收窄到 ' + only + ' 人（＝有分人数）');
+  const hDimA = P.rank(Object.assign({}, base, { evSel: ['333'], dimSel: 'm6' }));
+  ok(hDimA.indexOf('data-dimonly="1"') >= 0 && hDimA.indexOf('data-dimonly="0"') >= 0,
+    '维度模式给出「全部 / 只看有分」开关');
+  ok(/当前筛选范围内[\s\S]{0,40}人有分/.test(hDimA), '维度模式说明该维度的有分人数');
+  /* 翻到有分人数之外的那一页：无分者名次列必须是「—」，不是「第 28 名 0.00」 */
+  const hDimB = P.rank(Object.assign({}, base, { evSel: ['333'], dimSel: 'm6', page: Math.ceil((only + 1) / 20) }));
+  ok(hDimB.indexOf('rank-no na') >= 0 && hDimB.indexOf('bar-total na') >= 0,
+    '无分者以「—」占位（名次列与分数列都不写成 0.00）');
+}
+
 const h4 = tryRender('总榜（正阶组）', () => P.rank(Object.assign({}, base, { group: 'speed' })));
 ok(h4.length > 100, '分组筛选渲染');
 const h5 = tryRender('总榜（中国）', () => P.rank(Object.assign({}, base, { geo: 'CN' })));

@@ -24,6 +24,8 @@ OWNER, REPO, BRANCH = 'LeanSun', 'cuber-statistics', 'main'
 
 # CI 按最新 WCA 导出重建，本地副本较旧，推送时一律保留远端版本
 EXCLUDE = {'js/data.js', 'js/roster.js'}
+# 只存在于远端（由 CI 生成、本地不跟踪）的数据分片：推送时原样沿用，绝不能删
+KEEP_REMOTE_ONLY = {'js/data_cols.js', 'js/data_detail.js'}
 
 
 def sh(args):
@@ -79,11 +81,13 @@ entries = []
 uploaded = 0
 reused = 0
 kept = 0
+local_paths = set()
 for line in local_lines:
     if not line.strip():
         continue
     meta, path = line.split('\t', 1)
     mode, typ, sha = meta.split()
+    local_paths.add(path)
     if path in EXCLUDE:
         rsha = remote_blob.get(path)
         if not rsha:
@@ -121,8 +125,19 @@ for line in local_lines:
         print('  UPLOAD %-50s %8.2f MB  %.1fs' % (path[:50], len(raw) / 1048576.0, time.time() - t0))
     entries.append({'path': path, 'mode': '100644', 'type': 'blob', 'sha': sha})
 
-print('summary: uploaded=%d reused=%d kept_remote=%d total_entries=%d' % (uploaded, reused, kept, len(entries)))
+# CI 生成、本地不跟踪的数据分片（js/data_cols.js / js/data_detail.js）：
+# 本地 HEAD 树里没有它们，若按「本地树 == 远端树」重建就会把线上分片删掉，
+# 而 CI 要几分钟后才补回来 —— 这中间 boot.js 的列增量请求会 404。
+# 这些路径一律沿用远端 blob。
+for p in KEEP_REMOTE_ONLY:
+    if p in local_paths:
+        continue
+    rsha = remote_blob.get(p)
+    if rsha:
+        entries.append({'path': p, 'mode': '100644', 'type': 'blob', 'sha': rsha})
+        print('  KEEP-REMOTE-ONLY', p)
 
+print('summary: uploaded=%d reused=%d kept_remote=%d total_entries=%d' % (uploaded, reused, kept, len(entries)))
 # 关键：不加 base_tree，从零建整棵树，保证 == 本地 HEAD 树（data/roster 取远端最新）
 tree = api('POST', '/repos/%s/%s/git/trees' % (OWNER, REPO), {'tree': entries})
 new = api('POST', '/repos/%s/%s/git/commits' % (OWNER, REPO),

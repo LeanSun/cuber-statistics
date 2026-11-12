@@ -637,6 +637,10 @@ tr:hover .rank-no{transform:scale(1.08)}
 .rank-no.top1{background:var(--gold);color:#2a200a}
 .rank-no.top2{background:var(--silver);color:#2b3441}
 .rank-no.top3{background:var(--bronze);color:#2a1a0e}
+/* 维度模式下「该维度无分」的垫底行：名次列不做编号，整行降到三级色，
+   一眼能看出这段是「无该项成就」而不是名次掉到几千名 */
+.rank-no.na{background:transparent;color:var(--text-3);font-weight:400}
+tr.na-row .pname,tr.na-row .region-cell .rname{opacity:.55}
 .pname{display:flex;align-items:center;gap:8px;justify-content:flex-start;min-width:0}
 /* 固定名字列宽：列宽由 colgroup 写死（table-layout:fixed），名字过长时省略号截断，
    不会再把后面的地区 / 柱状图挤得忽宽忽窄。 */
@@ -722,6 +726,11 @@ tr:hover .pname .linkish,tr:hover .pname .pname-txt{
    这里给非 evmode 的 .bar-grow 一个显式高度（与 dimstack 同高），evmode 仍走 12px。 */
 .bar-row:not(.evmode) .bar-grow{height:18px}
 .bar-total{flex:none;min-width:36px;text-align:right;font-size:12.5px;font-weight:700;color:var(--text-2);font-variant-numeric:tabular-nums}
+/* 维度模式下「该维度无分」：用 — 占位，弱化到第三级色，避免被读成 0.00 的算错 */
+.bar-total.na{color:var(--text-3);font-weight:400}
+/* 维度覆盖度说明：贴着工具栏的浅色提示条 */
+.dim-cov{margin-top:-2px}
+.dim-only-seg{margin-left:2px}
 /* 单项目模式：色条 + 最佳成绩 + 该项目世界排名 */
 .bar-row.evmode{gap:10px}
 .bar-row.evmode .bar-grow{height:12px;border-radius:6px;background:linear-gradient(90deg,var(--m1),var(--m2))}

@@ -13,7 +13,7 @@
    注册往往赶不上这次请求），并在 boot 一开始注册 SW、预热页面模块。
    同日追加 data_cols.js（首屏最小集的列增量），与 detail 一并走数据缓存。
    ============================================================ */
-const SHELL_VER = 'goat-shell-20261112b';
+const SHELL_VER = 'goat-shell-20261113a';
 const DATA_VER = 'goat-data-v1';
 const SHELL = [
   './', './index.html', './404.html', './manifest.json', './favicon.svg', './favicon.ico',
