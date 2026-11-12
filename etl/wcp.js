@@ -121,7 +121,7 @@ module.exports = { pack: pack, EXPAND_SRC: EXPAND_SRC, SCALE: SCALE };
 /* CLI 自测：node etl/wcp.js <core.json> —— 编码再展开，逐值比对 */
 if (require.main === module) {
   const fs = require('fs');
-  const d = JSON.parse(fs.readFileSync(process.argv[2] || '_wcbchk/core.json', 'utf8'));
+  const d = JSON.parse(fs.readFileSync(process.argv[2] || 'etl/wcp_fixture.json', 'utf8'));
   const keys = d.keys, rows = d.rows;
   const spec = pack(rows, keys);
   const expand = new Function('return (' + EXPAND_SRC + ')')();
