@@ -8,6 +8,7 @@
      ③ 所有数据表头有 scope="col"
      ④ 入口 HTML 没有同步加载巨型数据 / 外链固定版本 + SRI
      ⑤ SEO 产物齐备且每张静态页都有 canonical
+     ⑥ 静态页构建器同时支持列式核（WCP1）与旧行式核
    任何一项失败都以非零码退出，让 CI 直接拦住回归。
    ============================================================ */
 'use strict';
@@ -65,6 +66,11 @@ check(need.every(exists), 'SEO / PWA 产物齐备', need.length + ' 个文件');
 check(['rank', 'timeline', 'topics', 'model'].every((s) =>
   /rel="canonical"/.test(read('seo/' + s + '.html'))), '静态页都有 canonical');
 check(/top 20|前 20 名/i.test(read('seo/rank.html')), '静态榜单含真实前 20 名摘要');
+/* ⑥ 静态页构建器必须同时认得两种主包编码：旧行式 SLIM / 新列式 COLS（WCP1）。
+   漏掉列式分支时 update-data 的「Rebuild no-JS SEO snapshots」会直接失败。 */
+const seo = read('etl/build_seo.py');
+check(/var COLS = /.test(seo) && /var SLIM = /.test(seo),
+  'build_seo 兼容列式核与旧行式核（两种编码都能出静态页）');
 
 console.log(bad ? '\n❌ 静态体检失败 ' + bad + ' 项' : '\n✅ 静态体检全部通过');
 process.exit(bad ? 1 : 0);

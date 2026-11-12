@@ -53,7 +53,23 @@ def read_data():
         return out
 
     rows = []
-    if '__WCA_DETAIL_PENDING' in s:
+    if 'var COLS = ' in s:
+        # WCP1 列式核（2026-11-12 起）：
+        #   var COLS = [[列0 的 N 个值], …];
+        #   (__wcpExpand)(PLAYERS, COLS, KEYS, N, DETAIL_N);
+        # 行序即总分降序（与旧 SLIM 一致），取前 20 行；six 列已定点化 ×100，
+        # 下标 6 是六维小计 t，除以 100 还原。
+        j = s.find('var COLS = ')
+        cols, _ = dec.raw_decode(s, j + len('var COLS = '))
+        k = s.rfind(')(PLAYERS, COLS, ')
+        keys, _ = dec.raw_decode(s, s.find('[', k))
+        ni, ci, si = keys.index('name'), keys.index('country'), keys.index('six')
+        n = len(cols[0]) if cols else 0
+        for r in range(min(n, 20)):
+            six = cols[si][r]
+            score = (six[6] / 100.0) if isinstance(six, list) and len(six) > 6 else 0
+            rows.append((cols[ni][r], cols[ci][r], score))
+    elif '__WCA_DETAIL_PENDING' in s:
         # 新格式：主包是全量紧凑档 SLIM = [[...], ...]
         j = s.find('var SLIM_KEYS = ')
         keys, _ = dec.raw_decode(s, j + len('var SLIM_KEYS = '))
