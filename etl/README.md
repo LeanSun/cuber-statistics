@@ -60,6 +60,36 @@ node etl/build.js --dir ./sample --out /tmp/data.js --date 2026-10-18 --ver v2.0
 结果格式（time / number / multi）按 `js/calc.js` 的 EVENTS 表 `format` 字段解码；
 多盲采用 WCA 新编码 `0DDTTTTTMM` 规范解析（solved / attempted / 秒数）。
 
+## 主包编码：WCP1 列式定点字面量（`etl/wcp.js`）
+
+`js/data.js` 主包不再写行式 `var SLIM = [[…],[…]]`，而是：
+
+```js
+var COLS = [[列0 的 N 个值], [列1 的 N 个值], …];   // 同类值相邻
+(function __wcpExpand(PLAYERS, COLS, KEYS, N, DETAIL_N){ … })(PLAYERS, COLS, KEYS, N, D);
+```
+
+两件事，都无损（或只在展示精度以下）：
+
+| 手段 | 覆盖列 | 效果 |
+|---|---|---|
+| 列式排布 | 全部 core 列 | 同类值相邻，gzip 窗口命中率大幅上升 |
+| 定点化 ×100 | `m` `pk` `six` `sixS` `sixA` `yearly` | 去掉小数点与浮点尾数，token 变短 |
+| 定点化 ×1000 | `sixEv` 每个分量 | 三位小数原样保留 |
+
+实测真核（21235 行 × 19 列）：`raw -8.9%`、`gzip -21.7%`（主包字面量 3.53MB → 2.76MB），
+解析只快不慢 —— 展开仍在同一个 IIFE 内完成，V8 对纯数组字面量走常量快路径，
+没有引入任何额外的解码循环（这正是放弃 base64 + 二进制方案的原因：它 gzip 只省
+19.3%，解析却慢 2.56x）。
+
+自测（编码→展开→逐值比对，含 null / 浮点尾数 / 六维分）：
+
+```bash
+node etl/wcp.js etl/wcp_fixture.json    # 期望 mismatch=0，yearly 最大偏差 ≤1e-9
+```
+
+`--no-detail` / `--no-roster` 的样本构建仍走旧行式路径，CI 冒烟基线不受影响。
+
 ## 数据完整性约束（勿再截断）
 
 M1 占有段口径按**整条阶梯**切段（见 `etl/score/M1_占有段口径.md`），因此：

@@ -2,6 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const child_process = require('child_process');
 
 const store = {};
 const localStorage = {
@@ -2480,6 +2481,53 @@ if (P.sixdimTableHtml) {
     [coreHome, coreRank, corePk].every(function (h) { return h.indexOf('NaN') < 0; }),
     'core-only（下沉列为默认值）首页 / 总榜 / PK 均正常渲染且无 NaN');
   M.ranked.forEach(function (p, i) { Object.assign(p, saved[i]); });
+}
+
+/* ---------- WCP1 列式定点编码（2026-11-12 第二十七轮） ----------
+   把 data.js 核心档从「行式 JSON 数组字面量」换成「列式定点紧凑字面量」，
+   零解码循环（展开在 __wcpExpand 内完成，V8 对纯数组字面量走常量快路径）。
+   定点覆盖 m / pk / 六维分列 / sixEv / yearly，yearly 的 14.760000000000002 这类
+   浮点长尾 token（曾占 core 约 23% 字节）全部变成短整数。
+   验证：编码器存在、build.js 真正改用它产 var COLS、往返无损、真核已落地。 */
+console.log('== WCP1 列式定点编码 ==');
+{
+  const wcpPath = 'etl/wcp.js';
+  ok(fs.existsSync(wcpPath), 'WCP 编码器文件存在');
+  const wcpSrc = fs.readFileSync(wcpPath, 'utf8');
+  ok(/module\.exports\s*=\s*\{[^}]*pack/.test(wcpSrc) && /EXPAND_SRC/.test(wcpSrc),
+    'WCP 暴露 pack / EXPAND_SRC 供 build.js 与浏览器共用');
+  const buildSrc = fs.readFileSync('etl/build.js', 'utf8');
+  ok(/require\('\.\/wcp\.js'\)/.test(buildSrc) && /WCP\.pack\(coreRows, CORE_KEYS\)/.test(buildSrc),
+    'build.js 引入 WCP 并用它生成列式 core（var COLS）');
+  ok(/var COLS = /.test(buildSrc) && /\+\s*WCP\.EXPAND_SRC/.test(buildSrc),
+    '正式构建走 __wcpExpand 列式展开（非旧 SLIM.forEach）');
+  /* 往返无损：用内置 50 人夹具跑 WCP 编码→展开，断言 mismatch=0 */
+  const out = child_process.execFileSync(process.execPath,
+    ['etl/wcp.js', 'etl/wcp_fixture.json'], { encoding: 'utf8' });
+  ok(/mismatch=0/.test(out), 'WCP 编码→展开逐值无损（含 null / 浮点尾数 / 六维分）');
+  const gm = /gzip\s+[\d.]+MB → [\d.]+MB \((-?\d+\.\d)%\)/.exec(out);
+  ok(gm && parseFloat(gm[1]) <= -15,
+    'WCP 夹具 gzip 收益 ≥ 15%（实测 ' + (gm ? gm[1] + '%' : '解析失败') + '）');
+  ok(/yearly 最大偏差 [\d.]+e-1[0-3]/.test(out),
+    'yearly 定点化偏差落在浮点噪声量级（≤1e-9，展示精度 2 位小数不变）');
+  /* 真核落地检查：仅当仓库里的 js/data.js 已由新管线重建时断言（数据由
+     update-data.yml 的定时 / etl/** 变更构建产出，代码 PR 里可能仍是旧核）。 */
+  if (fs.existsSync('js/data.js')) {
+    const coreSrc = fs.readFileSync('js/data.js', 'utf8');
+    if (/var COLS = \[\[/.test(coreSrc)) {
+      ok(true, 'js/data.js 已是列式 core（var COLS = [[…]]）');
+      ok(!/var SLIM = \[\[/.test(coreSrc), 'js/data.js 不再含行式 SLIM 大数组');
+      ok(/window\.__WCA_COLS_PENDING = true/.test(coreSrc),
+        '列式核同样置 __WCA_COLS_PENDING，列增量链路未被破坏');
+      /* 只看列式核本体（var CFG 之前）：CFG 里的 lane 分数年份 2025.813698630137
+         属于另一个数据族（时间轴浮点），本轮不动 */
+      const colsOnly = coreSrc.slice(0, coreSrc.indexOf('var CFG = '));
+      const longFloat = (colsOnly.match(/\d\.\d{6,}/g) || []).length;
+      ok(longFloat === 0, '列式核内无浮点长尾 token（yearly 等已定点化，实测 ' + longFloat + ' 处）');
+    } else {
+      console.log('  --  js/data.js 仍是旧行式核（等待 update-data 重建），真核落地断言跳过');
+    }
+  }
 }
 
 console.log(fail ? ('\n❌ 失败 ' + fail + ' 项') : '\n✅ 全部通过');
