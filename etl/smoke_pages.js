@@ -2334,6 +2334,41 @@ if (P.sixdimTableHtml) {
 }
 
 /* ============================================================
+   2026-11-12 启动加速：用户反馈「每次进入都提示首次下载、等待过久」。
+   根因：① registerSW() 原先只在 afterData() 之后调用，首次访问取 30MB
+   主包时 SW 还没接管 → DATA_VER 里始终没有数据 → 第二次访问仍是冷启动；
+   ② 回访仍走 fetch→Uint8Array→TextDecoder→inline script 的完整重解析，
+   inline eval 永远拿不到 V8 编译缓存；③ 静态骨架写死了「首次访问」文案。
+   ============================================================ */
+{
+  const boot = fs.readFileSync(path.join(ROOT, 'js/boot.js'), 'utf8');
+  const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  const css = fs.readFileSync(path.join(ROOT, 'css/style.css'), 'utf8');
+  const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
+  const i18n = fs.readFileSync(path.join(ROOT, 'js/i18n.js'), 'utf8');
+
+  ok(/function hasCachedData\(/.test(boot) && /function putCache\(/.test(boot) &&
+    /function preloadModules\(/.test(boot) && /function setWarm\(/.test(boot),
+    '具备缓存探测 / 主动写缓存 / 页面模块并行预热 / 回访骨架收起');
+  ok(/function boot\(\)[\s\S]*?registerSW\(\);\s*\n\s*preloadModules\(\);/.test(boot),
+    'SW 在 boot 开头就注册（不再等到 afterData 之后）');
+  ok(/fetchText\(DATA_URL,[\s\S]*?, true\)/.test(boot),
+    '首次取数主动写入 Cache Storage，不依赖 SW 是否已接管');
+  ok(/loadScript\('js\/data\.js'\)/.test(boot),
+    '回访改用 <script src>：走 SW 缓存并复用 V8 编译缓存');
+  ok(!/首次访问需下载完整成绩数据/.test(html) && /id="bootNote"[^>]*hidden/.test(html),
+    '入口不再静态写死「首次访问需下载」提示，改由 boot.js 按缓存判断');
+  ok(/\.boot-warm/.test(css) && /boot-retry\[hidden\]/.test(css) &&
+    /html\[lang="en"\] \.boot-card \.zh-only/.test(css),
+    '回访轻提示样式 / hidden 显式兜底 / 骨架中英双语');
+  ok(/revalidateIfChanged/.test(sw) && /method: 'HEAD'/.test(sw) &&
+    /if \(hit\) \{[\s\S]*?return hit;/.test(sw),
+    'SW 命中缓存只发 HEAD 校验，不再每次回访后台重下几十 MB');
+  const bkeys = (i18n.match(/'boot\.[a-zA-Z]+':/g) || []).length;
+  ok(bkeys >= 26, 'boot.* 启动文案中英齐全（实得 ' + bkeys + ' 条）');
+}
+
+/* ============================================================
    2026-11-07 第七轮：辅助字对比度 / 重大事件浮层层级 / 死 CSS 清理。
    CDP 实测（_cdpchk/audit_round7.mjs + layer_test2.mjs）：浅色 --text-3 对白卡
    2.99:1、对 --bg-soft-2 仅 2.47:1，深色对 --bg-elev 4.07:1；.ms-pop z-index 6

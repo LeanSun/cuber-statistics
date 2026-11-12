@@ -3,6 +3,21 @@
    ============================================================ */
 (function () {
   const ZH = {
+    /* 启动骨架文案：boot.js 比 app.js 更早执行，必须在这里备齐中英两套 */
+    'boot.local': '正在加载本地 WCA 成绩数据…',
+    'boot.fetching': '正在获取 WCA 成绩数据…',
+    'boot.loading': '加载中…',
+    'boot.mb': ' MB 已接收',
+    'boot.ready': '数据就绪，正在构建页面…',
+    'boot.init': '正在初始化界面…',
+    'boot.warm': '正在从本地缓存恢复…',
+    'boot.firstNote': '首次加载约 7 MB 压缩数据，完成后自动缓存；后续访问无需再次下载。',
+    'boot.fail': '数据加载失败',
+    'boot.netErr': '网络错误',
+    'boot.retryTip': '请检查网络后重试',
+    'boot.retry': '重新加载',
+    'boot.noReal': '真实 WCA 数据未能加载',
+
     'a11y.skip': '跳到主要内容',
     'demo.banner': '演示数据 · 页面中的人名与成绩均由程序生成的虚构样本构成，不代表任何真实选手',
     'foot.data': '数据来源：World Cube Association 官方成绩导出（演示阶段为虚构样本）',
@@ -365,6 +380,21 @@
   };
 
   const EN = {
+    /* Boot-skeleton copy: boot.js runs before app.js and needs both languages */
+    'boot.local': 'Loading local WCA results…',
+    'boot.fetching': 'Fetching WCA results…',
+    'boot.loading': 'Loading…',
+    'boot.mb': ' MB received',
+    'boot.ready': 'Data ready, building the page…',
+    'boot.init': 'Building the interface…',
+    'boot.warm': 'Restoring from local cache…',
+    'boot.firstNote': 'First visit downloads ~7 MB compressed and caches it; later visits need no download.',
+    'boot.fail': 'Data load failed',
+    'boot.netErr': 'Network error',
+    'boot.retryTip': 'Check your connection and retry',
+    'boot.retry': 'Retry',
+    'boot.noReal': 'Real WCA data failed to load',
+
     'a11y.skip': 'Skip to main content',
     'demo.banner': 'Demo data · All names and results shown are programmatically generated fictional samples',
     'foot.data': 'Data source: World Cube Association official results export (fictional samples in demo)',

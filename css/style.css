@@ -2174,6 +2174,20 @@ button.exp-v3-wca.pid-copy:hover{color:var(--accent)}
 .boot-note{margin:18px 0 0;font-size:11.5px;line-height:1.6;color:var(--text-3)}
 .boot-noscript{max-width:620px;margin:0 auto;padding:20px;border:1px solid var(--border);border-radius:12px;background:var(--bg-elev);font-size:14px;line-height:1.7;color:var(--text)}
 .boot-noscript a{color:var(--accent)}
+/* 骨架双语：head 里的首帧脚本已设 html[lang]，纯 CSS 切换不闪中文 */
+.boot-card .en-only{display:none}
+html[lang="en"] .boot-card .zh-only{display:none}
+html[lang="en"] .boot-card .en-only{display:inline}
+/* .btn 自带 display:inline-flex 会压过 UA 的 [hidden]，作者样式必须显式补一条 */
+.boot-note[hidden],.boot-retry[hidden]{display:none}
+/* 回访快速路径：数据已在本地缓存，把大进度卡收成一行轻提示，
+   不再展示下载进度，也不再出现「首次访问需下载完整成绩数据」 */
+.boot-panel.boot-warm{align-items:flex-start;padding:10px 16px 0}
+.boot-warm .boot-card{width:auto;padding:8px 16px;border-radius:99px;text-align:left;box-shadow:none}
+.boot-warm .boot-cube,.boot-warm .boot-title,.boot-warm .boot-sub,
+.boot-warm .boot-track,.boot-warm .boot-meta,.boot-warm .boot-note{display:none}
+.boot-warm .boot-msg{margin:0;font-size:12px;font-weight:500;color:var(--text-2)}
+.boot-warm .boot-msg::before{content:'';display:inline-block;width:6px;height:6px;margin-right:8px;border-radius:50%;background:var(--m2,#4acc79);vertical-align:middle}
 @media (prefers-reduced-motion:reduce){.boot-cube i,.boot-track.busy .boot-fill{animation:none}}
 
 /* 六维细则快照过期提示（与每周更新的榜单对比） */

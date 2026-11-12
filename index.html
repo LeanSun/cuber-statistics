@@ -110,12 +110,13 @@
     <div class="boot-card">
       <div class="boot-cube" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
       <h1 class="boot-title">Cube <span>GOAT</span></h1>
-      <p class="boot-sub">基于 WCA 官方成绩的六维历史地位评分</p>
-      <p class="boot-msg" id="bootMsg">正在连接数据服务…</p>
+      <p class="boot-sub"><span class="zh-only">基于 WCA 官方成绩的六维历史地位评分</span><span class="en-only">Six-axis historical GOAT ratings from official WCA results</span></p>
+      <p class="boot-msg" id="bootMsg"><span class="zh-only">正在连接数据服务…</span><span class="en-only">Connecting…</span></p>
       <div class="boot-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="bootTrack"><div class="boot-fill" id="bootFill"></div></div>
       <div class="boot-meta"><span id="bootPct">0%</span><span id="bootSize">—</span></div>
       <button class="btn boot-retry" id="bootRetry" type="button" hidden>重新加载</button>
-      <p class="boot-note">首次访问需下载完整成绩数据；之后由本地缓存加速。</p>
+      <!-- 由 boot.js 按「是否已有本地缓存」动态填写：回访时不再显示「首次访问需下载…」 -->
+      <p class="boot-note" id="bootNote" hidden></p>
     </div>
   </div>
   <noscript>

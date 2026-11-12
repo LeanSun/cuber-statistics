@@ -6,11 +6,23 @@
 
    现在：
    ① 首屏骨架由 index.html 静态渲染，浏览器立刻可见；
-   ② 这里用 fetch 流式取数据，实时显示已接收字节；
+   ② 首次访问用 fetch 流式取数据，实时显示已接收字节；
    ③ 数据就绪后再按序挂载页面模块与 app.js（app.js 的 IIFE 立即
       执行 render()，骨架被替换）；
    ④ 体积最大的「选手明细层」由 data_detail.js 后台补入，不阻塞首屏；
    ⑤ Service Worker 让二次访问直接命中本地缓存。
+
+   2026-11-12 启动加速（解决「每次都提示首次下载、等待过久」）：
+   ⑥ registerSW() 移到 boot 一开始就执行，并且首次取数时**主动写入
+      Cache Storage**。以前只在 afterData() 之后注册，首次访问的数据请求
+      根本没被 SW 接管，缓存里始终没有 30MB 主包 → 第二次访问依旧是冷启动。
+   ⑦ 回访命中数据缓存时改用 <script src> 加载：走 SW/HTTP 缓存与 V8
+      编译缓存，省掉 fetch → Uint8Array → TextDecoder → inline script 的
+      三次 30MB 内存拷贝与一次完整重编译；骨架也收成一行提示，不再出现
+      「首次访问需下载完整成绩数据」。
+   ⑧ 5 个页面模块用 <link rel=preload> 与数据下载并行预热，数据一到即可
+      按序执行，不再串行等 5 个 RTT。
+   ⑨ sw.js 命中后的后台刷新改为 HEAD 轻量校验，不再每次回访后台重下几十 MB。
    旧格式的 data.js（没有 __WCA_DETAIL_PENDING）依然可用，便于回滚。
    ============================================================ */
 (function () {
@@ -23,26 +35,69 @@
     return b ? (b.getAttribute('href') || './') : './';
   })();
   var $ = function (id) { return document.getElementById(id); };
+  var panelEl = $('bootPanel'), noteEl = $('bootNote');
   var msgEl = $('bootMsg'), fillEl = $('bootFill'), trackEl = $('bootTrack');
   var pctEl = $('bootPct'), sizeEl = $('bootSize'), retryEl = $('bootRetry');
+
+  /* 与 sw.js 的 DATA_VER 保持一致：主动写缓存时复用同一个 Cache Storage */
+  var DATA_CACHE = 'goat-data-v1';
+  var DATA_URL = BASE + 'js/data.js';
+
+  /* 骨架比 app.js 更早出现，语言必须提前设好；判定口径与 app.js initLang 一致 */
+  (function () {
+    try {
+      var lg = 'zh';
+      try { lg = localStorage.getItem('goat-lang') || 'zh'; } catch (e) { }
+      if (window.I18N && window.I18N.set) window.I18N.set(lg);
+    } catch (e) { }
+  })();
+  var T = window.I18N || function (k) { return k; };
 
   function setBusy(on) {
     if (trackEl) trackEl.className = 'boot-track' + (on ? ' busy' : '');
   }
   function say(text) { if (msgEl) msgEl.textContent = text; }
+  function setNote(text) {
+    if (!noteEl) return;
+    noteEl.textContent = text || '';
+    noteEl.hidden = !text;
+  }
+  /* 回访时把大进度卡收成一行小字：数据已在本地，没必要再展示下载进度 */
+  function setWarm(on) {
+    if (panelEl) panelEl.className = 'boot-panel' + (on ? ' boot-warm' : '');
+  }
   function setPct(p) {
     if (pctEl) pctEl.textContent = p == null ? '—' : (p + '%');
     if (trackEl) trackEl.setAttribute('aria-valuenow', String(p == null ? 0 : p));
     if (fillEl && p != null) fillEl.style.width = p + '%';
   }
   function setBytes(n) {
-    if (sizeEl) sizeEl.textContent = (n / 1048576).toFixed(1) + ' MB 已接收';
+    if (sizeEl) sizeEl.textContent = (n / 1048576).toFixed(1) + T('boot.mb');
   }
   function fail(text) {
-    setBusy(false); setPct(0); say(text);
+    setWarm(false); setBusy(false); setPct(0); say(text); setNote('');
     if (retryEl) { retryEl.hidden = false; retryEl.onclick = function () { location.reload(); }; }
   }
-  function done() { setBusy(false); setPct(100); say('数据就绪，正在构建页面…'); }
+  function done() { setBusy(false); setPct(100); say(T('boot.ready')); }
+
+  /* ---------- 数据缓存：只探测元数据，不读取 30MB body ---------- */
+  function hasCachedData() {
+    if (typeof caches === 'undefined' || typeof Request === 'undefined') return Promise.resolve(false);
+    try {
+      return caches.open(DATA_CACHE).then(function (c) {
+        return c.match(new Request(DATA_URL)).then(function (r) { return !!r; });
+      }).catch(function () { return false; });
+    } catch (e) { return Promise.resolve(false); }
+  }
+  /* 首次取数时主动写缓存：SW 首次注册往往赶不上这一次请求，不能只靠 SW 拦截 */
+  function putCache(url, resp) {
+    if (typeof caches === 'undefined' || !resp) return;
+    try {
+      caches.open(DATA_CACHE)
+        .then(function (c) { return c.put(new Request(url), resp); })
+        .catch(function () { });
+    } catch (e) { }
+  }
 
   /* 国旗 CSS 与图表库都不该挡住首屏：取数开始时异步插入 */
   function injectCSS(href) {
@@ -51,10 +106,12 @@
     document.head.appendChild(l);
   }
 
-  /* 流式 fetch：进度按「已接收的解压字节」显示，不用会被 gzip 差量骗到的百分比 */
-  function fetchText(url, onChunk) {
+  /* 流式 fetch：进度按「已接收的解压字节」显示，不用会被 gzip 差量骗到的百分比。
+     cacheResponse=true 时克隆一份 Response 交给 Cache Storage 消费（clone 必须在读 body 前）。 */
+  function fetchText(url, onChunk, cacheResponse) {
     return fetch(url, { credentials: 'same-origin' }).then(function (r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
+      if (cacheResponse) putCache(url, r.clone());
       if (!r.body || !r.body.getReader || typeof TextDecoder === 'undefined') return r.text();
       var reader = r.body.getReader(), chunks = [], total = 0;
       function pump(res, rej) {
@@ -90,7 +147,7 @@
       s.src = BASE + src; s.async = false;
       if (opts.integrity) { s.integrity = opts.integrity; s.crossOrigin = 'anonymous'; }
       s.onload = function () { res(); };
-      s.onerror = function () { rej(new Error('无法加载 ' + src)); };
+      s.onerror = function () { rej(new Error('load failed: ' + src)); };
       document.head.appendChild(s);
     });
   }
@@ -99,6 +156,18 @@
     return list.reduce(function (p, name) {
       return p.then(function () { return loadScript('js/' + name); });
     }, Promise.resolve());
+  }
+
+  /* 页面模块与 30MB 数据并行预热，避免数据就绪后再串行等 5 个 RTT。
+     URL 与 loadScript 完全一致，后续 <script src> 会直接命中 preload 缓存。 */
+  function preloadModules() {
+    if (location.protocol === 'file:') return;
+    ['pages-core.js', 'pages-player.js', 'pages-extra.js', 'pages-sixdim.js', 'app.js']
+      .forEach(function (name) {
+        var l = document.createElement('link');
+        l.rel = 'preload'; l.as = 'script'; l.href = BASE + 'js/' + name;
+        document.head.appendChild(l);
+      });
   }
 
   /* ---------- 明细分片：core 先让全站可浏览，detail 后台补齐 ---------- */
@@ -127,7 +196,7 @@
     /* file:// 下 fetch 会被 CORS 拦住，改用普通 <script src> 读取本地分片 */
     var get = location.protocol === 'file:'
       ? loadScript('js/data_detail.js').then(function () { return window.WCA_DETAIL; })
-      : fetchText(BASE + 'js/data_detail.js').then(function (txt) {
+      : fetchText(BASE + 'js/data_detail.js', null, true).then(function (txt) {
         execJS(txt, 'detail');
         return window.WCA_DETAIL;
       });
@@ -171,7 +240,10 @@
   }
 
   /* ---------- Service Worker ---------- */
+  var swRegistered = false;
   function registerSW() {
+    if (swRegistered) return;
+    swRegistered = true;
     if (location.protocol !== 'https:' && location.hostname !== 'localhost' &&
       location.hostname !== '127.0.0.1' && location.hostname !== '::1') return;
     /* manifest 动态挂载：静态写在 index.html 里会让 file:// 预览报 CORS 错误 */
@@ -193,9 +265,9 @@
 
   function afterData() {
     if (!window.__REAL_OK && !window.__DEMO) {
-      throw new Error('真实 WCA 数据未能加载');
+      throw new Error(T('boot.noReal'));
     }
-    say('正在初始化界面…');
+    say(T('boot.init'));
     return loadChain(['pages-core.js', 'pages-player.js', 'pages-extra.js', 'pages-sixdim.js', 'app.js'])
       .then(function () {
         setBusy(false); setPct(100);
@@ -210,32 +282,58 @@
       });
   }
 
+  function failText(e) {
+    var en = !!(T.isEn && T.isEn());
+    var err = (e && e.message ? e.message : T('boot.netErr'));
+    return T('boot.fail') + (en ? ': ' : '：') + err +
+      (en ? '. ' : '。') + T('boot.retryTip');
+  }
+
   function boot() {
-    if (retryEl) { retryEl.hidden = true; retryEl.onclick = null; }
+    if (retryEl) {
+      retryEl.hidden = true; retryEl.onclick = null;
+      retryEl.textContent = T('boot.retry');
+    }
     setBusy(true); setPct(null);
     injectCSS('css/flags.css');
     window.__DEMO = /[?&]demo=1\b/.test(location.search);
 
+    /* 这两件事与 30MB 数据下载并行：SW 越早注册越早接管，模块越早预热越省 RTT */
+    registerSW();
+    preloadModules();
+
     /* 双击 index.html 的 file:// 预览：fetch 不可用，退回 <script src>。
        失去字节进度，但站点功能完整 —— 这条路径以前就能用，不能因为改造而弄坏。 */
     if (location.protocol === 'file:') {
-      say('正在加载本地 WCA 成绩数据…');
+      say(T('boot.local'));
+      setNote('');
       loadScript('js/data.js').then(markReal).then(afterData).catch(function (e) {
-        fail('数据加载失败：' + (e && e.message ? e.message : '本地文件不可读') + '。');
+        fail(failText(e));
       });
       return;
     }
 
-    say('正在获取 WCA 成绩数据…');
-    fetchText(BASE + 'js/data.js', function (n) {
-      setBytes(n);
-      if (pctEl) pctEl.textContent = '加载中…';
-    }).then(function (txt) {
-      done();
-      execJS(txt, 'core');
-      return markReal();
-    }).then(afterData).catch(function (e) {
-      fail('数据加载失败：' + (e && e.message ? e.message : '网络错误') + '。请检查网络后重试。');
+    hasCachedData().then(function (warm) {
+      if (warm) {
+        /* 快速路径：<script src> 命中 SW 缓存并复用 V8 编译缓存；
+           不再把 30MB 文本搬进 JS 字符串、不再注入 inline script、不显示下载卡片 */
+        setWarm(true); setBusy(false);
+        say(T('boot.warm')); setNote('');
+        return loadScript('js/data.js').then(markReal).then(afterData);
+      }
+      /* 首次路径：流式字节进度 + 主动写缓存，保证第二次访问就是 warm */
+      say(T('boot.fetching'));
+      setNote(T('boot.firstNote'));
+      return fetchText(DATA_URL, function (n) {
+        setBytes(n);
+        if (pctEl) pctEl.textContent = T('boot.loading');
+      }, true).then(function (txt) {
+        done();
+        execJS(txt, 'core');
+        return markReal();
+      }).then(afterData);
+    }).catch(function (e) {
+      fail(failText(e));
     });
   }
 
