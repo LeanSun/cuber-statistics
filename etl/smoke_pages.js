@@ -2493,8 +2493,10 @@ if (P.sixdimTableHtml) {
     '旧格式 core 无标志时完全跳过列增量（回滚安全）');
   ok(/byId\[r\[0\]\]/.test(boot) && /render\(true\)/.test(boot),
     '按 id 合并（不依赖行序）、到位后保留滚动位置重绘');
-  ok(/data_cols/.test(sw) && /goat-shell-20261112b/.test(sw),
-    'SW 把 data_cols.js 纳入数据缓存并 bump 代码壳版本');
+  /* 版本号按「不早于该基线」比较，避免每轮改前端都要回来改死字符串 */
+  const shellVer = (sw.match(/SHELL_VER\s*=\s*'([^']+)'/) || [])[1] || '';
+  ok(/data_cols/.test(sw) && shellVer >= 'goat-shell-20261112b',
+    'SW 把 data_cols.js 纳入数据缓存并 bump 代码壳版本（' + (shellVer || '缺失') + '）');
 
   /* 行为回归：把下沉列临时清成 core-only 默认值，跑首屏与 PK。
      若任何首屏代码偷偷依赖它们，这里会抛错或产出 NaN —— 必须在上线前挡住。 */
