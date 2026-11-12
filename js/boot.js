@@ -22,8 +22,13 @@
       「首次访问需下载完整成绩数据」。
    ⑧ 5 个页面模块用 <link rel=preload> 与数据下载并行预热，数据一到即可
       按序执行，不再串行等 5 个 RTT。
-   ⑨ sw.js 命中后的后台刷新改为 HEAD 轻量校验，不再每次回访后台重下几十 MB。
-   旧格式的 data.js（没有 __WCA_DETAIL_PENDING）依然可用，便于回滚。
+  ⑨ sw.js 命中后的后台刷新改为 HEAD 轻量校验，不再每次回访后台重下几十 MB。
+  ⑩ 2026-11-12 首屏最小集：ETL 把只有次级页面才读的 10 列（sy / evRk /
+     原始统计计数等）拆到 js/data_cols.js，core 主包瘦身约 1/4。boot 在页面
+     模块加载的同时并行取回，按 id 原地合并进 M.ranked，到位后重绘一次。
+     core 已给这些列预置合法默认值，分片缺失 / 加载失败都只降级、不崩。
+  旧格式的 data.js（没有 __WCA_DETAIL_PENDING / __WCA_COLS_PENDING）
+  依然可用，便于回滚：无标志就完全不走新路径。
    ============================================================ */
 (function () {
   'use strict';
@@ -170,6 +175,42 @@
       });
   }
 
+  /* ---------- 列增量分片：首屏最小集 → 后台补齐次级页面专用列 ---------- */
+  function attachCols(D) {
+    var M = window.MOCK;
+    if (!M || !M.ranked || !D || !D.keys || !D.rows) return;
+    var byId = Object.create(null);
+    M.ranked.forEach(function (p) { byId[p.id] = p; });
+    var keys = D.keys;
+    D.rows.forEach(function (r) {
+      var p = byId[r[0]];
+      if (!p) return;
+      for (var i = 0; i < keys.length; i++) p[keys[i]] = r[i + 1];
+    });
+    window.__WCA_COLS_READY = true;
+    document.body.classList.add('cols-ready');
+    /* 首屏可能已经画完：补入的列只影响次级页面，重绘一次让它们立刻生效。
+       render(true) 保留滚动位置，避免用户在读榜单时被打断。 */
+    if (window.GOAT && window.GOAT.render) { try { window.GOAT.render(true); } catch (e) { } }
+  }
+
+  function loadCols() {
+    /* 旧格式 core 没有这个标志：完全跳过，功能本来就是完整的 */
+    if (!window.__WCA_COLS_PENDING) return Promise.resolve();
+    var url = BASE + 'js/data_cols.js';
+    var get = location.protocol === 'file:'
+      ? loadScript('js/data_cols.js').then(function () { return window.WCA_COLS; })
+      : fetchText(url, null, true).then(function (txt) {
+        execJS(txt, 'cols');
+        return window.WCA_COLS;
+      });
+    return get.then(function (D) {
+      if (D) attachCols(D);
+      window.WCA_COLS = null;   /* 释放这一份数组引用 */
+      window.__WCA_COLS_PENDING = false;
+    }).catch(function () { /* 列增量缺失：core 已预置默认值，页面不崩，静默降级 */ });
+  }
+
   /* ---------- 明细分片：core 先让全站可浏览，detail 后台补齐 ---------- */
   function attachDetail(list) {
     var M = window.MOCK;
@@ -189,6 +230,7 @@
     if (window.GOAT && window.GOAT.render) { try { window.GOAT.render(); } catch (e) { } }
   }
   window.GOAT = window.GOAT || {};
+  window.GOAT.attachCols = attachCols;
   window.GOAT.attachDetail = attachDetail;
 
   function loadDetail() {
@@ -268,6 +310,10 @@
       throw new Error(T('boot.noReal'));
     }
     say(T('boot.init'));
+    /* 列增量与页面模块并行下载：两者互不依赖，谁先到都不影响首屏。
+       cols 早于 app.js 到位 → 字段已写进 M.ranked，app 首次 render 就是完整值；
+       cols 晚于 app.js → attachCols() 合并后重绘一次（保留滚动位置）。 */
+    loadCols();
     return loadChain(['pages-core.js', 'pages-player.js', 'pages-extra.js', 'pages-sixdim.js', 'app.js'])
       .then(function () {
         setBusy(false); setPct(100);

@@ -2420,5 +2420,67 @@ if (P.sixdimTableHtml) {
     '删除零实例死规则（modal / rank4 / 旧 cov-grid）并保留现行 112px 项目格子');
 }
 
+/* ============================================================
+   2026-11-12 首屏最小集 + 后台列增量：core 只留首屏必需列，其余 10 列
+   拆到 data_cols.js，boot 与页面模块并行取回、按 id 原地合并后重绘。
+   ============================================================ */
+{
+  const build = fs.readFileSync(path.join(ROOT, 'etl/build.js'), 'utf8');
+  const boot = fs.readFileSync(path.join(ROOT, 'js/boot.js'), 'utf8');
+  const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
+
+  ok(/const COLS_OUT\s*=\s*arg\(/.test(build) && /window\.WCA_COLS\s*=\s*\{keys:/.test(build) &&
+    /__WCA_COLS_PENDING\s*=\s*true/.test(build) && /colsFlag/.test(build),
+    'ETL 产出 data_cols.js 分片，core 置 __WCA_COLS_PENDING');
+
+  /* 从源码抠出 COLS_KEYS，断言首屏同步依赖的列没被误下沉 */
+  const cm = build.match(/const COLS_KEYS\s*=\s*(\[[^\]]*\]);/);
+  let colsKeys = [];
+  try { if (cm) colsKeys = JSON.parse(cm[1].replace(/'/g, '"')); } catch (e) { }
+  const mustStay = ['sixEv', 'sixS', 'sixA', 'yearly', 'six', 'm', 'pk', 'events', 'id', 'name'];
+  ok(cm && colsKeys.length >= 8 && mustStay.every(function (k) { return colsKeys.indexOf(k) < 0; }),
+    '首屏依赖列（sixEv/sixS/sixA/yearly/six/m/pk/events/id/name）全部留在 core');
+
+  const dm = build.match(/const COLS_DEFAULT\s*=\s*(\{[^}]*\});/);
+  ok(dm && colsKeys.length >= 8 && colsKeys.every(function (k) {
+    return new RegExp('\\b' + k + '\\s*:').test(dm[1]);
+  }), 'core 为每个下沉列都预置合法默认值（core-only 阶段不崩）');
+
+  ok(/coreRows\s*=\s*NO_DETAIL\s*\?\s*slimRows/.test(build) &&
+    /colsFlag\s*=\s*NO_DETAIL\s*\?\s*''\s*:/.test(build),
+    '样本构建（--no-detail）不拆列、不产分片，旧行为保持不变');
+
+  ok(/function loadCols\(/.test(boot) && /function attachCols\(/.test(boot) &&
+    /GOAT\.attachCols\s*=\s*attachCols/.test(boot) && /loadCols\(\);/.test(boot),
+    'boot 具备 loadCols / attachCols 并与页面模块并行发起');
+  ok(/if \(!window\.__WCA_COLS_PENDING\) return Promise\.resolve\(\);/.test(boot),
+    '旧格式 core 无标志时完全跳过列增量（回滚安全）');
+  ok(/byId\[r\[0\]\]/.test(boot) && /render\(true\)/.test(boot),
+    '按 id 合并（不依赖行序）、到位后保留滚动位置重绘');
+  ok(/data_cols/.test(sw) && /goat-shell-20261112b/.test(sw),
+    'SW 把 data_cols.js 纳入数据缓存并 bump 代码壳版本');
+
+  /* 行为回归：把下沉列临时清成 core-only 默认值，跑首屏与 PK。
+     若任何首屏代码偷偷依赖它们，这里会抛错或产出 NaN —— 必须在上线前挡住。 */
+  const COLS = ['sy', 'evRk', 'resultRows', 'attempts', 'solves', 'dnf',
+    'cities', 'maxEventsPerComp', 'multiEventComp', 'esum'];
+  const saved = M.ranked.map(function (p) {
+    const o = {}; COLS.forEach(function (k) { o[k] = p[k]; }); return o;
+  });
+  M.ranked.forEach(function (p) {
+    p.sy = null; p.evRk = null; p.resultRows = 0; p.attempts = 0; p.solves = 0;
+    p.dnf = 0; p.cities = 0; p.maxEventsPerComp = 0; p.multiEventComp = 0; p.esum = 0;
+  });
+  const coreHome = tryRender('首屏最小集 · 首页', function () { return P.home(); });
+  const coreRank = tryRender('首屏最小集 · 总榜', function () { return P.rank(Object.assign({}, base)); });
+  const corePk = tryRender('首屏最小集 · 选手 PK', function () {
+    return P.pk(Object.assign({}, base, { pk: M.ranked.slice(0, 2).map(function (p) { return p.id; }) }));
+  });
+  ok(!!(coreHome && coreRank && corePk) &&
+    [coreHome, coreRank, corePk].every(function (h) { return h.indexOf('NaN') < 0; }),
+    'core-only（下沉列为默认值）首页 / 总榜 / PK 均正常渲染且无 NaN');
+  M.ranked.forEach(function (p, i) { Object.assign(p, saved[i]); });
+}
+
 console.log(fail ? ('\n❌ 失败 ' + fail + ' 项') : '\n✅ 全部通过');
 process.exit(fail ? 1 : 0);

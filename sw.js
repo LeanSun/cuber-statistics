@@ -4,15 +4,16 @@
    两套缓存分开管理：
    · SHELL_VER：代码壳（HTML/CSS/小 JS）。network-first，保证发布后用户
      立刻拿到新代码；断网时回退缓存，导航请求回退首页。
-   · DATA_VER：巨型数据文件（data.js / data_detail.js / roster.js /
-     sixdim_data.js）。stale-while-revalidate —— 先秒开本地副本；后台只发一个
-     HEAD 校验 Last-Modified / Content-Length，数据真的变了才重新下载，
-     避免每次回访都在后台重下几十 MB、拖慢「秒开」。
+   · DATA_VER：巨型数据文件（data.js / data_cols.js / data_detail.js /
+     roster.js / sixdim_data.js）。stale-while-revalidate —— 先秒开本地副本；
+     后台只发一个 HEAD 校验 Last-Modified / Content-Length，数据真的变了才
+     重新下载，避免每次回访都在后台重下几十 MB、拖慢「秒开」。
    修改前端代码时请 bump SHELL_VER；数据每周由 CI 更新，无需改版本号。
    2026-11-12：boot.js 会在首次取数时主动把 data.js 写进 DATA_VER（SW 首次
    注册往往赶不上这次请求），并在 boot 一开始注册 SW、预热页面模块。
+   同日追加 data_cols.js（首屏最小集的列增量），与 detail 一并走数据缓存。
    ============================================================ */
-const SHELL_VER = 'goat-shell-20261112a';
+const SHELL_VER = 'goat-shell-20261112b';
 const DATA_VER = 'goat-data-v1';
 const SHELL = [
   './', './index.html', './404.html', './manifest.json', './favicon.svg', './favicon.ico',
@@ -23,7 +24,7 @@ const SHELL = [
   './js/pages-core.js', './js/pages-player.js', './js/pages-extra.js',
   './js/pages-sixdim.js', './js/app.js', './js/mock.js'
 ];
-const DATA_RE = /\/(data|data_detail|roster|sixdim_data)\.js$/;
+const DATA_RE = /\/(data|data_cols|data_detail|roster|sixdim_data)\.js$/;
 
 self.addEventListener('install', function (e) {
   e.waitUntil(
