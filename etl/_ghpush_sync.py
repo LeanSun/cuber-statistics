@@ -25,7 +25,7 @@ OWNER, REPO, BRANCH = 'LeanSun', 'cuber-statistics', 'main'
 # CI 按最新 WCA 导出重建，本地副本较旧，推送时一律保留远端版本
 EXCLUDE = {'js/data.js', 'js/roster.js'}
 # 只存在于远端（由 CI 生成、本地不跟踪）的数据分片：推送时原样沿用，绝不能删
-KEEP_REMOTE_ONLY = {'js/data_cols.js', 'js/data_detail.js'}
+KEEP_REMOTE_ONLY = {'js/data_cols.js', 'js/data_detail.js', 'js/data_sixev.js'}
 
 
 def sh(args):

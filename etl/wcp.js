@@ -116,7 +116,7 @@ const EXPAND_SRC = String(function __wcpExpand(PLAYERS, COLS, KEYS, N, DETAIL_N)
   return PLAYERS;
 });
 
-module.exports = { pack: pack, EXPAND_SRC: EXPAND_SRC, SCALE: SCALE };
+module.exports = { pack: pack, EXPAND_SRC: EXPAND_SRC, SCALE: SCALE, packSixEv: packSixEv };
 
 /* CLI 自测：node etl/wcp.js <core.json> —— 编码再展开，逐值比对 */
 if (require.main === module) {

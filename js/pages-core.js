@@ -480,6 +480,9 @@
     sixEvSize: function (rt) { return SIXEV[rt] ? SIXEV[rt].size : -1; },
     sixEvProbe: function (rt, pid) { return SIXEV[rt] ? (SIXEV[rt].get(pid) || null) : null; }
   };
+  /* boot.js 的 attachSixEv() 把 data_sixev.js 合并进来后调用：
+     清掉缓存判定并重算「这份数据到底有没有按项目分解」。 */
+  P.markSixEv = function () { HAS_SIXEV = null; hasSixEv(); };
 
   /* 另类统计页的候选池（2026-11-05 第十五轮重写）：
      趣味统计的项目筛选已经统一到顶部筛选条（预设 chips + 项目图标多选），
@@ -836,6 +839,12 @@
   }
 
   P.rank = function (state) {
+    /* 逐项目六维分片（data_sixev.js）默认榜不下载；一旦用户按项目筛选而它还没到，
+       就地触发一次（取回后 boot.js 会 markSixEv + 重绘，滚动位置保留）。 */
+    if (!hasSixEv() && window.GOAT && window.GOAT.loadSixEv &&
+      ((state.evSel && state.evSel.length) || (state.group && state.group !== 'all'))) {
+      try { window.GOAT.loadSixEv(); } catch (e) { }
+    }
     const allRows = P.filtered(state);
     /* 仅统计前 1000 名（排序已在 filtered 内完成，这里截断） */
     const rowsAll = allRows.length > RANK_TOP ? allRows.slice(0, RANK_TOP) : allRows;

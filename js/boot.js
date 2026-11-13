@@ -112,10 +112,17 @@
   }
 
   /* 流式 fetch：进度按「已接收的解压字节」显示，不用会被 gzip 差量骗到的百分比。
-     cacheResponse=true 时克隆一份 Response 交给 Cache Storage 消费（clone 必须在读 body 前）。 */
-  function fetchText(url, onChunk, cacheResponse) {
-    return fetch(url, { credentials: 'same-origin' }).then(function (r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
+     cacheResponse=true 时克隆一份 Response 交给 Cache Storage 消费（clone 必须在读 body 前）。
+     pre = index.html 里提前发出的 fetch Promise；命中就省掉整个往返，失败则自己重取。 */
+  function fetchText(url, onChunk, cacheResponse, pre) {
+    var ready = pre ? pre.catch(function () { return null; }) : Promise.resolve(null);
+    return ready.then(function (first) {
+      if (first && first.ok) return first;
+      return fetch(url, { credentials: 'same-origin' }).then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r;
+      });
+    }).then(function (r) {
       if (cacheResponse) putCache(url, r.clone());
       if (!r.body || !r.body.getReader || typeof TextDecoder === 'undefined') return r.text();
       var reader = r.body.getReader(), chunks = [], total = 0;
@@ -161,6 +168,26 @@
     return list.reduce(function (p, name) {
       return p.then(function () { return loadScript('js/' + name); });
     }, Promise.resolve());
+  }
+
+  /* 页面模块全部独立（各自 `window.P || (window.P = {})` 守卫），只有 app.js 必须在最后
+     —— 它启动时要读 window.P。以前串行链要 5 个来回，现在 4 个并行 + app 收尾。 */
+  function loadModules(list) {
+    var head = list.slice(0, list.length - 1), tail = list[list.length - 1];
+    return Promise.all(head.map(function (name) { return loadScript('js/' + name); }))
+      .then(function () { return loadScript('js/' + tail); });
+  }
+
+  /* 空闲执行：requestIdleCallback 优先，max 毫秒兜底（Safari 无 rIC） */
+  function whenIdle(fn, max) {
+    var fired = false;
+    function run() { if (fired) return; fired = true; fn(); }
+    if (typeof requestIdleCallback === 'function') {
+      var h = setTimeout(run, max);
+      requestIdleCallback(function () { clearTimeout(h); run(); }, { timeout: max });
+    } else {
+      setTimeout(run, Math.min(max, 1200));
+    }
   }
 
   /* 页面模块与 30MB 数据并行预热，避免数据就绪后再串行等 5 个 RTT。
@@ -233,6 +260,49 @@
   window.GOAT.attachCols = attachCols;
   window.GOAT.attachDetail = attachDetail;
 
+  /* ---------- 逐项目六维分片：默认榜用不到，按项目筛选时才需要 ---------- */
+  function attachSixEv(D) {
+    var M = window.MOCK;
+    if (!M || !M.ranked || !D || !D.ids) return;
+    var scale = D.scale || 1;
+    var map = Object.create(null);
+    for (var i = 0; i < D.ids.length; i++) map[D.ids[i]] = D.vals[i];
+    for (var j = 0; j < M.ranked.length; j++) {
+      var p = M.ranked[j], v = map[p.id];
+      if (!v) continue;
+      var se = {};
+      String(v).split(';').forEach(function (seg) {
+        var q = seg.indexOf(':');
+        if (q < 0) return;
+        se[seg.slice(0, q)] = seg.slice(q + 1).split(',').map(function (x) { return Number(x) / scale; });
+      });
+      p.sixEv = se;
+    }
+    window.__WCA_SIXEV_READY = true;
+    if (window.P && window.P.markSixEv) { try { window.P.markSixEv(); } catch (e) { } }
+    if (window.GOAT.render) { try { window.GOAT.render(true); } catch (e) { } }
+  }
+  window.GOAT.attachSixEv = attachSixEv;
+
+  var sixevPromise = null;
+  function loadSixEv() {
+    if (!window.__WCA_SIXEV_PENDING) return Promise.resolve();
+    if (window.__WCA_SIXEV_READY) return Promise.resolve();
+    if (sixevPromise) return sixevPromise;
+    var get = location.protocol === 'file:'
+      ? loadScript('js/data_sixev.js').then(function () { return window.WCA_SIXEV; })
+      : fetchText(BASE + 'js/data_sixev.js', null, true).then(function (txt) {
+        execJS(txt, 'sixev');
+        return window.WCA_SIXEV;
+      });
+    sixevPromise = get.then(function (D) { attachSixEv(D); }).catch(function () {
+      /* 分片缺失：项目筛选退回全站分近似，不影响其它页面 */
+      window.__WCA_SIXEV_READY = false;
+    });
+    return sixevPromise;
+  }
+  window.GOAT.loadSixEv = loadSixEv;
+
   function loadDetail() {
     if (!window.__WCA_DETAIL_PENDING) return Promise.resolve();
     /* file:// 下 fetch 会被 CORS 拦住，改用普通 <script src> 读取本地分片 */
@@ -255,6 +325,23 @@
   function routeNeedsMath() {
     var seg = (location.hash || '').replace(/^#\/?/, '').split(/[?#]/)[0].split('/')[0];
     return seg === 'model' || seg === 'player';
+  }
+  /* 选手页要 p.records / p.podiums，另类统计的纪录榜也读 p.records；
+     其余页面用不到明细，等空闲再补。 */
+  function routeNeedsDetail() {
+    var seg = (location.hash || '').replace(/^#\/?/, '').split(/[?#]/)[0].split('/')[0];
+    return seg === 'player' || seg === 'topics';
+  }
+  var detailAsked = false;
+  function scheduleDetail() {
+    if (detailAsked) return;
+    detailAsked = true;
+    if (routeNeedsDetail()) { loadDetail(); return; }
+    /* 首屏稳定后 2.5 秒内必取；用户先跳去选手页则立刻取 */
+    whenIdle(function () { loadDetail(); }, 2500);
+    window.addEventListener('hashchange', function () {
+      if (routeNeedsDetail()) loadDetail();
+    });
   }
   function ensureMathJax() {
     /* 双击本地预览时完全离线：不注入外部 CDN，公式保持等宽文本降级 */
@@ -310,11 +397,9 @@
       throw new Error(T('boot.noReal'));
     }
     say(T('boot.init'));
-    /* 列增量与页面模块并行下载：两者互不依赖，谁先到都不影响首屏。
-       cols 早于 app.js 到位 → 字段已写进 M.ranked，app 首次 render 就是完整值；
-       cols 晚于 app.js → attachCols() 合并后重绘一次（保留滚动位置）。 */
-    loadCols();
-    return loadChain(['pages-core.js', 'pages-player.js', 'pages-extra.js', 'pages-sixdim.js', 'app.js'])
+    /* 首屏只等 core 主包。列增量 / 逐项目六维 / 明细三片全部退到首屏渲染之后：
+       以前它们和 5 个页面模块抢同一条带宽，慢网下等于把首屏往后推 2~3 秒。 */
+    return loadModules(['pages-core.js', 'pages-player.js', 'pages-extra.js', 'pages-sixdim.js', 'app.js'])
       .then(function () {
         setBusy(false); setPct(100);
         registerSW();
@@ -323,8 +408,10 @@
         if (window.__WCA_DETAIL_READY && window.GOAT.render) {
           try { window.GOAT.render(); } catch (e) { }
         }
-        /* 明细层不阻塞任何交互：后台取回后原地合并并重绘 */
-        loadDetail();
+        /* 画面已经能用了，剩下的按优先级排队：列增量 → 逐项目六维 → 明细 */
+        whenIdle(function () { loadCols(); }, 400);
+        whenIdle(function () { loadSixEv(); }, 2200);
+        scheduleDetail();
       });
   }
 
@@ -367,13 +454,14 @@
         say(T('boot.warm')); setNote('');
         return loadScript('js/data.js').then(markReal).then(afterData);
       }
-      /* 首次路径：流式字节进度 + 主动写缓存，保证第二次访问就是 warm */
+      /* 首次路径：流式字节进度 + 主动写缓存，保证第二次访问就是 warm。
+         index.html 已在 HTML 解析阶段先发了一手 fetch，这里直接复用（省掉整段等待）。 */
       say(T('boot.fetching'));
       setNote(T('boot.firstNote'));
       return fetchText(DATA_URL, function (n) {
         setBytes(n);
         if (pctEl) pctEl.textContent = T('boot.loading');
-      }, true).then(function (txt) {
+      }, true, window.__DATA_PRE).then(function (txt) {
         done();
         execJS(txt, 'core');
         return markReal();

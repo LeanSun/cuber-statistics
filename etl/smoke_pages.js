@@ -2333,9 +2333,9 @@ if (P.sixdimTableHtml) {
   const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
 
   ok(/fetchText\(/.test(boot) && /getReader\(\)/.test(boot) &&
-    /loadChain\(\[/.test(boot) && /attachDetail/.test(boot) &&
+    /loadModules\(\[/.test(boot) && /attachDetail/.test(boot) &&
     /__WCA_DETAIL_PENDING/.test(boot) && /bootRetry/.test(boot),
-    '首屏流式取数 + 按序挂载 + 后台明细分片 + 失败重试');
+    '首屏流式取数 + 模块并行挂载 + 后台明细分片 + 失败重试');
   ok(/__WCA_DETAIL_PENDING/.test(build) && /DETAIL_OUT/.test(build) &&
     /NO_DETAIL/.test(build) && /var PLAYERS = '/.test(build),
     'ETL 产出 core + data_detail.js，样本构建自动回退单文件');
@@ -2388,8 +2388,20 @@ if (P.sixdimTableHtml) {
     '具备缓存探测 / 主动写缓存 / 页面模块并行预热 / 回访骨架收起');
   ok(/function boot\(\)[\s\S]*?registerSW\(\);\s*\n\s*preloadModules\(\);/.test(boot),
     'SW 在 boot 开头就注册（不再等到 afterData 之后）');
-  ok(/fetchText\(DATA_URL,[\s\S]*?, true\)/.test(boot),
-    '首次取数主动写入 Cache Storage，不依赖 SW 是否已接管');
+  ok(/fetchText\(DATA_URL,[\s\S]*?, true, window\.__DATA_PRE\)/.test(boot),
+    '首次取数主动写入 Cache Storage，并复用 index.html 提前发出的 fetch');
+  /* 2026-11-13 首访等待：把「发请求的时刻」提到 HTML 解析阶段，并让分片排队 */
+  ok(/__DATA_PRE\s*=\s*p/.test(html) && /fetch\('js\/data\.js'/.test(html),
+    'index.html 在解析阶段就发起 data.js 请求（不再等 defer 链末尾的 boot.js）');
+  ok(/function loadModules\(/.test(boot) && /Promise\.all\(head\.map/.test(boot),
+    '页面模块并行挂载（4 个并行 + app.js 收尾），不再是 5 个串行 RTT');
+  ok(/function whenIdle\(/.test(boot) &&
+    /whenIdle\(function \(\) \{ loadCols\(\); \}, 400\)/.test(boot) &&
+    /whenIdle\(function \(\) \{ loadSixEv\(\); \}, 2200\)/.test(boot),
+    '列增量 / 逐项目六维退到首屏渲染之后按优先级排队');
+  ok(/function routeNeedsDetail\(/.test(boot) &&
+    /whenIdle\(function \(\) \{ loadDetail\(\); \}, 2500\)/.test(boot),
+    '明细分片不再插队：选手页/另类统计立即取，其余空闲再取');
   ok(/loadScript\('js\/data\.js'\)/.test(boot),
     '回访改用 <script src>：走 SW 缓存并复用 V8 编译缓存');
   ok(!/首次访问需下载完整成绩数据/.test(html) && /id="bootNote"[^>]*hidden/.test(html),
@@ -2469,13 +2481,14 @@ if (P.sixdimTableHtml) {
     /__WCA_COLS_PENDING\s*=\s*true/.test(build) && /colsFlag/.test(build),
     'ETL 产出 data_cols.js 分片，core 置 __WCA_COLS_PENDING');
 
-  /* 从源码抠出 COLS_KEYS，断言首屏同步依赖的列没被误下沉 */
+  /* 从源码抠出 COLS_KEYS，断言首屏同步依赖的列没被误下沉
+     （sixEv 已单列成片，见下方 data_sixev 段） */
   const cm = build.match(/const COLS_KEYS\s*=\s*(\[[^\]]*\]);/);
   let colsKeys = [];
   try { if (cm) colsKeys = JSON.parse(cm[1].replace(/'/g, '"')); } catch (e) { }
-  const mustStay = ['sixEv', 'sixS', 'sixA', 'yearly', 'six', 'm', 'pk', 'events', 'id', 'name'];
+  const mustStay = ['sixS', 'sixA', 'yearly', 'six', 'm', 'pk', 'events', 'id', 'name'];
   ok(cm && colsKeys.length >= 8 && mustStay.every(function (k) { return colsKeys.indexOf(k) < 0; }),
-    '首屏依赖列（sixEv/sixS/sixA/yearly/six/m/pk/events/id/name）全部留在 core');
+    '首屏依赖列（sixS/sixA/yearly/six/m/pk/events/id/name）全部留在 core');
 
   const dm = build.match(/const COLS_DEFAULT\s*=\s*(\{[^}]*\});/);
   ok(dm && colsKeys.length >= 8 && colsKeys.every(function (k) {
@@ -2564,6 +2577,93 @@ console.log('== WCP1 列式定点编码 ==');
     } else {
       console.log('  --  js/data.js 仍是旧行式核（等待 update-data 重建），真核落地断言跳过');
     }
+  }
+}
+
+/* ============================================================
+   2026-11-13 首屏再砍一刀：sixEv 抽成 data_sixev.js
+   ------------------------------------------------------------
+   sixEv 是 core 里最胖的一列（真核 5.6MB / 23.5MB），却只有「按项目筛选」
+   时才被读到。抽成独立分片后 core gzip 5.14MB → 3.31MB（-36%），
+   首屏只等 3.31MB；用户点项目筛选时再按需取回 1.6MB 并原地补齐。
+   ============================================================ */
+console.log('== sixEv 分片（首屏再砍 36%）==');
+{
+  const build = fs.readFileSync(path.join(ROOT, 'etl/build.js'), 'utf8');
+  const boot = fs.readFileSync(path.join(ROOT, 'js/boot.js'), 'utf8');
+  const core = fs.readFileSync(path.join(ROOT, 'js/pages-core.js'), 'utf8');
+  const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
+  const ci = fs.readFileSync(path.join(ROOT, '.github/workflows/update-data.yml'), 'utf8');
+
+  ok(/const SIXEV_OUT\s*=\s*arg\(/.test(build) &&
+    /window\.WCA_SIXEV\s*=\s*\{scale:/.test(build) && /sixevFlag/.test(build),
+    'ETL 产出 data_sixev.js 分片（含 scale），core 置 __WCA_SIXEV_PENDING');
+  ok(/SIXEV_KEYS\s*=\s*\['sixEv'\]/.test(build) && /SIXEV_KEYS\.indexOf\(k\)\s*<\s*0/.test(build),
+    'core 列集合排除 sixEv（不是复制一份，是彻底搬走）');
+  ok(/sixEv:null/.test(build), 'core 为 sixEv 预置 null 默认值（core-only 阶段不崩）');
+  ok(/SIXEV_KEYS/.test(build) && /NO_DETAIL\s*\?\s*''\s*:\s*'  window\.__WCA_SIXEV_PENDING = true;/.test(build),
+    '样本构建（--no-detail）不产分片、不置标志');
+
+  ok(/function loadSixEv\(/.test(boot) && /function attachSixEv\(/.test(boot) &&
+    /GOAT\.loadSixEv\s*=\s*loadSixEv/.test(boot),
+    'boot 具备 loadSixEv / attachSixEv 并挂到 window.GOAT');
+  ok(/if \(!window\.__WCA_SIXEV_PENDING\) return Promise\.resolve\(\);/.test(boot) &&
+    /if \(window\.__WCA_SIXEV_READY\) return Promise\.resolve\(\);/.test(boot),
+    '旧核无标志 / 已合并时都不重复取，且并发只发一次');
+  ok(/Number\(x\) \/ scale/.test(boot), '按分片 scale 还原定点值（不再有第二套精度口径）');
+  ok(/P\.markSixEv/.test(core) && /P\.markSixEv = function/.test(core) &&
+    /GOAT\.loadSixEv\(\)/.test(core),
+    'pages-core：按项目筛选且分片未到时就地触发一次，合并后重算 hasSixEv');
+  ok(/data_sixev/.test(sw), 'SW 把 data_sixev.js 纳入数据缓存');
+  ok(/data_sixev\.js/.test(ci), 'CI 提交列表包含 data_sixev.js（否则线上永远 404）');
+
+  /* 真核行为：分片必须覆盖全员，且 ids/vals 不能错位。
+     验证用模型自带的恒等式 Σ_ev sixEv[ev][d] ≈ six[d]（各维分解之和 = 全局维度分）。 */
+  const sixPath = 'js/data_sixev.js';
+  if (fs.existsSync(sixPath) && !SAMPLE) {
+    load(sixPath);
+    const S = win.WCA_SIXEV;
+    ok(!!(S && S.ids && S.vals && S.ids.length === S.vals.length),
+      '分片结构完整（ids/vals 等长）');
+    ok(Math.abs((S.ids ? S.ids.length : 0) - M.ranked.length) <= 5,
+      '分片覆盖全部选手（' + (S.ids || []).length + ' vs ' + M.ranked.length + '）');
+    const map = new Map();
+    for (let i = 0; i < S.ids.length; i++) map.set(S.ids[i], S.vals[i]);
+    const DIM6 = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'];
+    let n = 0, bad = 0, worstRel = 0;
+    for (const p of M.ranked) {
+      const v = map.get(p.id);
+      if (!v || !p.six) continue;
+      const sum = [0, 0, 0, 0, 0, 0];
+      String(v).split(';').forEach((seg) => {
+        const q = seg.indexOf(':');
+        if (q < 0) return;
+        const arr = seg.slice(q + 1).split(',');
+        for (let d = 0; d < 6; d++) sum[d] += Number(arr[d]) / (S.scale || 1);
+      });
+      n++;
+      for (let d = 0; d < 6; d++) {
+        const g = p.six[DIM6[d]] || 0;
+        if (g < 1) continue;                    /* 小于 1 分的取整误差不参与 */
+        const rel = Math.abs(sum[d] - g) / g;
+        if (rel > worstRel) worstRel = rel;
+        if (rel > 0.01) bad++;
+      }
+    }
+    ok(n > 1000 && bad === 0 && worstRel < 0.01,
+      'ids/vals 无错位：Σ per-event 六维 = 全局维度分（比对 ' + n + ' 人，最大相对偏差 ' + (worstRel * 100).toFixed(3) + '%）');
+    /* 合并前后的榜单等价性：把分片按 boot 的规则挂回去，按项目筛选的结果必须仍是「有分的人」
+       —— 若分片串行错位，333 的命中人数会明显偏离历史值。 */
+    let hit333 = 0;
+    for (const p of M.ranked) {
+      const v = map.get(p.id);
+      if (!v) continue;
+      const seg = String(v).split(';').find((s) => s.indexOf('333:') === 0);
+      if (seg && Number(seg.slice(4).split(',')[6] || 0) > 0) hit333++;
+    }
+    ok(hit333 > 5000, '333 项目有分人数 ' + hit333 + '（错位会让该值塌到异常量级）');
+  } else {
+    console.log('  --  真核分片断言跳过（样本构建或分片未生成）');
   }
 }
 

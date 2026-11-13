@@ -40,6 +40,20 @@
 <link rel="stylesheet" href="vendor/cubing-icons.css">
 <!-- 语言包提前到 head：导航的静态占位需要在首屏第一帧就按用户语言渲染。i18n.js 无依赖。 -->
 <script src="js/i18n.js"></script>
+<script>
+  /* 首屏关键路径：数据包在 HTML 解析阶段就发请求，与 shell 脚本并行。
+     以前 data.js 只在 boot.js 里发 —— 而 boot.js 是 defer 链的最后一环，
+     必须等 echarts（331KB gz）下载并执行完才轮到它，实测慢网下白等 4~6 秒。
+     这里先发一手，boot.js 直接复用同一个 Response（window.__DATA_PRE）。 */
+  (function () {
+    if (location.protocol === 'file:') return;
+    try {
+      var p = fetch('js/data.js', { credentials: 'same-origin' });
+      p.catch(function () { });            /* 失败由 boot.js 的兜底逻辑重新取 */
+      window.__DATA_PRE = p;
+    } catch (e) { }
+  })();
+</script>
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"WebSite","name":"Cube GOAT","url":"https://leansun.github.io/cuber-statistics/","description":"基于 WCA 官方成绩数据的魔方历史最伟大选手（GOAT）六维评分与排名系统","inLanguage":["zh-CN","en"],"potentialAction":{"@type":"SearchAction","target":"https://leansun.github.io/cuber-statistics/#/rank?q={search_term_string}","query-input":"required name=search_term_string"}}
 </script>

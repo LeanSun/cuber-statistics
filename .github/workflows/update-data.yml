@@ -78,7 +78,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add js/data.js js/data_cols.js js/data_detail.js js/roster.js
+          git add js/data.js js/data_cols.js js/data_detail.js js/data_sixev.js js/roster.js
           git add -A seo sitemap.xml
           if git diff --cached --quiet; then
             echo "No changes to WCA data"
