@@ -27,7 +27,7 @@
     'foot.repo': 'GitHub 仓库',
 
     'nav.rank': '历史地位排名', 'nav.player': '选手主页',
-    'nav.pk': '选手 PK', 'nav.timeline': '图表可视化', 'nav.topics': '另类统计', 'nav.model': '参数设置',
+    'nav.pk': '选手 PK', 'nav.timeline': '图表可视化', 'nav.topics': '趣味统计', 'nav.model': '参数设置',
 
     'nav.homeTip': '返回首页',
 
@@ -61,7 +61,7 @@
     'feat.timeline': '纪录演变时间轴', 'feat.timeline.d': '每个项目一条泳道，看清谁在什么时代统治了哪个项目',
     'feat.model': '参数设置', 'feat.model.d': '每一条公式的数学依据、参数取值与敏感性分析',
     'feat.pk': '选手 PK', 'feat.pk.d': '选几位选手做多维对比，看谁在哪些领域占优',
-    'feat.topics': '另类统计', 'feat.topics.d': '纪录、参赛、奖牌、效率四大类趣味榜单',
+    'feat.topics': '趣味统计', 'feat.topics.d': '纪录、参赛、奖牌、效率四大类趣味榜单',
 
     'rank.title': '历史地位排名',
     'rank.sub': '默认展示六维加权总分榜。点击行尾箭头展开每个维度的维度分与占比。',

@@ -129,7 +129,7 @@ node etl/build.js --dir etl/sample --out /tmp/data.js   # 跑通完整管道
 | `js/data.js` | 首屏必需列（id/name/country/events/six/m/pk/wr/cr/nr/yearly…） | HTML 解析阶段就发请求 | 3.31 MB |
 | `js/data_cols.js` | 次级页面专用 10 列（sy/evRk/resultRows/…） | 首屏渲染后 0.4s | 1.77 MB |
 | `js/data_sixev.js` | 逐项目六维分解（按项目筛选才用） | 首屏后 2.2s 预取 / 点项目图标时立即 | 1.61 MB |
-| `js/data_detail.js` | 5830 位顶尖选手的纪录 / 领奖台明细 | 选手页、另类统计立即，其余空闲 | 5.20 MB |
+| `js/data_detail.js` | 5830 位顶尖选手的纪录 / 领奖台明细 | 选手页、趣味统计立即，其余空闲 | 5.20 MB |
 
 约定：
 

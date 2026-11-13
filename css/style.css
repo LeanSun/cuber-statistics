@@ -1151,7 +1151,7 @@ tr:hover .pname .linkish,tr:hover .pname .pname-txt{
 .ms-input{width:100%;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.5;padding:10px 12px;border:1px solid var(--border-2);border-radius:var(--r-md);background:var(--bg-soft);color:var(--text);resize:vertical}
 .ms-input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
 
-/* ============ 另类统计 ============ */
+/* ============ 趣味统计 ============ */
 .note-box{
   display:flex;gap:10px;align-items:flex-start;background:var(--accent-soft);color:var(--text-2);
   border:1px solid var(--border);border-radius:var(--r-md);padding:11px 14px;font-size:12.5px;margin-bottom:14px;
@@ -1164,21 +1164,6 @@ tr:hover .pname .linkish,tr:hover .pname .pname-txt{
 .top-tabs{margin-bottom:16px}
 .topic-toolbar{margin-bottom:12px}
 .topic-toolbar .seg{flex-wrap:wrap}
-
-/* 领奖台：当前指标前 3，作为视觉锚点 */
-.podium{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px}
-.pod{background:var(--bg-elev);border:1px solid var(--border);border-radius:var(--r-lg);
-  padding:14px 14px 16px;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;
-  box-shadow:var(--shadow);transition:box-shadow .2s ease,transform .2s ease,border-color .2s ease}
-.pod:hover{box-shadow:var(--shadow-lg);transform:translateY(-2px);border-color:var(--border-2)}
-.pod-1{border-color:color-mix(in srgb,var(--gold) 50%,var(--border))}
-.pod-medal .rank-no{width:30px;height:30px;font-size:13px}
-.pod-av .avatar{width:46px;height:46px;font-size:15px;border-radius:13px}
-.pod-name{font-weight:600;font-size:14px}
-.pod-name .linkish{font-weight:600}
-.pod-meta{display:flex;align-items:center;gap:5px;justify-content:center}
-.pod-val{font-size:23px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--accent);line-height:1.1}
-@media (max-width:620px){.podium{grid-template-columns:1fr;gap:10px}.pod{flex-direction:row;flex-wrap:wrap;justify-content:center;text-align:left}}
 
 /* 图表柔和面板：与左侧表格形成平衡 */
 .chart-side{background:var(--bg-soft);border-radius:var(--r-lg);padding:12px 14px;display:flex;flex-direction:column;min-width:0}

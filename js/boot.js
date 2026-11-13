@@ -326,7 +326,7 @@
     var seg = (location.hash || '').replace(/^#\/?/, '').split(/[?#]/)[0].split('/')[0];
     return seg === 'model' || seg === 'player';
   }
-  /* 选手页要 p.records / p.podiums，另类统计的纪录榜也读 p.records；
+  /* 选手页要 p.records / p.podiums，趣味统计的纪录榜也读 p.records；
      其余页面用不到明细，等空闲再补。 */
   function routeNeedsDetail() {
     var seg = (location.hash || '').replace(/^#\/?/, '').split(/[?#]/)[0].split('/')[0];

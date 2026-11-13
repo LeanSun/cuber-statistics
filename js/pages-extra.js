@@ -1,5 +1,5 @@
 /* ============================================================
-   pages-extra.js — 动态可视化 / 另类统计 / 评分原理说明
+   pages-extra.js — 动态可视化 / 趣味统计 / 评分原理说明
    ============================================================ */
 (function () {
   const t = window.I18N, U = window.U, M = window.MOCK, Ic = window.Icons, Pm = window.Params;
@@ -2211,7 +2211,7 @@
     });
   };
 
-  /* ================= 另类统计 ================= */
+  /* ================= 趣味统计 ================= */
   const TABS = [
     ['rec', 'top.rec', 'record'], ['part', 'top.part', 'calendar'], ['medal', 'top.medal', 'medal'],
     ['eff', 'top.eff', 'lab'], ['other', 'top.other', 'star']
@@ -2219,24 +2219,6 @@
 
   /* 指标数值格式化：百分比型（如转化率）按 ×100 显示，其余走千分位 */
   function fmtBoardVal(d, v) { return d.pct ? U.fmt(v * 100, 1) + '%' : U.num(v); }
-  /* 领奖台：当前指标前 3，作为视觉锚点。头像用首字母占位（不拉外链），轻量且稳定 */
-  function podiumHtml(list, d) {
-    const n = Math.min(3, list.length);
-    if (!n) return '';
-    let s = '<div class="podium reveal">';
-    for (let i = 0; i < n; i++) {
-      const row = list[i], p = row.p;
-      s += '<div class="pod pod-' + (i + 1) + '">';
-      s += '<div class="pod-medal"><span class="rank-no top' + (i + 1) + '">' + (i + 1) + '</span></div>';
-      s += '<div class="pod-av">' + avatar(p, 'sm') + '</div>';
-      s += '<div class="pod-name">' + playerLink(p) + '</div>';
-      s += '<div class="pod-meta">' + flag(p.country) + '<span class="tiny muted">' + esc(countryName(p.country)) + '</span></div>';
-      s += '<div class="pod-val">' + fmtBoardVal(d, row.v) + '</div>';
-      s += '</div>';
-    }
-    s += '</div>';
-    return s;
-  }
 
   P.topics = function (state) {
     const tab = state.topicTab || 'rec';
@@ -2252,7 +2234,7 @@
     if (tab === 'other') return h + otherTab(state);
 
     /* 榜单池 = 全局筛选（国家 / 大洲 / 性别 / 年份区间 / 项目多选）后的选手，
-       否则顶部筛选条在另类统计页会完全失效 */
+       否则顶部筛选条在趣味统计页会完全失效 */
     const pool = P.util.topicPool(state);
 
     /* ★ 2026-11-05（第十五轮）：项目筛选统一到**顶部筛选条**。
@@ -2297,8 +2279,6 @@
          与另外两页「切成绩口径 → 数值变」的操作语义一致（人数不变）。 */
       const list = M.board(tab, d.k, 12, te, pool, rt);
       if (list.length) {
-        /* 领奖台：当前指标前 3，作为视觉锚点 */
-        h += podiumHtml(list, d);
         h += '<div class="card reveal board-card"><div class="card-head"><h2>' + esc(t('stat.' + d.k)) + '</h2>' +
           '<span class="tiny muted">' + (t.isEn() ? 'Top' : '前') + ' ' + list.length + '</span></div>';
         h += '<div class="grid grid-2" style="align-items:start">';

@@ -3,7 +3,7 @@
    ------------------------------------------------------------
    提供：
      · U 工具函数（esc/round/fmt/num/hue/initials）
-     · 静态配置：项目表 / 预设分组 / 洲际 / 模块权重 / 另类统计榜 / 里程碑
+     · 静态配置：项目表 / 预设分组 / 洲际 / 模块权重 / 趣味统计榜 / 里程碑
      · 衍生函数：stats / bonus / ranksOf / board / cumAt / actAt / cumAtF / actAtF
      · assemble(players, cfg) —— 产出与 window.MOCK 完全兼容的对象
    浏览器中挂到 window.Calc / window.U；Node 中通过 module.exports 暴露。
@@ -239,7 +239,7 @@
     return b.map(function (p) { var L = milestoneLabel(ev, p[0], e); return { year: p[1], zh: L.zh, en: L.en }; });
   }
 
-  /* ---------------- 另类统计榜定义 ---------------- */
+  /* ---------------- 趣味统计榜定义 ---------------- */
   var BOARDS = {
     rec: [
       { k: 'wrCount' }, { k: 'crCount' }, { k: 'nrCount' }, { k: 'recTotal' },
@@ -408,7 +408,7 @@
     return p.ranks;
   }
 
-  /* 单项目口径的另类统计指标：只统计该项目上的真实数据。
+  /* 单项目口径的趣味统计指标：只统计该项目上的真实数据。
      ETL 把每选手的 evStat[eid] 传上来；缺项回落到「无数据」，不拿全项目数值冒充。 */
   function evStatOf(p, ev) {
     var b = evStatCtx ? evStatCtx(p, ev) : (p.evStat && ev ? p.evStat[ev] : null);

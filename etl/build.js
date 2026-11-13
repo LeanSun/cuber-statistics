@@ -746,7 +746,7 @@ function getPlayer(id) {
       resultRows: 0, attempts: 0, solves: 0, dnf: 0,
       podiums: [], records: [], yearly: {}, yearlyS: {}, yearlyA: {},
       activeStreak: 1,
-      /* 按项目的真实统计（另类统计页项目筛选用）：
+      /* 按项目的真实统计（趣味统计页项目筛选用）：
          evStat[项目] = { rows, att, sol, dnf, pod, gold, comps, years } */
       evStat: {}
     };
@@ -885,7 +885,7 @@ function addRecord(p, eid, type, level, value, comp, year, rr, cty) {
   if (level === 'WR') { p.wr++; if (isS) p.wrS++; else p.wrA++; }
   else if (level === 'CR') { p.cr++; if (isS) p.crS++; else p.crA++; }
   else { p.nr++; if (isS) p.nrS++; else p.nrA++; }
-  /* 按项目分桶计数（另类统计页「项目筛选」用） */
+  /* 按项目分桶计数（趣味统计页「项目筛选」用） */
   {
     const eb = evBucket(p, eid);
     if (level === 'WR') eb.wr++; else if (level === 'CR') eb.cr++; else eb.nr++;
@@ -1711,7 +1711,7 @@ function buildEventMilestones() {
   });
   function round2(v) { return Math.round((v || 0) * 100) / 100; }
 
-  /* 按项目统计（另类统计页项目筛选用）：只保留该项目上有真实成绩的条目，
+  /* 按项目统计（趣味统计页项目筛选用）：只保留该项目上有真实成绩的条目，
      紧凑成 'eid:rows,att,sol,dnf,pod,gold,sil,bro,wr,cr,nr,comps,wc,cc,nc,lo,op,held,heldLong,heldNow,cityN,yrCnt,yrStr,goldY,recBest'
      的紧凑字符串，避免几十万选手的对象开销。 */
   const EVK = ['rows', 'att', 'sol', 'dnf', 'pod', 'gold', 'sil', 'bro', 'wr', 'cr', 'nr',
@@ -1797,7 +1797,7 @@ function buildEventMilestones() {
   };
 
   /* ---------- 首屏最小集 + 后台列增量（2026-11-12） ----------
-     下列字段只有「六维年度曲线 / 另类统计 / 选手页」等次级页面会读；
+     下列字段只有「六维年度曲线 / 趣味统计 / 选手页」等次级页面会读；
      首屏 home / rank 段（pages-core.js 522–1100）对它们全是 0 引用。
      从 core 主包抽出来单独写 data_cols.js，boot.js 与页面模块并行取回后
      按 id 原地合并 —— 首屏少下载、少解析约 1/4 的 JS 字面量。

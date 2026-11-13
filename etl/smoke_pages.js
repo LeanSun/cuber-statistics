@@ -472,9 +472,11 @@ if (typeof P.tlSetEnd === 'function') {
 const h9 = tryRender('纪录持有图（lane）', () => P.timeline(Object.assign({}, base, { tlView: 'lane' })));
 ok(h9.indexOf('tlChart') >= 0, '泳道图渲染');
 
-const hA = tryRender('另类统计', () => P.topics(Object.assign({}, base, { topicTab: 'rec' })));
-ok(hA.length > 100, '另类统计渲染');
-ok(hA.indexOf('data-topicboard=') >= 0, '另类统计有指标切换');
+const hA = tryRender('趣味统计', () => P.topics(Object.assign({}, base, { topicTab: 'rec' })));
+ok(hA.length > 100, '趣味统计渲染');
+ok(hA.indexOf('data-topicboard=') >= 0, '趣味统计有指标切换');
+/* 2026-11-13：前三名不再单独做领奖台卡片，只保留完整榜单表 + 图表 */
+ok(hA.indexOf('class="podium') < 0, '趣味统计不再单独列出前三名（无领奖台卡片）');
 /* ★ 2026-11-05（第十五轮）：趣味统计的筛选面板统一到顶部筛选条。
    正文里那套两行带文字、只能单选的「按项目筛选」整块删除；
    app.js 的 renderFilterBar 不再为 topics 走特判，三页输出同一份两行结构。 */
@@ -490,14 +492,14 @@ ok((fbFn.match(/class="frow frow-ev"/g) || []).length === 1 && (fbFn.match(/id="
   '筛选条各控件只渲染一份');
 ok(/route === 'rank' \|\| route === 'timeline' \|\| route === 'topics'[\s\S]{0,220}q\.g/.test(appFb),
   'g= / country= 在三个榜单页都能解析（刷新后分组不丢）');
-const hA333 = tryRender('另类统计（顶部选了单个项目）',
+const hA333 = tryRender('趣味统计（顶部选了单个项目）',
   () => P.topics(Object.assign({}, base, { topicTab: 'rec', evSel: ['333'] })));
 ok(hA333.indexOf(t('top.eventFiltered')) >= 0, '顶部项目筛选后有口径提示');
-const hASingle = tryRender('另类统计（成绩口径=单次）',
+const hASingle = tryRender('趣味统计（成绩口径=单次）',
   () => P.topics(Object.assign({}, base, { topicTab: 'rec', recType: 'single' })));
 ok(hASingle.indexOf(t('top.typeNote')) >= 0, '成绩口径切换后有该页口径说明');
 
-console.log('== 另类统计：项目筛选真的改变指标 ==');
+console.log('== 趣味统计：项目筛选真的改变指标 ==');
 const tp = Object.assign({}, base, { topicTab: 'rec', topicBoard: 'wrCount' });
 const all = M.board('rec', 'wrCount', 12, '', null);
 const ev = '333';
@@ -511,9 +513,9 @@ const allWr = all.reduce((a, r) => a + r.v, 0);
 const evWr = one.reduce((a, r) => a + r.v, 0);
 ok(evWr <= allWr, '单项目纪录总数 ≤ 全项目纪录总数（' + evWr + ' ≤ ' + allWr + '）');
 ok(allWr !== evWr || all.length !== one.length, '单项目榜单与全项目榜单不同（口径真实区分）');
-/* 全球筛选在另类统计页生效 */
+/* 全球筛选在趣味统计页生效 */
 const poolCN = P.util.topicPool(Object.assign({}, base, { geo: 'CN' }));
-ok(typeof P.util.topicPool === 'function', 'topicPool 存在（另类统计页套用全局筛选）');
+ok(typeof P.util.topicPool === 'function', 'topicPool 存在（趣味统计页套用全局筛选）');
 ok(poolCN.length <= M.ranked.length, '地区筛选后候选池不增：' + poolCN.length + '/' + M.ranked.length);
 /* 顶部筛选条的三类项目操作（点图标多选 / 点预设分组 / 切成绩口径）都必须真实收窄候选池 */
 const poolAll = P.util.topicPool(Object.assign({}, base, {}));
@@ -2401,7 +2403,7 @@ if (P.sixdimTableHtml) {
     '列增量 / 逐项目六维退到首屏渲染之后按优先级排队');
   ok(/function routeNeedsDetail\(/.test(boot) &&
     /whenIdle\(function \(\) \{ loadDetail\(\); \}, 2500\)/.test(boot),
-    '明细分片不再插队：选手页/另类统计立即取，其余空闲再取');
+    '明细分片不再插队：选手页/趣味统计立即取，其余空闲再取');
   ok(/loadScript\('js\/data\.js'\)/.test(boot),
     '回访改用 <script src>：走 SW 缓存并复用 V8 编译缓存');
   ok(!/首次访问需下载完整成绩数据/.test(html) && /id="bootNote"[^>]*hidden/.test(html),

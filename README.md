@@ -78,7 +78,7 @@ cuber-statistics/
 │  ├─ charts.js          ECharts 封装（主题取色 / 自适应 / 动画）
 │  ├─ pages-core.js      首页 · 综合总榜
 │  ├─ pages-player.js    选手主页 · 选手 PK
-│  ├─ pages-extra.js     动态可视化 · 另类统计 · 评分原理说明
+│  ├─ pages-extra.js     动态可视化 · 趣味统计 · 评分原理说明
 │  ├─ pages-sixdim.js    六维分数细则（参数设置子页面；数据表按需懒加载）
 │  └─ app.js             路由 / 状态 / 主题 / 语言 / 事件 / 数据模式切换
 ├─ etl/                  WCA 导出 → 清洗 → js/data.js + js/data_detail.js
