@@ -119,3 +119,23 @@ node etl/build.js --dir etl/sample --out /tmp/data.js   # 跑通完整管道
 - `.github/workflows/update-data.yml`：每周一从 WCA 官方拉取最新 v2 导出，
   重跑本脚本并将 `js/data.js` 提交回仓库（站点随之更新）。
 - `.github/workflows/ci.yml`：每次 push/PR 用样例数据跑 ETL 冒烟测试。
+
+## 产出的四个数据文件（首屏分级加载）
+
+`build.js` 一次构建写出四份，浏览器按「先能用、再完整」的顺序取：
+
+| 文件 | 内容 | 何时取 | 真核 gzip |
+|---|---|---|---|
+| `js/data.js` | 首屏必需列（id/name/country/events/six/m/pk/wr/cr/nr/yearly…） | HTML 解析阶段就发请求 | 3.31 MB |
+| `js/data_cols.js` | 次级页面专用 10 列（sy/evRk/resultRows/…） | 首屏渲染后 0.4s | 1.77 MB |
+| `js/data_sixev.js` | 逐项目六维分解（按项目筛选才用） | 首屏后 2.2s 预取 / 点项目图标时立即 | 1.61 MB |
+| `js/data_detail.js` | 5830 位顶尖选手的纪录 / 领奖台明细 | 选手页、另类统计立即，其余空闲 | 5.20 MB |
+
+约定：
+
+- 每片都带 `id`，前端按 id 合并（不靠行序对齐），到位后 `render(true)` 保留滚动位置。
+- core 为下沉字段预置合法默认值 + `__WCA_COLS_PENDING` / `__WCA_SIXEV_PENDING` /
+  `__WCA_DETAIL_PENDING` 标志；旧核无标志时前端直接跳过，回滚安全。
+- `data_sixev.js` 的 `vals` 是 ×1000 定点串，`scale` 字段写明倍率，合并时统一除回。
+- 新增分片记得同步三处：`sw.js` 的 `DATA_RE`、`update-data.yml` 的 `git add`、
+  `etl/_ghpush_sync.py` 的 `KEEP_REMOTE_ONLY`（否则 CI 生成后会被下次推送删掉）。
